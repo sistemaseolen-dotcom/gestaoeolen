@@ -1694,7 +1694,8 @@
         '<td>' + esc(extraVal) + '</td>' +
         '<td>' + esc(pessoaLiderNome(it.pessoaId) || "—") + '</td>' +
         '<td>' + esc(pessoaCoordenadorNome(it.pessoaId) || "—") + '</td>' +
-        '<td><span class="pill ' + statusKeyCls(it.statusKey) + '">' + statusKeyLabelDrawer(it.statusKey) + '</span> <span class="hint">' + esc(diasLabel(it)) + '</span></td>' +
+        '<td><span class="pill ' + statusKeyCls(it.statusKey) + '">' + statusKeyLabelDrawer(it.statusKey) + '</span></td>' +
+        '<td>' + esc(diasLabel(it)) + '</td>' +
         '<td class="mono">' + esc(fmtDateBR(it.vencimento)) + '</td>' +
         "</tr>";
     }).join("");
@@ -1709,7 +1710,7 @@
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div></div>" +
       '<div class="drawer-body">' +
       (items.length
-        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>' + extraColLabel + '</th><th>Líder</th><th>Coordenador</th><th>Status</th><th>Vencimento</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>' + extraColLabel + '</th><th>Líder</th><th>Coordenador</th><th>Status</th><th>Dias</th><th>Vencimento</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma pendência encontrada.</div>') +
       "</div>";
     openDrawer(html, { wide: true });
