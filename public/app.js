@@ -162,12 +162,18 @@
      servidor (ver src/lib/audit.ts), a partir do before/after de cada rota.
      O cliente só CONSOME o histórico já pronto (campoLabel etc. vêm prontos
      do servidor) via GET /api/audit-log — não recomputa nem grava nada
-     localmente. A anotação "Alterado por X em Y" que ficava ao lado de cada
-     campo do formulário na versão antiga (fieldChangeNoteHtml/
-     CURRENT_FORM_AUDIT, que liam STATE.auditLog síncronamente) foi removida:
-     exigiria pré-buscar o histórico do registro antes de abrir cada
-     formulário. O painel "Histórico de alterações" nas telas de detalhe
-     continua existindo, carregado sob demanda (ver loadHistoryPanel). */
+     localmente. O painel "Histórico de alterações" nas telas de detalhe
+     continua existindo, carregado sob demanda (ver loadHistoryPanel).
+
+     Além do histórico completo, cada tela de detalhe também mostra, logo
+     abaixo do valor de cada campo, quem fez a última alteração ali (ex.:
+     "Alterado por Diego Nunes em 02/09/2026 17:30") — igual ao que existia
+     na versão antiga (Claude Artifact). Mecânica: os elementos de campo
+     levam um <span data-field-note="campo_snake_case"> vazio (ver
+     detailItem/fieldNoteHtml); quando loadHistoryPanel busca o histórico do
+     registro (já busca tudo mesmo assim, pro painel de baixo), ele também
+     pega a alteração mais recente de cada `campo` e preenche o span
+     correspondente — sem nenhuma requisição extra. */
   function mapAuditRow(a) {
     return {
       ts: a.ts, acao: a.acao, campo: a.campo, campoLabel: a.campo_label,
@@ -210,8 +216,33 @@
             head.appendChild(span);
           }
         }
+        // "Alterado por X em Y" abaixo de cada campo: os itens já vêm do mais
+        // recente pro mais antigo, então a primeira ocorrência de cada
+        // `campo` é a última alteração dele. `panel.parentElement` é o mesmo
+        // container (main) onde os campos com data-field-note foram
+        // desenhados — escopar nele evita atualizar campos de outra tela caso
+        // o usuário já tenha navegado pra outro registro antes desta busca
+        // terminar (o `if (!panel) return;` acima já cobre o caso do próprio
+        // painel de histórico ter sumido).
+        var lastByField = {};
+        items.forEach(function (a) {
+          if (a.campo && !lastByField[a.campo]) lastByField[a.campo] = a;
+        });
+        $all("[data-field-note]", panel.parentElement || document).forEach(function (el) {
+          var a = lastByField[el.getAttribute("data-field-note")];
+          if (!a) { el.textContent = ""; return; }
+          var labelPrefix = el.getAttribute("data-field-note-label");
+          el.textContent = (labelPrefix ? labelPrefix + ": " : "") + "Alterado por " + a.usuarioNome + " em " + fmtDateHoraBR(a.ts);
+        });
       })
       .catch(function () { /* histórico é um extra — falha silenciosa não deve travar a tela */ });
+  }
+  // <span> vazio que loadHistoryPanel preenche com "Alterado por X em Y"
+  // assim que o histórico do registro chega. `label`, quando passado, prefixa
+  // a nota (usado nos campos do cabeçalho, que não têm um rótulo ao lado como
+  // os de detailItem têm).
+  function fieldNoteHtml(campo, label) {
+    return '<span class="field-note" data-field-note="' + esc(campo) + '"' + (label ? ' data-field-note-label="' + esc(label) + '"' : "") + "></span>";
   }
 
   /* ---------------- Utils ---------------- */
@@ -834,26 +865,28 @@
     main.innerHTML =
       '<div class="topbar">' +
       '<div><button class="link-btn" id="back-btn">← Pessoas</button><h1 style="margin-top:6px;">' + esc(p.nome) + "</h1>" +
-      '<div class="sub">' + esc(p.cargo || "—") + " · " + esc(p.regional || "—") + " · " + statusPillGeneric(p.status) + "</div></div>" +
+      '<div class="sub">' + esc(p.cargo || "—") + " · " + esc(p.regional || "—") + " · " + statusPillGeneric(p.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("nome", "Nome") + fieldNoteHtml("cargo", "Cargo") + fieldNoteHtml("regional", "Regional") + fieldNoteHtml("status", "Status") + "</div>" +
+      "</div>" +
       '<div style="display:flex;gap:8px;">' +
       (canDo("pessoas", "editar") ? '<button class="btn" id="btn-edit-pessoa">Editar</button>' : "") +
       (canDo("pessoas", "excluir") ? '<button class="btn danger" id="btn-del-pessoa">' + ICONS.trash + "Excluir</button>" : "") +
       "</div>" +
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados gerais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("CPF", p.cpf) + detailItem("RG", p.rg) + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento)) +
-      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) + detailItem("Tipo", p.tipoPessoa) + detailItem("Cadastro/Operadora origem", p.cadastro) +
-      detailItem("Projeto", p.projeto) + detailItem("Operadora", p.operadora) + detailItem("Coordenador", p.coordenador) +
-      detailItem("Admissão", fmtDateBR(p.dataAdmissao)) + detailItem("Desligamento", fmtDateBR(p.dataDemissao)) + detailItem("Matrícula eSocial", p.matriculaESocial) +
+      detailItem("CPF", p.cpf, "cpf") + detailItem("RG", p.rg, "rg") + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento), "data_nascimento") +
+      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
+      detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
+      detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Contato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("E-mail", p.email) + detailItem("Telefone", p.telefone) + detailItem("E-mail corporativo", p.emailCorporativo) + detailItem("Telefone corporativo", p.telefoneCorporativo) +
-      detailItem("Endereço", [p.endereco, p.numero].filter(Boolean).join(", ")) + detailItem("Bairro / Cidade", [p.bairro, p.municipio, p.estado].filter(Boolean).join(" / ")) +
+      detailItem("E-mail", p.email, "email") + detailItem("Telefone", p.telefone, "telefone") + detailItem("E-mail corporativo", p.emailCorporativo, "email_corporativo") + detailItem("Telefone corporativo", p.telefoneCorporativo, "telefone_corporativo") +
+      detailItem("Endereço", [p.endereco, p.numero].filter(Boolean).join(", "), "endereco") + detailItem("Bairro / Cidade", [p.bairro, p.municipio, p.estado].filter(Boolean).join(" / "), "bairro") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Contrato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("MEI", p.mei) + detailItem("Nº contrato", p.numeroContrato) + detailItem("Validade contrato", fmtDateBR(p.validadeContrato)) +
-      detailItem("Valor hora", fmtMoney(p.valorHora)) + detailItem("Salário bruto", fmtMoney(p.salarioBruto)) + detailItem("CNH", p.cnh + (p.dataValidadeCNH ? " · venc. " + fmtDateBR(p.dataValidadeCNH) : "")) +
-      "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span></div>" : "") + "</div></div>" +
+      detailItem("MEI", p.mei, "mei") + detailItem("Nº contrato", p.numeroContrato, "numero_contrato") + detailItem("Validade contrato", fmtDateBR(p.validadeContrato), "validade_contrato") +
+      detailItem("Valor hora", fmtMoney(p.valorHora), "valor_hora") + detailItem("Salário bruto", fmtMoney(p.salarioBruto), "salario_bruto") + detailItem("CNH", p.cnh + (p.dataValidadeCNH ? " · venc. " + fmtDateBR(p.dataValidadeCNH) : ""), "cnh") +
+      "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") + "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Equipes</h3></div><div class="panel-body pad">' +
       (eqs.length ? eqs.map(function (e) {
         return '<div class="member-row" data-eq="' + e.id + '" style="cursor:pointer"><div class="avatar-dot">' + esc(initials(e.nome)) + '</div><div class="info"><div class="name">' + esc(e.nome) + '</div><div class="role">Líder: ' + esc(liderName(e) || "—") + "</div></div>" + statusPillGeneric(e.status) + "</div>";
@@ -979,8 +1012,12 @@
     }
   }
 
-  function detailItem(label, value) {
-    return '<div class="detail-item"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value || "—") + "</span></div>";
+  // `campo` (opcional): nome da coluna no banco (snake_case, igual ao
+  // `campo` gravado em audit_log — ver FIELD_LABELS em src/lib/audit.ts).
+  // Quando informado, mostra "Alterado por X em Y" abaixo do valor assim que
+  // loadHistoryPanel busca o histórico do registro.
+  function detailItem(label, value, campo) {
+    return '<div class="detail-item"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value || "—") + "</span>" + (campo ? fieldNoteHtml(campo) : "") + "</div>";
   }
 
   function openPessoaForm(p) {
@@ -1154,13 +1191,15 @@
     if (!e) { navigate("#/equipes"); return; }
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Equipes</button><h1 style="margin-top:6px;">' + esc(e.nome) + "</h1>" +
-      '<div class="sub">Líder: ' + liderDisplay(e) + " · " + statusPillGeneric(e.status) + "</div></div>" +
+      '<div class="sub">Líder: ' + liderDisplay(e) + " · " + statusPillGeneric(e.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("nome", "Nome") + fieldNoteHtml("status", "Status") + "</div>" +
+      "</div>" +
       '<div style="display:flex;gap:8px;">' +
       (canDo("equipes", "editar") ? '<button class="btn" id="btn-edit-equipe">Editar</button>' : "") +
       (canDo("equipes", "excluir") ? '<button class="btn danger" id="btn-del-equipe">' + ICONS.trash + "Excluir</button>" : "") +
       "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados da equipe</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("Regional", e.regional) + detailItem("Projeto", e.projeto) + detailItem("Operadora", e.operadora) + detailItem("Status", e.status) +
+      detailItem("Regional", e.regional, "regional") + detailItem("Projeto", e.projeto, "projeto") + detailItem("Operadora", e.operadora, "operadora") + detailItem("Status", e.status, "status") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Membros (' + e.membros.length + ')</h3>' + (canDo("equipes", "editar") ? '<button class="btn sm primary" id="btn-add-membro">' + ICONS.plus + "Adicionar membro</button>" : "") + '</div><div class="panel-body pad">' +
       (e.membros.length ? e.membros.map(function (m, idx) {
@@ -1341,17 +1380,19 @@
     var pessoasVinculadas = STATE.pessoas.filter(function (p) { return p.empresaId === e.id; });
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Empresas</button><h1 style="margin-top:6px;">' + esc(empresaTitle(e)) + "</h1>" +
-      '<div class="sub mono">' + esc(e.cnpj || "—") + " · " + statusPillGeneric(e.status) + "</div></div>" +
+      '<div class="sub mono">' + esc(e.cnpj || "—") + " · " + statusPillGeneric(e.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("nome", "Razão social") + fieldNoteHtml("status", "Status") + "</div>" +
+      "</div>" +
       '<div style="display:flex;gap:8px;">' +
       (canDo("empresas", "editar") ? '<button class="btn" id="btn-edit-empresa">Editar</button>' : "") +
       (canDo("empresas", "excluir") ? '<button class="btn danger" id="btn-del-empresa">' + ICONS.trash + "Excluir</button>" : "") +
       "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados cadastrais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("Razão social", e.nome) + detailItem("Nome fantasia", e.fantasia) + detailItem("CNPJ", e.cnpj) + detailItem("Porte", e.porte) +
-      detailItem("CNAE principal", [e.cnaePrincipal, e.cnaeDescricao].filter(Boolean).join(" — ")) + detailItem("Situação cadastral", e.situacaoCadastral) +
-      detailItem("Cidade/UF", [e.cidade, e.uf].filter(Boolean).join("/")) + detailItem("Endereço", [e.logradouro, e.numero, e.bairro].filter(Boolean).join(", ")) +
-      detailItem("CEP", e.cep) + detailItem("Telefone", e.telefone) + detailItem("E-mail", e.email) + detailItem("Responsável", e.nomeResponsavel) +
-      detailItem("PGR", e.pgr) + detailItem("PCMSO", e.pcmso) + detailItem("Regional", e.regional) +
+      detailItem("Razão social", e.nome, "nome") + detailItem("Nome fantasia", e.fantasia, "fantasia") + detailItem("CNPJ", e.cnpj, "cnpj") + detailItem("Porte", e.porte, "porte") +
+      detailItem("CNAE principal", [e.cnaePrincipal, e.cnaeDescricao].filter(Boolean).join(" — "), "cnae_principal") + detailItem("Situação cadastral", e.situacaoCadastral, "situacao_cadastral") +
+      detailItem("Cidade/UF", [e.cidade, e.uf].filter(Boolean).join("/"), "cidade") + detailItem("Endereço", [e.logradouro, e.numero, e.bairro].filter(Boolean).join(", "), "logradouro") +
+      detailItem("CEP", e.cep, "cep") + detailItem("Telefone", e.telefone, "telefone") + detailItem("E-mail", e.email, "email") + detailItem("Responsável", e.nomeResponsavel, "nome_responsavel") +
+      detailItem("PGR", e.pgr, "pgr") + detailItem("PCMSO", e.pcmso, "pcmso") + detailItem("Regional", e.regional, "regional") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Pessoas vinculadas (' + pessoasVinculadas.length + ')</h3></div><div class="panel-body pad">' +
       (pessoasVinculadas.length ? pessoasVinculadas.map(function (p) {
@@ -2104,15 +2145,17 @@
     var pessoa = t.pessoaId ? byId(STATE.pessoas, t.pessoaId) : null;
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Painel</button><h1 style="margin-top:6px;">' + esc(t.tipo) + "</h1>" +
-      '<div class="sub">' + esc(t.pessoaNome) + " · " + pill(st) + "</div></div>" +
+      '<div class="sub">' + esc(t.pessoaNome) + " · " + pill(st) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("tipo", "Tipo") + "</div>" +
+      "</div>" +
       '<div style="display:flex;gap:8px;">' +
       (canDo("documentos", "editar") ? '<button class="btn" id="btn-edit-tr">Editar</button>' : "") +
       (canDo("documentos", "excluir") ? '<button class="btn danger" id="btn-del-tr">' + ICONS.trash + "Excluir</button>" : "") +
       "</div></div>" +
       '<div class="panel"><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("Pessoa", t.pessoaNome) + detailItem("Categoria", t.categoria) +
-      detailItem("Emissão", fmtDateBR(t.dataEmissao)) + detailItem("Vencimento", fmtDateBR(t.vencimento)) + detailItem("Situação registrada", t.situacaoOriginal) +
-      "</div>" + (t.observacao ? '<div class="detail-item" style="margin-top:12px;"><span class="k">Observação</span><span class="v">' + esc(t.observacao) + "</span></div>" : "") +
+      detailItem("Pessoa", t.pessoaNome) + detailItem("Categoria", t.categoria, "categoria") +
+      detailItem("Emissão", fmtDateBR(t.dataEmissao), "data_emissao") + detailItem("Vencimento", fmtDateBR(t.vencimento), "vencimento") + detailItem("Situação registrada", t.situacaoOriginal, "situacao_original") +
+      "</div>" + (t.observacao ? '<div class="detail-item" style="margin-top:12px;"><span class="k">Observação</span><span class="v">' + esc(t.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") +
       '<div style="margin-top:16px;">' +
       (t.arquivoPath
         ? '<button type="button" class="file-chip" id="btn-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Ver anexo") + "</button>"
