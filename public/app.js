@@ -1998,6 +1998,7 @@
       ["Pessoas ativas", countPessoasAtivas(), "", ' data-headcount-nav="pessoas"'],
       ["Equipes ativas", countEquipesAtivas(), "", ' data-headcount-nav="equipes"'],
       ["Vistoriadores ativos", countPessoasAtivas("VISTORIADOR"), "", ' data-headcount-cargo="VISTORIADOR" data-headcount-title="Vistoriadores ativos"'],
+      ["Técnicos ativos", countPessoasAtivas("TÉCNICO"), "", ' data-headcount-cargo="TÉCNICO" data-headcount-title="Técnicos ativos"'],
       ["Pessoas em CLEAN UP", countPessoasAtivas("CLEAN UP"), "", ' data-headcount-cargo="CLEAN UP" data-headcount-title="Pessoas em CLEAN UP (ativas)"']
     ];
     var headcountKpiHtml = headcountKpis.map(function (k) {
