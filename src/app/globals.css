@@ -210,6 +210,14 @@ main { min-width: 0; padding: 26px 32px 60px; }
 .kpi.danger .value { color: var(--danger-ink); }
 .kpi.ok .value { color: var(--success-ink); }
 .kpi.info .value { color: var(--accent-soft-ink); }
+.kpi.alert-blink { animation: kpiAlertBlink 1.6s ease-in-out infinite; border-color: var(--danger); }
+@keyframes kpiAlertBlink {
+  0%, 100% { background: var(--surface); box-shadow: var(--shadow-sm); }
+  50% { background: var(--danger-soft); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 40%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kpi.alert-blink { animation: none; border-color: var(--danger); background: var(--danger-soft); }
+}
 
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 .panel + .panel { margin-top: 16px; }

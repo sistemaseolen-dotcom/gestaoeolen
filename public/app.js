@@ -1539,9 +1539,19 @@
   }
   var MONTH_LABELS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
+  // Faixa "urgente": vencendo em até 7 dias (subconjunto de A_VENCER, que vai
+  // até 30 dias). É só um recorte pro card de alerta do Painel — não é um
+  // status novo em trainingStatus() de propósito, pra não mexer em nenhum
+  // outro gráfico/tela que já usa os códigos A_VENCER/A_VENCER_60/etc.
+  var URGENTE_DIAS = 7;
+  function isUrgente(t) {
+    if (!t.vencimento) return false;
+    var d = daysUntil(t.vencimento);
+    return d >= 0 && d <= URGENTE_DIAS;
+  }
   function computeTreinoOverview() {
     var byStatus = { VALIDO: 0, A_VENCER: 0, A_VENCER_60: 0, VENCIDO: 0, SEM_VENCIMENTO: 0 };
-    var byTipo = {}, byRegional = {}, byPessoa = {}, monthCounts = {}, vencidosCount = 0;
+    var byTipo = {}, byRegional = {}, byPessoa = {}, monthCounts = {}, vencidosCount = 0, urgenteCount = 0;
     var list = activeTreinamentos();
     list.forEach(function (t) {
       var st = trainingStatus(t);
@@ -1559,12 +1569,13 @@
         }
       }
       if (st.code === "VENCIDO") vencidosCount++;
+      if (isUrgente(t)) urgenteCount++;
       if (t.vencimento && (st.code === "A_VENCER" || st.code === "VALIDO")) {
         var ym = t.vencimento.slice(0, 7);
         monthCounts[ym] = (monthCounts[ym] || 0) + 1;
       }
     });
-    return { byStatus: byStatus, byTipo: byTipo, byRegional: byRegional, byPessoa: byPessoa, monthCounts: monthCounts, vencidosCount: vencidosCount, total: list.length };
+    return { byStatus: byStatus, byTipo: byTipo, byRegional: byRegional, byPessoa: byPessoa, monthCounts: monthCounts, vencidosCount: vencidosCount, urgenteCount: urgenteCount, total: list.length };
   }
 
   function statusBarLgHtml(byStatus, total) {
@@ -1731,7 +1742,7 @@
   }
 
   /* -- Distribuição por status (KPIs + gráfico geral) — visão sem recorte por item/regional -- */
-  var STATUS_CODE_LABELS = { VALIDO: "Válido", A_VENCER: "A vencer (30 dias)", A_VENCER_60: "A vencer (60 dias)", VENCIDO: "Vencido", SEM_VENCIMENTO: "Sem vencimento" };
+  var STATUS_CODE_LABELS = { VALIDO: "Válido", A_VENCER: "A vencer (30 dias)", A_VENCER_60: "A vencer (60 dias)", VENCIDO: "Vencido", SEM_VENCIMENTO: "Sem vencimento", URGENTE_7: "A vencer (7 dias)" };
   function diasLabelGeneric(dias) {
     if (dias === null) return "Sem data";
     if (dias < 0) return "Vencido há " + Math.abs(dias) + " dia" + (Math.abs(dias) !== 1 ? "s" : "");
@@ -1739,7 +1750,7 @@
     return "Faltam " + dias + " dia" + (dias !== 1 ? "s" : "");
   }
   function pendenciaItemsByStatusCode(code) {
-    return activeTreinamentos().filter(function (t) { return trainingStatus(t).code === code; })
+    return activeTreinamentos().filter(function (t) { return code === "URGENTE_7" ? isUrgente(t) : trainingStatus(t).code === code; })
       .map(function (t) {
         return {
           pessoaId: t.pessoaId, pessoaNome: t.pessoaNome, regional: pessoaRegional(t.pessoaId), tipo: t.tipo,
@@ -2060,6 +2071,7 @@
       ["Em dia", pct + "%", "ok", null],
       ["A vencer (30 dias)", data.byStatus.A_VENCER, "warn", "A_VENCER"],
       ["A vencer (60 dias)", data.byStatus.A_VENCER_60, "info", "A_VENCER_60"],
+      ["A vencer (7 dias)", data.urgenteCount, "danger" + (data.urgenteCount > 0 ? " alert-blink" : ""), "URGENTE_7"],
       ["Vencidos", data.byStatus.VENCIDO, "danger", "VENCIDO"]
     ];
     var kpiHtml = kpis.map(function (k) {
