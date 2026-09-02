@@ -83,6 +83,27 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+// O PostgREST do Supabase corta cada resposta num número máximo de linhas
+// (config do projeto, hoje 1000) mesmo sem LIMIT no código. `pessoas` já
+// passou de 890 registros e só tende a crescer — sem paginar aqui, ao
+// ultrapassar o teto o `idsValidos` (usado por syncEquipes/syncTreinamentos
+// pra saber quais pessoa_id existem) ficaria incompleto, e membros/
+// treinamentos de gente recém-cadastrada seriam descartados como "órfãos"
+// silenciosamente — a mesma classe de bug que cortou os treinamentos.
+async function fetchAllIds(admin: ReturnType<typeof supabaseAdmin>, table: string): Promise<number[]> {
+  const pageSize = 1000;
+  let from = 0;
+  const ids: number[] = [];
+  for (;;) {
+    const { data, error } = await admin.from(table).select("id").range(from, from + pageSize - 1);
+    if (error) throw new Error(`Falha ao carregar ids de ${table}: ${error.message}`);
+    (data || []).forEach((r: any) => ids.push(r.id));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return ids;
+}
+
 /* ---------------- Treinamentos: tipos/categoria ---------------- */
 
 const TIPO_CATEGORIA: Record<string, "documento" | "treinamento"> = {
@@ -257,8 +278,7 @@ async function syncEquipes(): Promise<SyncResumo["equipes"]> {
   const rows = await gpoFetch(`/grupos`);
   const admin = supabaseAdmin();
 
-  const { data: pessoasExistentes } = await admin.from("pessoas").select("id");
-  const idsValidos = new Set((pessoasExistentes || []).map((p: any) => p.id));
+  const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
 
   type Grupo = {
     nome: string;
@@ -356,8 +376,7 @@ async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
   const rows = await gpoFetch(`/pessoa/treinamentogeral?busca=&${GPO_QS}&deletado=0`);
   const admin = supabaseAdmin();
 
-  const { data: pessoasExistentes } = await admin.from("pessoas").select("id");
-  const idsValidos = new Set((pessoasExistentes || []).map((p: any) => p.id));
+  const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
 
   const tiposDesconhecidos = new Set<string>();
   let orfaos = 0;

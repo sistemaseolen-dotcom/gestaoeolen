@@ -7,6 +7,26 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // via /api/audit-log, pois só cresce e não faz sentido carregar tudo de uma
 // vez). O front-end monta STATE.listas a partir de listas_opcoes agrupadas
 // por `lista`.
+// O PostgREST do Supabase limita cada resposta a um número máximo de linhas
+// (configurado no projeto, geralmente 1000) mesmo sem LIMIT explícito no
+// código — qualquer tabela que passe desse tamanho vem cortada em silêncio,
+// sem erro. `treinamentos` já passou de 8000 linhas, então buscamos todas as
+// tabelas em páginas de 1000 e concatenamos, em vez de confiar num único
+// `select("*")`.
+async function fetchAllRows(admin: ReturnType<typeof supabaseAdmin>, table: string) {
+  const pageSize = 1000;
+  let from = 0;
+  const all: any[] = [];
+  for (;;) {
+    const { data, error } = await admin.from(table).select("*").order("id").range(from, from + pageSize - 1);
+    if (error) return { data: null as any[] | null, error };
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return { data: all, error: null as any };
+}
+
 export async function GET() {
   const gate = await requireAuth();
   if (gate.response) return gate.response;
@@ -14,12 +34,12 @@ export async function GET() {
   const admin = supabaseAdmin();
 
   const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes] = await Promise.all([
-    admin.from("pessoas").select("*").order("id"),
-    admin.from("empresas").select("*").order("id"),
-    admin.from("treinamentos").select("*").order("id"),
-    admin.from("equipes").select("*").order("id"),
-    admin.from("equipe_membros").select("*").order("id"),
-    admin.from("listas_opcoes").select("*").order("id"),
+    fetchAllRows(admin, "pessoas"),
+    fetchAllRows(admin, "empresas"),
+    fetchAllRows(admin, "treinamentos"),
+    fetchAllRows(admin, "equipes"),
+    fetchAllRows(admin, "equipe_membros"),
+    fetchAllRows(admin, "listas_opcoes"),
   ]);
 
   for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes })) {
