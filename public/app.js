@@ -318,6 +318,11 @@
       return isTeamLider(p) && (!onlyAtivo || p.status === "ATIVO");
     }).length;
   }
+  // Regra do Diego: toda contagem de "equipes" no painel é feita por pessoas
+  // cadastradas como TEAM LIDER e com status ATIVO (não pela tabela equipes).
+  function teamLideresAtivos() {
+    return STATE.pessoas.filter(function (p) { return isTeamLider(p) && p.status === "ATIVO"; });
+  }
   function liderName(e) {
     if (e.teamLiderId) {
       var p = byId(STATE.pessoas, e.teamLiderId);
@@ -1748,7 +1753,7 @@
     }).length;
   }
   function countEquipesAtivas() {
-    return STATE.equipes.filter(function (e) { return e.status === "ATIVO"; }).length;
+    return teamLideresAtivos().length;
   }
   function simpleCountByRegional(list, regionalOf) {
     var map = {};
@@ -1759,7 +1764,7 @@
     return map;
   }
   function equipesAtivasPorRegional() {
-    return simpleCountByRegional(STATE.equipes.filter(function (e) { return e.status === "ATIVO"; }), function (e) { return e.regional; });
+    return simpleCountByRegional(teamLideresAtivos(), function (p) { return p.regional; });
   }
   function pessoasAtivasPorRegional(cargoFiltro) {
     return simpleCountByRegional(STATE.pessoas.filter(function (p) {
@@ -1805,21 +1810,21 @@
     if (opts.onRowBind) opts.onRowBind($("#drawer-content"));
   }
   function openEquipesRegionalDrawer(regional) {
-    var list = STATE.equipes.filter(function (e) { return e.status === "ATIVO" && normReg(e.regional) === regional; })
+    var list = teamLideresAtivos().filter(function (p) { return normReg(p.regional) === regional; })
       .slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
-    var rowsHtml = list.map(function (e) {
-      return '<tr data-eq="' + e.id + '"><td class="row-primary">' + esc(e.nome) + '</td><td>' + esc(liderName(e) || "—") + '</td><td>' + esc(e.projeto || "—") + '</td><td>' + esc(e.operadora || "—") + '</td><td class="num">' + e.membros.length + "</td></tr>";
+    var rowsHtml = list.map(function (p) {
+      return '<tr data-pessoa="' + p.id + '"><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.empresaNome || "—") + '</td><td>' + esc(p.projeto || "—") + "</td></tr>";
     }).join("");
     openGenericTableDrawer({
       title: regional + " — Equipes ativas",
       subtitle: list.length + " equipe" + (list.length !== 1 ? "s" : ""),
-      theadHtml: "<th>Equipe</th><th>Líder</th><th>Projeto</th><th>Operadora</th><th class=\"num\">Membros</th>",
+      theadHtml: "<th>Team Líder</th><th>Empresa</th><th>Projeto</th>",
       rowsHtml: rowsHtml,
-      exportHeaders: ["Equipe", "Líder", "Projeto", "Operadora", "Membros"],
-      exportRows: list.map(function (e) { return [e.nome || "", liderName(e) || "", e.projeto || "", e.operadora || "", e.membros.length]; }),
+      exportHeaders: ["Team Líder", "Empresa", "Projeto"],
+      exportRows: list.map(function (p) { return [p.nome || "", p.empresaNome || "", p.projeto || ""]; }),
       onRowBind: function (root) {
-        $all("[data-eq]", root).forEach(function (row) {
-          row.addEventListener("click", function () { closeDrawer(); navigate("#/equipes/" + row.getAttribute("data-eq")); });
+        $all("[data-pessoa]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/pessoas/" + row.getAttribute("data-pessoa")); });
         });
       }
     });
@@ -1829,24 +1834,23 @@
     return !CLIENTES.some(function (c) { return c.key === pj; });
   }
   function openEquipesRegionalClienteDrawer(regional, clienteKey, clienteNome) {
-    var list = STATE.equipes.filter(function (e) {
-      if (e.status !== "ATIVO") return false;
-      if (normReg(e.regional) !== regional) return false;
-      return clienteKey === "OUTROS" ? isClienteOutro(e) : projetoNorm(e) === clienteKey;
+    var list = teamLideresAtivos().filter(function (p) {
+      if (normReg(p.regional) !== regional) return false;
+      return clienteKey === "OUTROS" ? isClienteOutro(p) : projetoNorm(p) === clienteKey;
     }).slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
-    var rowsHtml = list.map(function (e) {
-      return '<tr data-eq="' + e.id + '"><td class="row-primary">' + esc(e.nome) + '</td><td>' + esc(liderName(e) || "—") + '</td><td>' + esc(e.operadora || "—") + '</td><td class="num">' + e.membros.length + "</td></tr>";
+    var rowsHtml = list.map(function (p) {
+      return '<tr data-pessoa="' + p.id + '"><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.empresaNome || "—") + "</td></tr>";
     }).join("");
     openGenericTableDrawer({
       title: regional + " — " + clienteNome,
       subtitle: list.length + " equipe" + (list.length !== 1 ? "s" : ""),
-      theadHtml: "<th>Equipe</th><th>Líder</th><th>Operadora</th><th class=\"num\">Membros</th>",
+      theadHtml: "<th>Team Líder</th><th>Empresa</th>",
       rowsHtml: rowsHtml,
-      exportHeaders: ["Equipe", "Líder", "Operadora", "Membros"],
-      exportRows: list.map(function (e) { return [e.nome || "", liderName(e) || "", e.operadora || "", e.membros.length]; }),
+      exportHeaders: ["Team Líder", "Empresa"],
+      exportRows: list.map(function (p) { return [p.nome || "", p.empresaNome || ""]; }),
       onRowBind: function (root) {
-        $all("[data-eq]", root).forEach(function (row) {
-          row.addEventListener("click", function () { closeDrawer(); navigate("#/equipes/" + row.getAttribute("data-eq")); });
+        $all("[data-pessoa]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/pessoas/" + row.getAttribute("data-pessoa")); });
         });
       }
     });
@@ -1906,7 +1910,7 @@
   ];
   function projetoNorm(e) { return (e.projeto || "").trim().toUpperCase(); }
   function equipesAtivasPorCliente(clienteKey) {
-    return STATE.equipes.filter(function (e) { return e.status === "ATIVO" && projetoNorm(e) === clienteKey; });
+    return teamLideresAtivos().filter(function (p) { return projetoNorm(p) === clienteKey; });
   }
   function clientCardsHtml() {
     return CLIENTES.map(function (c) {
@@ -1920,19 +1924,19 @@
   }
   function openEquipesClienteDrawer(clienteKey, clienteNome) {
     var list = equipesAtivasPorCliente(clienteKey).slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
-    var rowsHtml = list.map(function (e) {
-      return '<tr data-eq="' + e.id + '"><td class="row-primary">' + esc(e.nome) + '</td><td>' + esc(liderName(e) || "—") + '</td><td>' + esc(e.regional || "—") + '</td><td>' + esc(e.operadora || "—") + '</td><td class="num">' + e.membros.length + "</td></tr>";
+    var rowsHtml = list.map(function (p) {
+      return '<tr data-pessoa="' + p.id + '"><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.regional || "—") + '</td><td>' + esc(p.empresaNome || "—") + "</td></tr>";
     }).join("");
     openGenericTableDrawer({
       title: clienteNome + " — Equipes ativas",
       subtitle: list.length + " equipe" + (list.length !== 1 ? "s" : ""),
-      theadHtml: "<th>Equipe</th><th>Líder</th><th>Regional</th><th>Operadora</th><th class=\"num\">Membros</th>",
+      theadHtml: "<th>Team Líder</th><th>Regional</th><th>Empresa</th>",
       rowsHtml: rowsHtml,
-      exportHeaders: ["Equipe", "Líder", "Regional", "Operadora", "Membros"],
-      exportRows: list.map(function (e) { return [e.nome || "", liderName(e) || "", e.regional || "", e.operadora || "", e.membros.length]; }),
+      exportHeaders: ["Team Líder", "Regional", "Empresa"],
+      exportRows: list.map(function (p) { return [p.nome || "", p.regional || "", p.empresaNome || ""]; }),
       onRowBind: function (root) {
-        $all("[data-eq]", root).forEach(function (row) {
-          row.addEventListener("click", function () { closeDrawer(); navigate("#/equipes/" + row.getAttribute("data-eq")); });
+        $all("[data-pessoa]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/pessoas/" + row.getAttribute("data-pessoa")); });
         });
       }
     });
@@ -1940,11 +1944,11 @@
 
   function equipesAtivasPorRegionalPorCliente() {
     var map = {};
-    STATE.equipes.filter(function (e) { return e.status === "ATIVO"; }).forEach(function (e) {
-      var reg = normReg(e.regional);
+    teamLideresAtivos().forEach(function (p) {
+      var reg = normReg(p.regional);
       if (!map[reg]) map[reg] = { total: 0, porCliente: {}, outros: 0 };
       map[reg].total++;
-      var pj = projetoNorm(e);
+      var pj = projetoNorm(p);
       var cliente = CLIENTES.filter(function (c) { return c.key === pj; })[0];
       if (cliente) map[reg].porCliente[cliente.key] = (map[reg].porCliente[cliente.key] || 0) + 1;
       else map[reg].outros++;
