@@ -1676,6 +1676,14 @@
       "</div>";
     return '<div class="rankbar-list">' + body + "</div>" + legend;
   }
+  // Rótulo do pill igual ao de statusKeyLabel, mas sem o "(60 dias)" fixo em
+  // "A vencer (60 dias)" — nesta tela o número de dias já aparece ao lado
+  // (via diasLabel), calculado em cima do vencimento real de cada item, então
+  // o texto fixo do bucket fica redundante/impreciso (um item pode estar a
+  // 32 ou a 58 dias e os dois caem no mesmo "60 dias").
+  function statusKeyLabelDrawer(key) {
+    return key === "renovar60" ? "A vencer" : statusKeyLabel(key);
+  }
   function openGroupPendenciaDrawer(kind, groupValue, statusKey) {
     var items = pendenciaItemsForGroup(kind, groupValue, statusKey);
     var extraColLabel = kind === "regional" ? "Item" : "Regional";
@@ -1686,7 +1694,7 @@
         '<td>' + esc(extraVal) + '</td>' +
         '<td>' + esc(pessoaLiderNome(it.pessoaId) || "—") + '</td>' +
         '<td>' + esc(pessoaCoordenadorNome(it.pessoaId) || "—") + '</td>' +
-        '<td><span class="pill ' + statusKeyCls(it.statusKey) + '">' + statusKeyLabel(it.statusKey) + '</span></td>' +
+        '<td><span class="pill ' + statusKeyCls(it.statusKey) + '">' + statusKeyLabelDrawer(it.statusKey) + '</span> <span class="hint">' + esc(diasLabel(it)) + '</span></td>' +
         '<td class="mono">' + esc(fmtDateBR(it.vencimento)) + '</td>' +
         "</tr>";
     }).join("");
@@ -1706,11 +1714,11 @@
       "</div>";
     openDrawer(html, { wide: true });
     $("#drawer-close").addEventListener("click", closeDrawer);
-    var exportHeaders = ["Pessoa", extraColLabel, "Líder", "Coordenador", "Status", "Vencimento"];
+    var exportHeaders = ["Pessoa", extraColLabel, "Líder", "Coordenador", "Status", "Dias", "Vencimento"];
     function exportRows() {
       return items.map(function (it) {
         var extraVal = kind === "regional" ? it.tipo : (it.regional || "");
-        return [it.pessoaNome || "", extraVal, pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", statusKeyLabel(it.statusKey), fmtDateBR(it.vencimento)];
+        return [it.pessoaNome || "", extraVal, pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", statusKeyLabelDrawer(it.statusKey), diasLabel(it), fmtDateBR(it.vencimento)];
       });
     }
     var filenameBase = groupValue + (statusKey ? " - " + statusKeyLabel(statusKey) : "");
@@ -1752,6 +1760,7 @@
         '<td>' + esc(it.regional || "—") + '</td>' +
         '<td>' + esc(pessoaLiderNome(it.pessoaId) || "—") + '</td>' +
         '<td>' + esc(pessoaCoordenadorNome(it.pessoaId) || "—") + '</td>' +
+        '<td>' + esc(diasLabelGeneric(it.dias)) + '</td>' +
         '<td class="mono">' + esc(fmtDateBR(it.vencimento)) + '</td>' +
         "</tr>";
     }).join("");
@@ -1765,15 +1774,15 @@
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div></div>" +
       '<div class="drawer-body">' +
       (items.length
-        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>Item</th><th>Regional</th><th>Líder</th><th>Coordenador</th><th>Vencimento</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>Item</th><th>Regional</th><th>Líder</th><th>Coordenador</th><th>Dias</th><th>Vencimento</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
         : '<div class="empty-state" style="padding:20px;">Nenhum registro para este status.</div>') +
       "</div>";
     openDrawer(html, { wide: true });
     $("#drawer-close").addEventListener("click", closeDrawer);
-    var exportHeaders = ["Pessoa", "Item", "Regional", "Líder", "Coordenador", "Vencimento"];
+    var exportHeaders = ["Pessoa", "Item", "Regional", "Líder", "Coordenador", "Dias", "Vencimento"];
     function exportRows() {
       return items.map(function (it) {
-        return [it.pessoaNome || "", it.tipo || "", it.regional || "", pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", fmtDateBR(it.vencimento)];
+        return [it.pessoaNome || "", it.tipo || "", it.regional || "", pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", diasLabelGeneric(it.dias), fmtDateBR(it.vencimento)];
       });
     }
     $("#drawer-download").addEventListener("click", function () { downloadRowsAsXls(titulo, exportHeaders, exportRows()); });
