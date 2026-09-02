@@ -546,7 +546,7 @@
     var navItems = [];
     if (canView("painel")) navItems.push(["treinamentos", "Painel", ICONS.dashboard, activeTreinamentos().length]);
     if (canView("pessoas")) navItems.push(["pessoas", "Pessoas", ICONS.pessoas, STATE.pessoas.length]);
-    if (canView("equipes")) navItems.push(["equipes", "Equipes", ICONS.equipes, countTeamLideres(false)]);
+    if (canView("equipes")) navItems.push(["equipes", "Equipes", ICONS.equipes, countTeamLideres(true)]);
     if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
     var navHtml = navItems.map(function (it) {
@@ -2829,7 +2829,7 @@
       var key = btn.getAttribute("data-nav");
       var countEl = btn.querySelector(".nav-count");
       if (!countEl) return;
-      if (key === "equipes") countEl.textContent = countTeamLideres(false);
+      if (key === "equipes") countEl.textContent = countTeamLideres(true);
       else if (STATE[key]) countEl.textContent = STATE[key].length;
     });
   }
