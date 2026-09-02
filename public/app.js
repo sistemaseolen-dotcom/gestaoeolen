@@ -2288,9 +2288,10 @@
       '<button type="button" class="section-tab' + (active === "usuarios" ? " active" : "") + '" data-admintab="usuarios">Usuários</button>' +
       '<button type="button" class="section-tab' + (active === "log" ? " active" : "") + '" data-admintab="log">Log de alterações</button>' +
       '<button type="button" class="section-tab' + (active === "listas" ? " active" : "") + '" data-admintab="listas">Listas</button>' +
+      '<button type="button" class="section-tab' + (active === "sync" ? " active" : "") + '" data-admintab="sync">Sincronização GPO</button>' +
       "</div>";
   }
-  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas" };
+  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas", sync: "#/admin/sync" };
   function bindAdminTabs(main) {
     $all("[data-admintab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () { navigate(ADMIN_TAB_ROUTES[btn.getAttribute("data-admintab")] || "#/admin"); });
@@ -2521,6 +2522,74 @@
       '<div id="admin-log-body"></div>';
     bindAdminTabs(main);
     draw();
+  }
+
+  /* ---------------- Sincronização com o GPO ---------------- */
+  function renderAdminSync(main) {
+    var statusLabels = { sucesso: "Sucesso", erro: "Erro", em_andamento: "Em andamento" };
+    var statusPill = { sucesso: "ok", erro: "danger", em_andamento: "neutral" };
+
+    function resumoHtml(r) {
+      if (!r) return "";
+      return '<ul style="margin:8px 0 0 18px;padding:0;">' +
+        "<li>Empresas: " + r.empresas.total + " sincronizadas" + (r.empresas.erros ? " (" + r.empresas.erros + " com erro)" : "") + "</li>" +
+        "<li>Pessoas: " + r.pessoas.total + " sincronizadas" + (r.pessoas.erros ? " (" + r.pessoas.erros + " com erro)" : "") + "</li>" +
+        "<li>Equipes: " + r.equipes.totalEquipes + " equipes, " + r.equipes.totalMembros + " membros" + (r.equipes.membrosOrfaos ? " (" + r.equipes.membrosOrfaos + " membros ignorados por pessoa inexistente)" : "") + "</li>" +
+        "<li>Treinamentos: " + r.treinamentos.totalFinal + " registros (" + r.treinamentos.duplicadosRemovidos + " duplicados removidos" + (r.treinamentos.orfaos ? ", " + r.treinamentos.orfaos + " ignorados por pessoa inexistente" : "") +
+          (r.treinamentos.tiposDesconhecidos && r.treinamentos.tiposDesconhecidos.length ? ", tipos desconhecidos: " + r.treinamentos.tiposDesconhecidos.map(esc).join(", ") : "") + ")</li>" +
+        "</ul>";
+    }
+
+    function draw() {
+      var body = $("#admin-sync-body");
+      if (!body) return;
+      body.innerHTML = '<div class="hint" style="padding:20px;">Carregando…</div>';
+      apiFetch("/api/sync/gpo").then(function (data) {
+        body = $("#admin-sync-body");
+        if (!body) return;
+        var logs = data.logs || [];
+        var rows = logs.map(function (l) {
+          return "<tr>" +
+            '<td class="mono">' + fmtDateHoraBR(l.iniciado_em) + "</td>" +
+            "<td>" + esc(l.origem || "—") + "</td>" +
+            '<td><span class="pill ' + (statusPill[l.status] || "neutral") + '">' + (statusLabels[l.status] || l.status) + "</span></td>" +
+            "<td>" + (l.status === "erro" ? esc(l.erro || "") : resumoHtml(l.resumo)) + "</td>" +
+            "</tr>";
+        }).join("");
+        body.innerHTML = '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Quando</th><th>Origem</th><th>Status</th><th>Resultado</th></tr></thead><tbody>' +
+          (rows || '<tr><td colspan="4" class="hint" style="padding:20px;">Nenhuma sincronização ainda.</td></tr>') + "</tbody></table></div></div>";
+      }).catch(handleApiError);
+    }
+
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div></div>' +
+      adminTabsHtml("sync") +
+      '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
+      "<p>Traz os dados mais recentes do GPO (pessoas, empresas, equipes e treinamentos) direto pro Controle Eolen. " +
+      "Roda sozinho todo dia de madrugada — use o botão abaixo se quiser trazer uma atualização na hora.</p>" +
+      '<button class="btn primary" id="btn-sync-now" style="margin-top:10px;">Sincronizar agora</button>' +
+      '<span id="sync-now-status" class="hint" style="margin-left:12px;"></span>' +
+      "</div>" +
+      '<div id="admin-sync-body"></div>';
+    bindAdminTabs(main);
+    draw();
+
+    $("#btn-sync-now").addEventListener("click", function () {
+      var btn = $("#btn-sync-now");
+      var statusEl = $("#sync-now-status");
+      btn.disabled = true;
+      statusEl.textContent = "Sincronizando… isso pode levar alguns segundos.";
+      apiFetch("/api/sync/gpo", { method: "POST" }).then(function () {
+        statusEl.textContent = "";
+        toast("Sincronização concluída.", "success");
+        draw();
+      }).catch(function (err) {
+        statusEl.textContent = "";
+        handleApiError(err);
+      }).finally(function () {
+        btn.disabled = false;
+      });
+    });
   }
 
   function renderAdminListas(main) {
@@ -2777,7 +2846,7 @@
 
     if (route.view === "admin") {
       if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
-      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : renderAdminUsuarios(main);
+      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "sync" ? renderAdminSync(main) : renderAdminUsuarios(main);
       if (!route.id) closeDrawer();
       return;
     }
