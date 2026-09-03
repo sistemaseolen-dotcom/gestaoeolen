@@ -1069,6 +1069,7 @@
 
     openDrawer(html);
     setupTabs();
+    bindCepLookup($("#pessoa-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
     $("#pessoa-form").addEventListener("submit", function (e) {
       e.preventDefault();
       if (!canDo("pessoas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
@@ -1431,16 +1432,25 @@
     }
     input.value = value;
   }
+  // Busca por CNPJ: roda automaticamente assim que o campo chega a 14
+  // dígitos (digitando ou colando), sem precisar clicar no botão — o botão
+  // "Buscar CNPJ" continua ali só pra forçar uma nova busca manual (ex.: o
+  // cadastro na Receita mudou desde a última busca).
   function bindCnpjLookup(form) {
     var btn = $("#btn-cnpj-lookup", form);
-    if (!btn) return;
-    btn.addEventListener("click", function () {
-      var cnpjInput = form.querySelector('[name="cnpj"]');
-      var digits = (cnpjInput.value || "").replace(/\D/g, "");
-      if (digits.length !== 14) { toast("Informe um CNPJ com 14 dígitos.", "error"); return; }
-      var originalLabel = btn.textContent;
-      btn.disabled = true;
-      btn.textContent = "Buscando…";
+    var cnpjInput = form.querySelector('[name="cnpj"]');
+    if (!cnpjInput) return;
+    var lastBuscado = "";
+    function buscar(digits, opts) {
+      opts = opts || {};
+      if (digits.length !== 14) {
+        if (!opts.silent) toast("Informe um CNPJ com 14 dígitos.", "error");
+        return;
+      }
+      if (digits === lastBuscado) return;
+      lastBuscado = digits;
+      var originalLabel = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = "Buscando…"; }
       apiFetch("/api/empresas/cnpj-lookup", { method: "POST", body: { cnpj: digits } })
         .then(function (data) {
           var r = data.empresa || {};
@@ -1461,12 +1471,56 @@
           setEmpresaFormField(form, "situacaoCadastral", r.situacaoCadastral);
           toast("Dados do CNPJ preenchidos. Confira antes de salvar.", "success");
         })
-        .catch(handleApiError)
+        .catch(function (err) {
+          lastBuscado = ""; // permite tentar de novo (auto ou manual) depois de um erro
+          if (!opts.silent) handleApiError(err);
+        })
         .then(function () {
-          btn.disabled = false;
-          btn.textContent = originalLabel;
+          if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
         });
-    });
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        lastBuscado = ""; // botão manual sempre força uma busca nova, mesmo repetindo o CNPJ
+        buscar((cnpjInput.value || "").replace(/\D/g, ""));
+      });
+    }
+    function autoTentar() {
+      var digits = (cnpjInput.value || "").replace(/\D/g, "");
+      if (digits.length === 14) buscar(digits, { silent: true });
+    }
+    cnpjInput.addEventListener("input", autoTentar);
+    cnpjInput.addEventListener("blur", autoTentar);
+  }
+
+  // Busca de endereço por CEP (ViaCEP, gratuito e sem chave) — roda
+  // automaticamente assim que o campo chega a 8 dígitos. `fieldMap` diz em
+  // qual campo do formulário cada pedaço do endereço deve cair, já que
+  // empresa usa "cidade"/"uf" e pessoa usa "municipio"/"estado".
+  function bindCepLookup(form, fieldMap) {
+    var cepInput = form.querySelector('[name="cep"]');
+    if (!cepInput) return;
+    var lastBuscado = "";
+    function tentarBuscar() {
+      var digits = (cepInput.value || "").replace(/\D/g, "");
+      if (digits.length !== 8 || digits === lastBuscado) return;
+      lastBuscado = digits;
+      fetch("https://viacep.com.br/ws/" + digits + "/json/")
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+          if (!data || data.erro) { toast("CEP não encontrado.", "error"); return; }
+          if (fieldMap.logradouro) setEmpresaFormField(form, fieldMap.logradouro, data.logradouro);
+          if (fieldMap.bairro) setEmpresaFormField(form, fieldMap.bairro, data.bairro);
+          if (fieldMap.cidade) setEmpresaFormField(form, fieldMap.cidade, data.localidade);
+          if (fieldMap.uf) setEmpresaFormField(form, fieldMap.uf, data.uf);
+          toast("Endereço preenchido a partir do CEP.", "success");
+        })
+        .catch(function () {
+          lastBuscado = ""; // falha de rede/serviço fora do ar — deixa tentar de novo
+        });
+    }
+    cepInput.addEventListener("input", tentarBuscar);
+    cepInput.addEventListener("blur", tentarBuscar);
   }
   function openEmpresaForm(e) {
     var isNew = !e;
@@ -1491,6 +1545,7 @@
     openDrawer(html);
     var formEl = $("#empresa-form");
     bindCnpjLookup(formEl);
+    bindCepLookup(formEl, { logradouro: "logradouro", bairro: "bairro", cidade: "cidade", uf: "uf" });
     formEl.addEventListener("submit", function (ev) {
       ev.preventDefault();
       if (!canDo("empresas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
