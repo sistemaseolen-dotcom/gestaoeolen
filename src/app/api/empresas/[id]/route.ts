@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
+import { inativarEmpresaCascata } from "@/lib/statusCascade";
 
 const CAMPOS_EMPRESA = [
   "nome", "fantasia", "cnpj", "porte", "cidade", "uf", "cep", "bairro", "logradouro",
@@ -121,6 +122,12 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     campos: [...CAMPOS_EMPRESA],
     usuario: gate.user,
   });
+
+  // Inativar uma empresa cascateia: inativa (e desvincula de equipes) todas
+  // as pessoas vinculadas a ela. Ver src/lib/statusCascade.ts.
+  if (patch.status === "INATIVO" && before.status !== "INATIVO") {
+    await inativarEmpresaCascata(id, gate.user);
+  }
 
   return NextResponse.json(after);
 }

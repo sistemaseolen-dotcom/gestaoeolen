@@ -5,3 +5,11 @@ node_modules
 .env*.local
 npm-debug.log*
 .DS_Store
+
+# Dados de migracao (podem conter dados pessoais - CPF, nomes) - nunca
+# devem ir pro repositorio, que e publico no GitHub.
+migracao-dados/
+
+# Usado pelo push.bat pra dar um commit message descritivo quando o Claude
+# deixa a mensagem pronta pra um deploy - some sozinho depois do commit.
+deploy_msg.txt
