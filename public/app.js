@@ -1450,6 +1450,7 @@
         input.appendChild(opt);
       }
     }
+    if (typeof value === "string" && shouldUppercase(input)) value = value.toUpperCase();
     input.value = value;
   }
   // Busca por CNPJ: roda automaticamente assim que o campo chega a 14
@@ -2966,6 +2967,34 @@
     }
   }
 
+  // Regra pedida pelo Diego: tudo que for digitado nos formulários do
+  // sistema fica em maiúsculas — inclusive o que é preenchido sozinho pelas
+  // buscas de CNPJ/CEP (ver setEmpresaFormField). Fica de fora: e-mail
+  // (maiúsculo não faz sentido ali), senha, data e número (não são texto, e
+  // setSelectionRange quebra nesses tipos em alguns navegadores), e as
+  // caixas de busca/filtro das listagens (não são dado salvo, é só filtro).
+  // As telas de login/trocar senha (#auth-screen) já ficam de fora sozinhas,
+  // porque os campos delas são todos type="email"/"password".
+  function shouldUppercase(input) {
+    if (!input || (input.tagName !== "INPUT" && input.tagName !== "TEXTAREA")) return false;
+    if (input.tagName === "INPUT") {
+      var t = (input.type || "text").toLowerCase();
+      if (t === "email" || t === "password" || t === "date" || t === "number" || t === "file") return false;
+    }
+    if (input.closest && input.closest(".search-wrap")) return false;
+    return true;
+  }
+  document.addEventListener("input", function (e) {
+    var el = e.target;
+    if (!shouldUppercase(el)) return;
+    var upper = el.value.toUpperCase();
+    if (upper === el.value) return;
+    var start = el.selectionStart, end = el.selectionEnd;
+    el.value = upper;
+    if (start !== null && end !== null) {
+      try { el.setSelectionRange(start, end); } catch (err) { /* alguns tipos de input não suportam — ignora */ }
+    }
+  });
   document.addEventListener("click", function (e) {
     if (e.target.id === "drawer-overlay") closeDrawer();
     if (e.target.id === "modal-overlay") closeModal();
