@@ -17,7 +17,10 @@ export default function Page() {
       <div id="shell">
         <aside className="sidebar">
           <div className="brand">
-            <div className="brand-mark">CE</div>
+            <div className="brand-mark">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-eolen-mark.png" alt="Eolen" />
+            </div>
             <div className="brand-text">
               <strong>Controle Eolen</strong>
               <span>Pessoas &amp; Segurança</span>
@@ -31,6 +34,10 @@ export default function Page() {
             </div>
           </div>
         </aside>
+        <div className="brand-banner">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-eolen.png" alt="Eolen" />
+        </div>
         <main id="app-main" />
       </div>
 

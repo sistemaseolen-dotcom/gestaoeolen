@@ -644,7 +644,7 @@
     if (shell) shell.style.display = "";
   }
   function authBrandHtml() {
-    return '<div class="auth-brand"><div class="brand-mark">CE</div><div><strong>Controle Eolen</strong><span>Pessoas &amp; Segurança</span></div></div>';
+    return '<div class="auth-brand"><div class="brand-mark"><img src="/logo-eolen-mark.png" alt="Eolen"></div><div><strong>Controle Eolen</strong><span>Pessoas &amp; Segurança</span></div></div>';
   }
   function renderLoginScreen(errorMsg) {
     var html = '<div class="auth-card">' + authBrandHtml() +
