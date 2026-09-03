@@ -1020,10 +1020,19 @@
     return '<div class="detail-item"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value || "—") + "</span>" + (campo ? fieldNoteHtml(campo) : "") + "</div>";
   }
 
-  function openPessoaForm(p) {
+  // `opts.empresaId` pré-seleciona a empresa no formulário de uma pessoa
+  // NOVA (não se aplica a edição, onde quem manda é o próprio registro `p`)
+  // — usado pelo botão "Adicionar pessoa" na tela de uma empresa, pra não
+  // precisar procurar a empresa de novo numa lista de 700+.
+  function openPessoaForm(p, opts) {
     var isNew = !p;
+    opts = opts || {};
+    var presetEmpresaId = opts.empresaId || null;
     var empresasOpts = STATE.empresas.slice().sort(function (a, b) { return empresaTitle(a).localeCompare(empresaTitle(b)); })
-      .map(function (e) { return '<option value="' + e.id + '"' + (p && p.empresaId === e.id ? " selected" : "") + '>' + esc(empresaTitle(e)) + "</option>"; }).join("");
+      .map(function (e) {
+        var selected = p ? p.empresaId === e.id : presetEmpresaId === e.id;
+        return '<option value="' + e.id + '"' + (selected ? " selected" : "") + '>' + esc(empresaTitle(e)) + "</option>";
+      }).join("");
 
     var html =
       '<div class="drawer-head"><div><h2>' + (isNew ? "Nova pessoa" : "Editar pessoa") + '</h2><div class="sub">Cadastro completo do colaborador</div></div>' +
@@ -1395,7 +1404,9 @@
       detailItem("CEP", e.cep, "cep") + detailItem("Telefone", e.telefone, "telefone") + detailItem("E-mail", e.email, "email") + detailItem("Responsável", e.nomeResponsavel, "nome_responsavel") +
       detailItem("PGR", e.pgr, "pgr") + detailItem("PCMSO", e.pcmso, "pcmso") + detailItem("Regional", e.regional, "regional") +
       "</div></div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Pessoas vinculadas (' + pessoasVinculadas.length + ')</h3></div><div class="panel-body pad">' +
+      '<div class="panel"><div class="panel-head"><h3>Pessoas vinculadas (' + pessoasVinculadas.length + ')</h3>' +
+      (canDo("pessoas", "criar") ? '<button class="btn primary sm" id="btn-add-pessoa-empresa">' + ICONS.plus + "Adicionar pessoa</button>" : "") +
+      '</div><div class="panel-body pad">' +
       (pessoasVinculadas.length ? pessoasVinculadas.map(function (p) {
         return '<div class="member-row" style="cursor:pointer" data-pessoa="' + p.id + '"><div class="avatar-dot">' + esc(initials(p.nome)) + '</div><div class="info"><div class="name">' + esc(p.nome) + '</div><div class="role">' + esc(p.cargo || "—") + "</div></div>" + statusPillGeneric(p.status) + "</div>";
       }).join("") : '<div class="hint">Nenhuma pessoa vinculada a esta empresa.</div>') +
@@ -1406,6 +1417,7 @@
     $("#back-btn").addEventListener("click", function () { navigate("#/empresas"); });
     if ($("#btn-edit-empresa")) $("#btn-edit-empresa").addEventListener("click", function () { openEmpresaForm(e); });
     if ($("#btn-del-empresa")) $("#btn-del-empresa").addEventListener("click", function () { confirmDelete("empresa", e.id, empresaTitle(e)); });
+    if ($("#btn-add-pessoa-empresa")) $("#btn-add-pessoa-empresa").addEventListener("click", function () { openPessoaForm(null, { empresaId: e.id }); });
     $all("[data-pessoa]", main).forEach(function (r) { r.addEventListener("click", function () { navigate("#/pessoas/" + r.getAttribute("data-pessoa")); }); });
   }
 
