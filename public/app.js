@@ -2069,8 +2069,8 @@
 
     var kpis = [
       ["Em dia", pct + "%", "ok", null],
-      ["A vencer (30 dias)", data.byStatus.A_VENCER, "warn", "A_VENCER"],
       ["A vencer (60 dias)", data.byStatus.A_VENCER_60, "info", "A_VENCER_60"],
+      ["A vencer (30 dias)", data.byStatus.A_VENCER, "warn", "A_VENCER"],
       ["A vencer (7 dias)", data.urgenteCount, "danger" + (data.urgenteCount > 0 ? " alert-blink" : ""), "URGENTE_7"],
       ["Vencidos", data.byStatus.VENCIDO, "danger", "VENCIDO"]
     ];
