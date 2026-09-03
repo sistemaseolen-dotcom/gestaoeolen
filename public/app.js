@@ -898,6 +898,7 @@
           var st = trainingStatus(t);
           return '<tr data-tr="' + t.id + '"><td class="row-primary">' + esc(t.tipo) + '</td><td><span class="tag">' + esc(t.categoria) + '</span></td><td class="mono">' + fmtDateBR(t.vencimento) + '</td><td>' + pill(st) + '</td><td>' + (t.arquivoPath ? ICONS.paperclip : "—") + '</td><td class="row-actions">' +
             (canDo("documentos", "editar") ? '<button class="btn ghost sm" title="Editar" data-tr-edit="' + t.id + '">' + ICONS.edit + '</button><button class="btn ghost sm" title="Anexar arquivo" data-tr-attach="' + t.id + '">' + ICONS.paperclip + "</button>" : "") +
+            (canDo("documentos", "excluir") ? '<button class="btn ghost sm" title="Excluir" data-tr-del="' + t.id + '">' + ICONS.trash + "</button>" : "") +
             "</td></tr>";
         }).join("") + "</tbody></table></div>" : '<div class="empty-state" style="padding:20px;">Nenhum treinamento ou documento registrado.</div>') +
       "</div></div>" +
@@ -916,6 +917,13 @@
         ev.stopPropagation();
         var tr = byId(STATE.treinamentos, btn.getAttribute("data-tr-edit"));
         if (tr) openTreinamentoForm(tr, null);
+      });
+    });
+    $all("[data-tr-del]", main).forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var tr = byId(STATE.treinamentos, btn.getAttribute("data-tr-del"));
+        if (tr) confirmDelete("treinamento", tr.id, tr.tipo + " — " + tr.pessoaNome, { after: function () { render(); } });
       });
     });
     var quickAttachInput = $("#tr-quick-attach-input", main);
@@ -2375,7 +2383,12 @@
   }
 
   /* ---------------- Delete flow ---------------- */
-  function confirmDelete(kind, id, label) {
+  // `opts.after`, quando informado, substitui o navigate("#/"+kind+"s") padrão
+  // pós-exclusão — usado pelo botão de excluir direto na linha da tabela de
+  // "Treinamentos e documentos" (tela da pessoa), que precisa continuar na
+  // própria tela da pessoa em vez de ir pra lista geral de treinamentos.
+  function confirmDelete(kind, id, label, opts) {
+    opts = opts || {};
     var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : "documentos";
     if (!canDo(pageKey, "excluir")) { toast("Você não tem permissão para excluir.", "error"); return; }
     var html =
@@ -2409,7 +2422,8 @@
         closeModal();
         renderShellCounts();
         toast("Registro excluído.", "success");
-        navigate("#/" + kind + "s");
+        if (opts.after) opts.after();
+        else navigate("#/" + kind + "s");
       }).catch(function (err) {
         closeModal();
         handleApiError(err);
