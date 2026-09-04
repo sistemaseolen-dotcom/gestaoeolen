@@ -310,7 +310,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 }
 .overlay.open { opacity: 1; pointer-events: auto; }
 .drawer {
-  width: min(560px, 100vw); background: var(--surface); height: 100vh; overflow-y: auto;
+  width: min(560px, 100vw); background: var(--surface); height: 100vh; height: 100dvh; overflow-y: auto;
   box-shadow: var(--shadow-lg); transform: translateX(16px); transition: transform .16s ease;
   display: flex; flex-direction: column;
 }
