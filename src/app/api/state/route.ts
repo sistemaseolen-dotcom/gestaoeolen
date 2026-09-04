@@ -33,16 +33,17 @@ export async function GET() {
 
   const admin = supabaseAdmin();
 
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios] = await Promise.all([
     fetchAllRows(admin, "pessoas"),
     fetchAllRows(admin, "empresas"),
     fetchAllRows(admin, "treinamentos"),
     fetchAllRows(admin, "equipes"),
     fetchAllRows(admin, "equipe_membros"),
     fetchAllRows(admin, "listas_opcoes"),
+    fetchAllRows(admin, "patrimonios"),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -70,6 +71,7 @@ export async function GET() {
     empresas: empresas.data,
     treinamentos: treinamentos.data,
     equipes: equipesComMembros,
+    patrimonios: patrimonios.data,
     listas,
   });
 }

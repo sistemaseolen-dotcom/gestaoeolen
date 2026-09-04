@@ -81,7 +81,8 @@
     lock: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
     user: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     history: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>',
-    edit: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>'
+    edit: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>',
+    patrimonio: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>'
   };
 
   /* ---------------- State ---------------- */
@@ -90,7 +91,8 @@
     pessoas: { q: "", status: "", page: 1 },
     equipes: { q: "", status: "", page: 1 },
     empresas: { q: "", status: "", page: 1 },
-    treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 }
+    treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
+    patrimonio: { q: "", page: 1 }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -100,7 +102,8 @@
     { key: "pessoas", label: "Pessoas" },
     { key: "equipes", label: "Equipes" },
     { key: "empresas", label: "Empresas" },
-    { key: "documentos", label: "Treinamentos/documentos" }
+    { key: "documentos", label: "Treinamentos/documentos" },
+    { key: "patrimonio", label: "Patrimônio" }
   ];
   var ACTIONS = [
     { key: "ver", label: "Ver" },
@@ -132,6 +135,7 @@
     if (canView("pessoas")) return "pessoas";
     if (canView("equipes")) return "equipes";
     if (canView("empresas")) return "empresas";
+    if (canView("patrimonio")) return "patrimonio";
     return null;
   }
 
@@ -521,6 +525,13 @@
       membros: row.membros || []
     };
   }
+  function mapPatrimonioFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, codigo: row.codigo, tipo: row.tipo, modelo: row.modelo, serie: row.serie,
+      valor: row.valor, status: row.status, responsavelNome: row.responsavel_nome
+    };
+  }
   function mapTreinamentoFromApi(row) {
     if (!row) return row;
     return {
@@ -546,6 +557,7 @@
         empresas: (data.empresas || []).map(mapEmpresaFromApi),
         treinamentos: (data.treinamentos || []).map(mapTreinamentoFromApi),
         equipes: (data.equipes || []).map(mapEquipeFromApi),
+        patrimonios: (data.patrimonios || []).map(mapPatrimonioFromApi),
         listas: data.listas || {}
       };
     });
@@ -560,6 +572,7 @@
       STATE.empresas = data.empresas;
       STATE.treinamentos = data.treinamentos;
       STATE.equipes = data.equipes;
+      STATE.patrimonios = data.patrimonios;
       STATE.listas = data.listas;
       ensureListasSeed();
     });
@@ -584,6 +597,7 @@
     if (canView("pessoas")) navItems.push(["pessoas", "Pessoas", ICONS.pessoas, STATE.pessoas.length]);
     if (canView("equipes")) navItems.push(["equipes", "Equipes", ICONS.equipes, countTeamLideres(true)]);
     if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
+    if (canView("patrimonio")) navItems.push(["patrimonio", "Patrimônio", ICONS.patrimonio, STATE.patrimonios.length]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
@@ -1202,6 +1216,71 @@
     }
     if (e.teamLider) return esc(e.teamLider) + ' <span class="hint">(não vinculado a um cadastro de pessoa)</span>';
     return "—";
+  }
+
+  /* ---------------- Patrimônio ----------------
+     Só leitura: vem inteiro do GPO a cada sincronização (igual Equipes),
+     não existe criação/edição por aqui — mudar isso tem que ser feito no
+     GPO e esperar a próxima sync (diária, ou manual em Administrador →
+     Sincronização). */
+  function statusPillPatrimonio(status) {
+    var cls = "neutral";
+    if (status === "EM USO") cls = "ok";
+    else if (status === "MANUTENCAO") cls = "warn";
+    else if (status === "BAIXADO") cls = "danger";
+    return '<span class="pill ' + cls + '">' + esc(status || "—") + "</span>";
+  }
+
+  function renderPatrimoniosList(main) {
+    var ui = uiState.patrimonio;
+
+    function computeFiltered() {
+      var all = STATE.patrimonios.slice().sort(function (a, b) { return (a.codigo || "").localeCompare(b.codigo || ""); });
+      return all.filter(function (p) {
+        if (ui.status && p.status !== ui.status) return false;
+        if (!ui.q) return true;
+        var hay = normalize([p.codigo, p.tipo, p.modelo, p.serie, p.responsavelNome].join(" "));
+        return hay.indexOf(normalize(ui.q)) !== -1;
+      });
+    }
+
+    function draw() {
+      var filtered = computeFiltered();
+      withFocusPreserved(function () { drawInto(filtered); });
+    }
+
+    function drawInto(filtered) {
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+      var body = pg.items.map(function (p) {
+        return "<tr>" +
+          '<td class="mono">' + esc(p.codigo || "—") + "</td>" +
+          "<td>" + esc(p.responsavelNome || "—") + "</td>" +
+          "<td>" + esc(p.tipo || "—") + "</td>" +
+          "<td>" + esc(p.modelo || "—") + "</td>" +
+          '<td class="mono">' + esc(p.serie || "—") + "</td>" +
+          '<td class="num">' + (p.valor != null ? fmtMoney(p.valor) : "—") + "</td>" +
+          "<td>" + statusPillPatrimonio(p.status) + "</td></tr>";
+      }).join("");
+      var toolbar =
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="patrimonio-q" placeholder="Buscar por código, tipo, modelo, série ou responsável…" value="' + esc(ui.q) + '"></div>' +
+        '<select class="filter" id="patrimonio-status"><option value="">Todos os status</option>' +
+        distinctStatuses(STATE.patrimonios).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
+
+      main.innerHTML =
+        '<div class="topbar"><div><h1>Patrimônio</h1><div class="sub">Equipamentos sincronizados do GPO (celulares, notebooks e outros itens) — atualizado na sincronização diária</div></div></div>' +
+        tableShell({
+          toolbar: toolbar,
+          headHtml: "<th>Código</th><th>Responsável</th><th>Tipo</th><th>Modelo</th><th>Série</th><th class=\"num\">Valor</th><th>Status</th>",
+          bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+          empty: "Nenhum item de patrimônio encontrado."
+        });
+
+      $("#patrimonio-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#patrimonio-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
+      bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+    }
+    draw();
   }
 
   function renderEquipeDetail(main, id) {
@@ -2689,6 +2768,7 @@
         "<li>Equipes: " + r.equipes.totalEquipes + " equipes, " + r.equipes.totalMembros + " membros" + (r.equipes.membrosOrfaos ? " (" + r.equipes.membrosOrfaos + " membros ignorados por pessoa inexistente)" : "") + "</li>" +
         "<li>Treinamentos: " + r.treinamentos.totalFinal + " registros (" + r.treinamentos.duplicadosRemovidos + " duplicados removidos" + (r.treinamentos.orfaos ? ", " + r.treinamentos.orfaos + " ignorados por pessoa inexistente" : "") +
           (r.treinamentos.tiposDesconhecidos && r.treinamentos.tiposDesconhecidos.length ? ", tipos desconhecidos: " + r.treinamentos.tiposDesconhecidos.map(esc).join(", ") : "") + ")</li>" +
+        (r.patrimonio ? "<li>Patrimônio: " + r.patrimonio.total + " itens sincronizados</li>" : "") +
         "</ul>";
     }
 
@@ -2717,7 +2797,7 @@
       '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div></div>' +
       adminTabsHtml("sync") +
       '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
-      "<p>Traz os dados mais recentes do GPO (pessoas, empresas, equipes e treinamentos) direto pro Controle Eolen. " +
+      "<p>Traz os dados mais recentes do GPO (pessoas, empresas, equipes, treinamentos e patrimônio) direto pro Controle Eolen. " +
       "Roda sozinho todo dia de madrugada — use o botão abaixo se quiser trazer uma atualização na hora.</p>" +
       '<button class="btn primary" id="btn-sync-now" style="margin-top:10px;">Sincronizar agora</button>' +
       '<span id="sync-now-status" class="hint" style="margin-left:12px;"></span>' +
@@ -3031,7 +3111,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -3047,6 +3127,7 @@
     else if (route.view === "equipes") route.id ? renderEquipeDetail(main, route.id) : renderEquipesList(main);
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
+    else if (route.view === "patrimonio") renderPatrimoniosList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id) closeDrawer();
   }
@@ -3061,7 +3142,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], listas: {} };
+          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], listas: {} };
           render();
           return;
         }
@@ -3073,7 +3154,7 @@
       })
       .catch(function () {
         CURRENT_USER = null;
-        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], listas: {} };
+        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], listas: {} };
         render();
       });
   }

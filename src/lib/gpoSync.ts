@@ -72,6 +72,16 @@ function normDate(raw: any): string | null {
   return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
+// Valores do GPO vêm formatados como texto brasileiro ("R$ 3.000,00") — tira
+// o "R$", os pontos de milhar e troca a vírgula decimal por ponto.
+function parseValorReais(raw: any): number | null {
+  const s = normStr(raw);
+  if (!s) return null;
+  const cleaned = s.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?: string | null } | undefined): string {
   if (!e) return "Empresa sem nome";
   return e.fantasia || e.nome || (e.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
@@ -152,6 +162,7 @@ export type SyncResumo = {
   pessoas: { total: number; erros: number };
   equipes: { totalEquipes: number; totalMembros: number; membrosOrfaos: number };
   treinamentos: { totalOriginal: number; totalFinal: number; duplicadosRemovidos: number; tiposDesconhecidos: string[]; orfaos: number };
+  patrimonio: { total: number };
 };
 
 /* ---------------- Empresas ---------------- */
@@ -449,14 +460,53 @@ async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
   };
 }
 
+/* ---------------- Patrimônio ---------------- */
+
+// A API do GPO pra isso não devolve um id de pessoa, só o nome de quem está
+// com o item (às vezes null = disponível/sem responsável) — por isso
+// `responsavel_nome` fica como texto livre, sem FK pra `pessoas`. Também não
+// há garantia de que o código "patrimonio" (ex: "000001") seja único na
+// origem — não tratamos como chave.
+async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
+  const rows = await gpoFetch(
+    `/patrimonio?busca=&${GPO_QS}&idcontroleacessobusca=${process.env.GPO_IDUSUARIO || "22"}&deletado=0`
+  );
+  const admin = supabaseAdmin();
+
+  const payload = rows
+    .map((r) => ({
+      legacy_id: normNum(r.idpatrimonio),
+      codigo: normStr(r.patrimonio),
+      tipo: normStr(r.tipo),
+      modelo: normStr(r.modelo),
+      serie: normStr(r.serie),
+      valor: parseValorReais(r.valor),
+      status: normStr(r.tipohistorico),
+      responsavel_nome: normStr(r.nome),
+    }))
+    .filter((p) => p.legacy_id !== null);
+
+  // Reconstrução completa (mesma lógica de equipes/treinamentos) — o GPO não
+  // avisa exclusões, então é a forma segura de refletir o estado atual.
+  await admin.from("patrimonios").delete().gte("id", 0);
+  for (const batch of chunk(payload, 1000)) {
+    const { error } = await admin.from("patrimonios").insert(batch);
+    if (error) throw new Error(`Falha ao inserir patrimônio: ${error.message}`);
+  }
+
+  return { total: payload.length };
+}
+
 /* ---------------- Orquestração ---------------- */
 
 export async function syncFromGpo(): Promise<SyncResumo> {
   // Ordem importa: empresas antes de pessoas (FK), pessoas antes de
-  // equipes/treinamentos (validação de pessoa_id existente).
+  // equipes/treinamentos (validação de pessoa_id existente). Patrimônio é
+  // independente, não precisa vir em nenhuma ordem específica.
   const empresas = await syncEmpresas();
   const pessoas = await syncPessoas();
   const equipes = await syncEquipes();
   const treinamentos = await syncTreinamentos();
-  return { empresas, pessoas, equipes, treinamentos };
+  const patrimonio = await syncPatrimonios();
+  return { empresas, pessoas, equipes, treinamentos, patrimonio };
 }
