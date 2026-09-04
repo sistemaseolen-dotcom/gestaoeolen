@@ -467,6 +467,21 @@ async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
 // `responsavel_nome` fica como texto livre, sem FK pra `pessoas`. Também não
 // há garantia de que o código "patrimonio" (ex: "000001") seja único na
 // origem — não tratamos como chave.
+//
+// Diferente de equipes/treinamentos, aqui é UPSERT por legacy_id (igual
+// empresas/pessoas), não delete+reinsert — desde que a tela de Patrimônio
+// ganhou edição/criação/exclusão manual, apagar tudo a cada sync destruiria
+// qualquer alteração local. Efeitos colaterais dessa troca, importantes:
+//  - Itens que vieram do GPO (legacy_id preenchido): os campos sincronizados
+//    (código, tipo, modelo, série, valor, status, responsável) voltam a ser
+//    "verdade do GPO" a cada sincronização — uma edição manual nesses campos
+//    não sobrevive à próxima sync se o valor no GPO continuar diferente.
+//  - Itens criados manualmente aqui (sem legacy_id): nunca entram neste
+//    payload, então nunca são tocados pela sync — ficam permanentemente sob
+//    controle local.
+//  - Itens excluídos no GPO não somem mais automaticamente daqui (o GPO não
+//    avisa exclusão) — se necessário, quem excluir no GPO deve excluir
+//    também aqui pela tela de Patrimônio.
 async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
   const rows = await gpoFetch(
     `/patrimonio?busca=&${GPO_QS}&idcontroleacessobusca=${process.env.GPO_IDUSUARIO || "22"}&deletado=0`
@@ -486,12 +501,9 @@ async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
     }))
     .filter((p) => p.legacy_id !== null);
 
-  // Reconstrução completa (mesma lógica de equipes/treinamentos) — o GPO não
-  // avisa exclusões, então é a forma segura de refletir o estado atual.
-  await admin.from("patrimonios").delete().gte("id", 0);
-  for (const batch of chunk(payload, 1000)) {
-    const { error } = await admin.from("patrimonios").insert(batch);
-    if (error) throw new Error(`Falha ao inserir patrimônio: ${error.message}`);
+  for (const batch of chunk(payload, 500)) {
+    const { error } = await admin.from("patrimonios").upsert(batch, { onConflict: "legacy_id" });
+    if (error) throw new Error(`Falha ao sincronizar patrimônio: ${error.message}`);
   }
 
   return { total: payload.length };

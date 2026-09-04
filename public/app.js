@@ -528,7 +528,7 @@
   function mapPatrimonioFromApi(row) {
     if (!row) return row;
     return {
-      id: row.id, codigo: row.codigo, tipo: row.tipo, modelo: row.modelo, serie: row.serie,
+      id: row.id, legacyId: row.legacy_id, codigo: row.codigo, tipo: row.tipo, modelo: row.modelo, serie: row.serie,
       valor: row.valor, status: row.status, responsavelNome: row.responsavel_nome
     };
   }
@@ -1219,10 +1219,14 @@
   }
 
   /* ---------------- Patrimônio ----------------
-     Só leitura: vem inteiro do GPO a cada sincronização (igual Equipes),
-     não existe criação/edição por aqui — mudar isso tem que ser feito no
-     GPO e esperar a próxima sync (diária, ou manual em Administrador →
-     Sincronização). */
+     Itens vêm do GPO a cada sincronização (upsert por legacy_id — ver
+     gpoSync.ts), mas também podem ser criados/editados/excluídos direto
+     aqui. Atenção: se o item veio do GPO, os campos sincronizados voltam a
+     valer o que estiver lá na próxima sync (o GPO continua "dono" desses
+     itens); só itens criados por aqui (sem legacy_id) ficam 100% sob
+     controle local. */
+  var PATRIMONIO_STATUS_OPTS = ["EM USO", "MANUTENCAO", "DISPONIVEL", "BAIXADO"];
+
   function statusPillPatrimonio(status) {
     var cls = "neutral";
     if (status === "EM USO") cls = "ok";
@@ -1253,14 +1257,18 @@
       var pg = paginate(filtered, ui.page, PAGE_SIZE);
       ui.page = pg.page;
       var body = pg.items.map(function (p) {
-        return "<tr>" +
+        return '<tr data-id="' + p.id + '">' +
           '<td class="mono">' + esc(p.codigo || "—") + "</td>" +
           "<td>" + esc(p.responsavelNome || "—") + "</td>" +
           "<td>" + esc(p.tipo || "—") + "</td>" +
           "<td>" + esc(p.modelo || "—") + "</td>" +
           '<td class="mono">' + esc(p.serie || "—") + "</td>" +
           '<td class="num">' + (p.valor != null ? fmtMoney(p.valor) : "—") + "</td>" +
-          "<td>" + statusPillPatrimonio(p.status) + "</td></tr>";
+          "<td>" + statusPillPatrimonio(p.status) + "</td>" +
+          '<td class="row-actions">' +
+          (canDo("patrimonio", "editar") ? '<button class="btn ghost sm" title="Editar" data-pat-edit="' + p.id + '">' + ICONS.edit + "</button>" : "") +
+          (canDo("patrimonio", "excluir") ? '<button class="btn ghost sm" title="Excluir" data-pat-del="' + p.id + '">' + ICONS.trash + "</button>" : "") +
+          "</td></tr>";
       }).join("");
       var toolbar =
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="patrimonio-q" placeholder="Buscar por código, tipo, modelo, série ou responsável…" value="' + esc(ui.q) + '"></div>' +
@@ -1268,19 +1276,82 @@
         distinctStatuses(STATE.patrimonios).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
 
       main.innerHTML =
-        '<div class="topbar"><div><h1>Patrimônio</h1><div class="sub">Equipamentos sincronizados do GPO (celulares, notebooks e outros itens) — atualizado na sincronização diária</div></div></div>' +
+        '<div class="topbar"><div><h1>Patrimônio</h1><div class="sub">Equipamentos sincronizados do GPO (celulares, notebooks e outros itens), com edição, criação e exclusão manual</div></div>' +
+        (canDo("patrimonio", "criar") ? '<button class="btn primary" id="btn-new-patrimonio">' + ICONS.plus + "Novo item</button>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Código</th><th>Responsável</th><th>Tipo</th><th>Modelo</th><th>Série</th><th class=\"num\">Valor</th><th>Status</th>",
+          headHtml: "<th>Código</th><th>Responsável</th><th>Tipo</th><th>Modelo</th><th>Série</th><th class=\"num\">Valor</th><th>Status</th><th>Ações</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhum item de patrimônio encontrado."
         });
 
+      if ($("#btn-new-patrimonio")) $("#btn-new-patrimonio").addEventListener("click", function () { openPatrimonioForm(null); });
       $("#patrimonio-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#patrimonio-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
+      $all("[data-pat-edit]", main).forEach(function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var item = byId(STATE.patrimonios, Number(btn.getAttribute("data-pat-edit")));
+          if (item) openPatrimonioForm(item);
+        });
+      });
+      $all("[data-pat-del]", main).forEach(function (btn) {
+        btn.addEventListener("click", function (ev) {
+          ev.stopPropagation();
+          var item = byId(STATE.patrimonios, Number(btn.getAttribute("data-pat-del")));
+          if (item) confirmDelete("patrimonio", item.id, item.codigo || item.tipo || ("Item " + item.id), { after: function () { render(); } });
+        });
+      });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
     }
     draw();
+  }
+
+  function openPatrimonioForm(p) {
+    var isNew = !p;
+    var html =
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Novo item de patrimônio" : "Editar item de patrimônio") + '</h2><div class="sub">Equipamento ou bem cadastrado manualmente</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="patrimonio-form"><div class="field-grid">' +
+      field("Código", "codigo", "text", p) +
+      field("Responsável", "responsavelNome", "text", p) +
+      field("Tipo", "tipo", "text", p) +
+      field("Modelo", "modelo", "text", p) +
+      field("Série", "serie", "text", p) +
+      field("Valor (R$)", "valor", "number", p) +
+      selectField("Status", "status", PATRIMONIO_STATUS_OPTS, p ? p.status : "", { allowEmpty: true, emptyLabel: "— Selecione —" }) +
+      (p && p.legacyId != null ? '<div class="hint span2" style="margin-top:4px;">Este item também existe no GPO — os campos acima voltam a ser sobrescritos pelo GPO na próxima sincronização, caso continuem diferentes lá.</div>' : "") +
+      "</div></form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="patrimonio-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+    openDrawer(html);
+    $("#patrimonio-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("patrimonio", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var body = {};
+      ["codigo", "responsavelNome", "tipo", "modelo", "serie", "status"].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      var valorRaw = (fd.get("valor") || "").toString().trim();
+      body.valor = valorRaw ? Number(valorRaw) : null;
+
+      var req = isNew
+        ? apiFetch("/api/patrimonios", { method: "POST", body: body })
+        : apiFetch("/api/patrimonios/" + p.id, { method: "PATCH", body: body });
+
+      req.then(function (data) {
+        var rec = mapPatrimonioFromApi(data);
+        if (isNew) STATE.patrimonios.push(rec);
+        else {
+          var idx = STATE.patrimonios.findIndex(function (x) { return x.id === rec.id; });
+          if (idx !== -1) STATE.patrimonios[idx] = rec;
+        }
+        closeDrawer();
+        render();
+        renderShellCounts();
+        toast(isNew ? "Item criado." : "Item atualizado.", "success");
+      }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
   }
 
   function renderEquipeDetail(main, id) {
@@ -2469,7 +2540,7 @@
   // própria tela da pessoa em vez de ir pra lista geral de treinamentos.
   function confirmDelete(kind, id, label, opts) {
     opts = opts || {};
-    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : "documentos";
+    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : "documentos";
     if (!canDo(pageKey, "excluir")) { toast("Você não tem permissão para excluir.", "error"); return; }
     var html =
       '<div class="modal-box"><h3>Excluir registro?</h3><p>Tem certeza que deseja excluir <strong>' + esc(label) + '</strong>? Esta ação não pode ser desfeita.</p>' +
@@ -2480,6 +2551,7 @@
       var endpoint = kind === "pessoa" ? "/api/pessoas/" + id
         : kind === "equipe" ? "/api/equipes/" + id
         : kind === "empresa" ? "/api/empresas/" + id
+        : kind === "patrimonio" ? "/api/patrimonios/" + id
         : "/api/treinamentos/" + id;
       apiFetch(endpoint, { method: "DELETE" }).then(function () {
         // Espelha localmente a cascata que o banco já faz no servidor, pra
@@ -2498,6 +2570,8 @@
           STATE.pessoas.forEach(function (p) { if (p.empresaId === id) { p.empresaId = null; p.empresaNome = null; } });
         } else if (kind === "treinamento") {
           STATE.treinamentos = STATE.treinamentos.filter(function (t) { return t.id !== id; });
+        } else if (kind === "patrimonio") {
+          STATE.patrimonios = STATE.patrimonios.filter(function (p) { return p.id !== id; });
         }
         closeModal();
         renderShellCounts();
