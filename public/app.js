@@ -529,7 +529,15 @@
     if (!row) return row;
     return {
       id: row.id, legacyId: row.legacy_id, codigo: row.codigo, tipo: row.tipo, modelo: row.modelo, serie: row.serie,
-      valor: row.valor, status: row.status, responsavelNome: row.responsavel_nome
+      valor: row.valor, status: row.status, responsavelNome: row.responsavel_nome, responsavelPessoaId: row.responsavel_pessoa_id
+    };
+  }
+  function mapPatrimonioHistoricoFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, status: row.status, responsavelNome: row.responsavel_nome, responsavelPessoaId: row.responsavel_pessoa_id,
+      dataEntrega: row.data_entrega, dataDevolucao: row.data_devolucao, dataEvento: row.data_evento,
+      observacao: row.observacao, origem: row.origem, usuarioNome: row.usuario_nome
     };
   }
   function mapTreinamentoFromApi(row) {
@@ -1264,14 +1272,10 @@
           "<td>" + esc(p.modelo || "—") + "</td>" +
           '<td class="mono">' + esc(p.serie || "—") + "</td>" +
           '<td class="num">' + (p.valor != null ? fmtMoney(p.valor) : "—") + "</td>" +
-          "<td>" + statusPillPatrimonio(p.status) + "</td>" +
-          '<td class="row-actions">' +
-          (canDo("patrimonio", "editar") ? '<button class="btn ghost sm" title="Editar" data-pat-edit="' + p.id + '">' + ICONS.edit + "</button>" : "") +
-          (canDo("patrimonio", "excluir") ? '<button class="btn ghost sm" title="Excluir" data-pat-del="' + p.id + '">' + ICONS.trash + "</button>" : "") +
-          "</td></tr>";
+          "<td>" + statusPillPatrimonio(p.status) + "</td></tr>";
       }).join("");
       var toolbar =
-        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="patrimonio-q" placeholder="Buscar por código, tipo, modelo, série ou responsável…" value="' + esc(ui.q) + '"></div>' +
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="patrimonio-q" placeholder="Buscar por patrimônio, tipo, modelo, série ou responsável…" value="' + esc(ui.q) + '"></div>' +
         '<select class="filter" id="patrimonio-status"><option value="">Todos os status</option>' +
         distinctStatuses(STATE.patrimonios).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
 
@@ -1280,7 +1284,7 @@
         (canDo("patrimonio", "criar") ? '<button class="btn primary" id="btn-new-patrimonio">' + ICONS.plus + "Novo item</button>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Código</th><th>Responsável</th><th>Tipo</th><th>Modelo</th><th>Série</th><th class=\"num\">Valor</th><th>Status</th><th>Ações</th>",
+          headHtml: "<th>Patrimônio</th><th>Responsável</th><th>Tipo</th><th>Modelo</th><th>Série</th><th class=\"num\">Valor</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhum item de patrimônio encontrado."
         });
@@ -1288,39 +1292,96 @@
       if ($("#btn-new-patrimonio")) $("#btn-new-patrimonio").addEventListener("click", function () { openPatrimonioForm(null); });
       $("#patrimonio-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#patrimonio-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
-      $all("[data-pat-edit]", main).forEach(function (btn) {
-        btn.addEventListener("click", function (ev) {
-          ev.stopPropagation();
-          var item = byId(STATE.patrimonios, Number(btn.getAttribute("data-pat-edit")));
-          if (item) openPatrimonioForm(item);
-        });
-      });
-      $all("[data-pat-del]", main).forEach(function (btn) {
-        btn.addEventListener("click", function (ev) {
-          ev.stopPropagation();
-          var item = byId(STATE.patrimonios, Number(btn.getAttribute("data-pat-del")));
-          if (item) confirmDelete("patrimonio", item.id, item.codigo || item.tipo || ("Item " + item.id), { after: function () { render(); } });
-        });
-      });
+      $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/patrimonio/" + row.getAttribute("data-id")); }); });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
     }
     draw();
   }
 
+  function renderPatrimonioDetail(main, id) {
+    var p = byId(STATE.patrimonios, id);
+    if (!p) { navigate("#/patrimonio"); return; }
+    main.innerHTML =
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Patrimônio</button><h1 style="margin-top:6px;">' + esc(p.codigo || p.tipo || ("Item " + p.id)) + "</h1>" +
+      '<div class="sub">' + esc(p.tipo || "—") + (p.modelo ? " · " + esc(p.modelo) : "") + " · " + statusPillPatrimonio(p.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("codigo", "Patrimônio") + fieldNoteHtml("status", "Status") + fieldNoteHtml("responsavel_nome", "Responsável") + "</div>" +
+      "</div>" +
+      '<div style="display:flex;gap:8px;">' +
+      (canDo("patrimonio", "editar") ? '<button class="btn" id="btn-edit-patrimonio">Editar</button>' : "") +
+      (canDo("patrimonio", "excluir") ? '<button class="btn danger" id="btn-del-patrimonio">' + ICONS.trash + "Excluir</button>" : "") +
+      "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Dados do item</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Patrimônio", p.codigo, "codigo") + detailItem("Responsável", p.responsavelNome, "responsavel_nome") +
+      detailItem("Tipo", p.tipo, "tipo") + detailItem("Modelo", p.modelo, "modelo") +
+      detailItem("Série", p.serie, "serie") + detailItem("Valor", p.valor != null ? fmtMoney(p.valor) : null, "valor") +
+      detailItem("Status", p.status, "status") +
+      "</div></div></div>" +
+      '<div class="panel" id="patrimonio-movimentacoes"><div class="panel-head"><h3>Movimentações</h3></div><div class="panel-body pad"><div class="hint">Carregando…</div></div></div>' +
+      historyPanelHtml("patrimonio", p.id);
+    loadHistoryPanel("patrimonio", p.id);
+    loadPatrimonioMovimentacoes(p.id);
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/patrimonio"); });
+    if ($("#btn-edit-patrimonio")) $("#btn-edit-patrimonio").addEventListener("click", function () { openPatrimonioForm(p); });
+    if ($("#btn-del-patrimonio")) $("#btn-del-patrimonio").addEventListener("click", function () { confirmDelete("patrimonio", p.id, p.codigo || p.tipo || ("Item " + p.id), { after: function () { navigate("#/patrimonio"); } }); });
+  }
+
+  function movimentacaoRowHtml(m) {
+    var quando = fmtDateHoraBR(m.dataEvento);
+    var origem = m.origem === "gpo" ? '<span class="tag">GPO</span>' : '<span class="tag">Manual — ' + esc(m.usuarioNome || "—") + '</span>';
+    var partes = [];
+    if (m.status) partes.push("status " + esc(m.status));
+    if (m.responsavelNome) partes.push("com " + esc(m.responsavelNome));
+    else partes.push("sem responsável");
+    return '<div class="history-row"><span class="history-badge editar">Movimentação</span><span class="history-text">' + partes.join(", ") + " em " + quando + " " + origem +
+      (m.observacao ? ' — <em>' + esc(m.observacao) + "</em>" : "") + "</span></div>";
+  }
+
+  function loadPatrimonioMovimentacoes(id) {
+    apiFetch("/api/patrimonios/" + id + "/historico")
+      .then(function (data) {
+        var panel = document.getElementById("patrimonio-movimentacoes");
+        if (!panel) return;
+        var items = ((data && data.rows) || []).map(mapPatrimonioHistoricoFromApi);
+        var body = items.length
+          ? '<div class="history-list">' + items.map(movimentacaoRowHtml).join("") + "</div>"
+          : '<div class="hint">Nenhuma movimentação registrada ainda.</div>';
+        var bodyEl = panel.querySelector(".panel-body");
+        if (bodyEl) bodyEl.innerHTML = body;
+      })
+      .catch(function () {
+        var panel = document.getElementById("patrimonio-movimentacoes");
+        var bodyEl = panel && panel.querySelector(".panel-body");
+        if (bodyEl) bodyEl.innerHTML = '<div class="hint">Não foi possível carregar as movimentações.</div>';
+      });
+  }
+
+  // Responsável agora é sempre selecionado a partir do cadastro de Pessoas
+  // (não é mais texto livre) — mesmo padrão do select de team líder em
+  // openEquipeForm.
+  function patrimonioResponsavelSelectHtml(p) {
+    var pessoasOpts = STATE.pessoas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome); })
+      .map(function (pe) { return '<option value="' + pe.id + '"' + (p && p.responsavelPessoaId === pe.id ? " selected" : "") + '>' + esc(pe.nome) + (pe.cargo ? " — " + esc(pe.cargo) : "") + "</option>"; }).join("");
+    return '<div class="field"><label>Responsável</label><select name="responsavelPessoaId"><option value="">— Nenhum (disponível) —</option>' + pessoasOpts + "</select></div>";
+  }
+
   function openPatrimonioForm(p) {
     var isNew = !p;
+    var codigoTravado = !isNew && !!p.codigo && !isAdmin();
     var html =
-      '<div class="drawer-head"><div><h2>' + (isNew ? "Novo item de patrimônio" : "Editar item de patrimônio") + '</h2><div class="sub">Equipamento ou bem cadastrado manualmente</div></div>' +
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Novo item de patrimônio" : "Editar item de patrimônio") + '</h2><div class="sub">Equipamento ou bem — código, tipo, modelo etc. são sempre salvos em maiúsculas</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="patrimonio-form"><div class="field-grid">' +
-      field("Código", "codigo", "text", p) +
-      field("Responsável", "responsavelNome", "text", p) +
+      field("Patrimônio (6 dígitos)", "codigo", "text", p, { readOnly: codigoTravado }) +
+      (codigoTravado ? '<div class="hint span2" style="margin-top:-8px;">Este item já tem um código de patrimônio — só um administrador pode alterá-lo ou apagá-lo.</div>' : "") +
+      patrimonioResponsavelSelectHtml(p) +
       field("Tipo", "tipo", "text", p) +
       field("Modelo", "modelo", "text", p) +
       field("Série", "serie", "text", p) +
       field("Valor (R$)", "valor", "number", p) +
       selectField("Status", "status", PATRIMONIO_STATUS_OPTS, p ? p.status : "", { allowEmpty: true, emptyLabel: "— Selecione —" }) +
-      (p && p.legacyId != null ? '<div class="hint span2" style="margin-top:4px;">Este item também existe no GPO — os campos acima voltam a ser sobrescritos pelo GPO na próxima sincronização, caso continuem diferentes lá.</div>' : "") +
+      '<div class="field span2"><label>Observação da movimentação (opcional)</label><input type="text" name="movimentacaoObservacao" placeholder="Ex.: troca de responsável, envio pra manutenção…"></div>' +
+      (p && p.legacyId != null ? '<div class="hint span2" style="margin-top:4px;">Este item também existe no GPO — os campos sincronizados voltam a valer o que estiver lá na próxima sincronização, caso continuem diferentes.</div>' : "") +
       "</div></form>" +
       '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="patrimonio-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
     openDrawer(html);
@@ -1329,9 +1390,13 @@
       if (!canDo("patrimonio", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
       var fd = new FormData(ev.target);
       var body = {};
-      ["codigo", "responsavelNome", "tipo", "modelo", "serie", "status"].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      ["codigo", "tipo", "modelo", "serie", "status"].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim().toUpperCase(); });
       var valorRaw = (fd.get("valor") || "").toString().trim();
       body.valor = valorRaw ? Number(valorRaw) : null;
+      var respVal = fd.get("responsavelPessoaId");
+      body.responsavelPessoaId = respVal ? Number(respVal) : null;
+      var movObs = (fd.get("movimentacaoObservacao") || "").toString().trim();
+      if (movObs) body.movimentacaoObservacao = movObs;
 
       var req = isNew
         ? apiFetch("/api/patrimonios", { method: "POST", body: body })
@@ -1348,6 +1413,7 @@
         render();
         renderShellCounts();
         toast(isNew ? "Item criado." : "Item atualizado.", "success");
+        if (isNew) navigate("#/patrimonio/" + rec.id);
       }).catch(handleApiError);
     });
     $("#drawer-close").addEventListener("click", closeDrawer);
@@ -2842,7 +2908,7 @@
         "<li>Equipes: " + r.equipes.totalEquipes + " equipes, " + r.equipes.totalMembros + " membros" + (r.equipes.membrosOrfaos ? " (" + r.equipes.membrosOrfaos + " membros ignorados por pessoa inexistente)" : "") + "</li>" +
         "<li>Treinamentos: " + r.treinamentos.totalFinal + " registros (" + r.treinamentos.duplicadosRemovidos + " duplicados removidos" + (r.treinamentos.orfaos ? ", " + r.treinamentos.orfaos + " ignorados por pessoa inexistente" : "") +
           (r.treinamentos.tiposDesconhecidos && r.treinamentos.tiposDesconhecidos.length ? ", tipos desconhecidos: " + r.treinamentos.tiposDesconhecidos.map(esc).join(", ") : "") + ")</li>" +
-        (r.patrimonio ? "<li>Patrimônio: " + r.patrimonio.total + " itens sincronizados</li>" : "") +
+        (r.patrimonio ? "<li>Patrimônio: " + r.patrimonio.total + " itens, " + r.patrimonio.historico + " movimentações de histórico sincronizadas" + (r.patrimonio.historicoErros ? " (" + r.patrimonio.historicoErros + " itens com erro ao buscar histórico)" : "") + "</li>" : "") +
         "</ul>";
     }
 
@@ -2969,7 +3035,7 @@
   function field(label, name, type, obj, opts) {
     opts = opts || {};
     var val = obj ? (obj[name] === undefined || obj[name] === null ? "" : obj[name]) : "";
-    return '<div class="field' + (opts.span2 ? " span2" : "") + '"><label>' + esc(label) + '</label><input type="' + type + '" name="' + name + '" value="' + esc(val) + '"' + (opts.required ? " required" : "") + "></div>";
+    return '<div class="field' + (opts.span2 ? " span2" : "") + '"><label>' + esc(label) + '</label><input type="' + type + '" name="' + name + '" value="' + esc(val) + '"' + (opts.required ? " required" : "") + (opts.readOnly ? " readonly" : "") + "></div>";
   }
   function selectField(label, name, options, current, opts2) {
     opts2 = opts2 || {};
@@ -3201,7 +3267,7 @@
     else if (route.view === "equipes") route.id ? renderEquipeDetail(main, route.id) : renderEquipesList(main);
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
-    else if (route.view === "patrimonio") renderPatrimoniosList(main);
+    else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id) closeDrawer();
   }

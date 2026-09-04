@@ -93,6 +93,33 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return out;
 }
 
+// Igual normStr, mas em maiúsculas — regra do Diego: tudo que é digitado na
+// aba Patrimônio (e, pra ficar consistente, tudo que vem sincronizado do
+// GPO também) fica em CAIXA ALTA.
+function normUpper(v: any): string | null {
+  const s = normStr(v);
+  return s ? s.toUpperCase() : null;
+}
+
+// Roda `fn` sobre `items` com no máximo `limit` chamadas em paralelo por vez.
+// Usado pra buscar o histórico de cada patrimônio (1 requisição HTTP por
+// item — a API do GPO não tem um endpoint que devolva o histórico de todos
+// de uma vez) sem disparar as ~190 requisições ao mesmo tempo nem esperar
+// uma de cada vez (isso estouraria o limite de 60s da função na Vercel).
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(new Array(Math.min(limit, items.length)).fill(0).map(() => worker()));
+  return results;
+}
+
 // O PostgREST do Supabase corta cada resposta num número máximo de linhas
 // (config do projeto, hoje 1000) mesmo sem LIMIT no código. `pessoas` já
 // passou de 890 registros e só tende a crescer — sem paginar aqui, ao
@@ -162,7 +189,7 @@ export type SyncResumo = {
   pessoas: { total: number; erros: number };
   equipes: { totalEquipes: number; totalMembros: number; membrosOrfaos: number };
   treinamentos: { totalOriginal: number; totalFinal: number; duplicadosRemovidos: number; tiposDesconhecidos: string[]; orfaos: number };
-  patrimonio: { total: number };
+  patrimonio: { total: number; historico: number; historicoErros: number };
 };
 
 /* ---------------- Empresas ---------------- */
@@ -463,10 +490,20 @@ async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
 /* ---------------- Patrimônio ---------------- */
 
 // A API do GPO pra isso não devolve um id de pessoa, só o nome de quem está
-// com o item (às vezes null = disponível/sem responsável) — por isso
-// `responsavel_nome` fica como texto livre, sem FK pra `pessoas`. Também não
+// com o item (às vezes null = disponível/sem responsável) — tentamos casar
+// esse nome com um cadastro em `pessoas` (por igualdade em maiúsculas) pra
+// preencher `responsavel_pessoa_id`; quando não bate com ninguém cadastrado,
+// guardamos só o texto em `responsavel_nome` mesmo assim, sem FK. Também não
 // há garantia de que o código "patrimonio" (ex: "000001") seja único na
-// origem — não tratamos como chave.
+// origem, nem que tenha sempre 6 dígitos — vários itens do GPO já vêm com
+// código duplicado ou com mais dígitos; a regra de "6 dígitos, único,
+// travado após preenchido" (pedida pelo Diego) só é aplicada aqui pra
+// cima — em itens criados/editados no Controle Eolen — nunca contra o que
+// já vem sincronizado do GPO, senão a sincronização quebraria.
+//
+// Tudo que entra em `patrimonios` por aqui vai em CAIXA ALTA (código, tipo,
+// modelo, série, status, responsável), pra ficar consistente com a mesma
+// regra aplicada às edições manuais na tela.
 //
 // Diferente de equipes/treinamentos, aqui é UPSERT por legacy_id (igual
 // empresas/pessoas), não delete+reinsert — desde que a tela de Patrimônio
@@ -488,25 +525,100 @@ async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
   );
   const admin = supabaseAdmin();
 
+  // Resolve "nome" (texto livre do GPO) pra um pessoa_id, por igualdade de
+  // nome em maiúsculas — é heurística (não há id de pessoa no GPO pra isso),
+  // então nomes com erro de digitação/sem cadastro correspondente ficam sem
+  // responsavel_pessoa_id (mas o texto do GPO não é perdido, fica em
+  // responsavel_nome mesmo assim).
+  const { data: pessoasRows } = await admin.from("pessoas").select("id, nome");
+  const pessoaPorNome = new Map<string, number>();
+  (pessoasRows || []).forEach((p: any) => {
+    const key = normUpper(p.nome);
+    if (key && !pessoaPorNome.has(key)) pessoaPorNome.set(key, p.id);
+  });
+
   const payload = rows
-    .map((r) => ({
-      legacy_id: normNum(r.idpatrimonio),
-      codigo: normStr(r.patrimonio),
-      tipo: normStr(r.tipo),
-      modelo: normStr(r.modelo),
-      serie: normStr(r.serie),
-      valor: parseValorReais(r.valor),
-      status: normStr(r.tipohistorico),
-      responsavel_nome: normStr(r.nome),
-    }))
+    .map((r) => {
+      const responsavelNome = normUpper(r.nome);
+      return {
+        legacy_id: normNum(r.idpatrimonio),
+        codigo: normUpper(r.patrimonio),
+        tipo: normUpper(r.tipo),
+        modelo: normUpper(r.modelo),
+        serie: normUpper(r.serie),
+        valor: parseValorReais(r.valor),
+        status: normUpper(r.tipohistorico),
+        responsavel_nome: responsavelNome,
+        responsavel_pessoa_id: responsavelNome ? pessoaPorNome.get(responsavelNome) ?? null : null,
+      };
+    })
     .filter((p) => p.legacy_id !== null);
 
+  const patrimonioIdPorLegacyId = new Map<number, number>();
   for (const batch of chunk(payload, 500)) {
-    const { error } = await admin.from("patrimonios").upsert(batch, { onConflict: "legacy_id" });
+    const { data, error } = await admin.from("patrimonios").upsert(batch, { onConflict: "legacy_id" }).select("id, legacy_id");
     if (error) throw new Error(`Falha ao sincronizar patrimônio: ${error.message}`);
+    (data || []).forEach((row: any) => patrimonioIdPorLegacyId.set(row.legacy_id, row.id));
   }
 
-  return { total: payload.length };
+  const historico = await syncPatrimoniosHistorico(admin, payload, patrimonioIdPorLegacyId, pessoaPorNome);
+
+  return { total: payload.length, historico: historico.total, historicoErros: historico.erros };
+}
+
+// Histórico de movimentação de cada item — a API do GPO só devolve isso um
+// item por vez (GET /patrimonio/historico?...&idpatrimonio=X), então busca
+// com um pool de requisições em paralelo (ver mapWithConcurrency) em vez de
+// sequencial (estouraria os 60s da função) ou tudo de uma vez (sobrecarrega
+// o servidor do GPO, que já é frágil).
+async function syncPatrimoniosHistorico(
+  admin: ReturnType<typeof supabaseAdmin>,
+  payload: Array<{ legacy_id: number | null; responsavel_nome: string | null }>,
+  patrimonioIdPorLegacyId: Map<number, number>,
+  pessoaPorNome: Map<string, number>
+): Promise<{ total: number; erros: number }> {
+  const legacyIds = payload.map((p) => p.legacy_id).filter((id): id is number => id !== null);
+  let erros = 0;
+
+  const historicoPorItem = await mapWithConcurrency(legacyIds, 12, async (idpatrimonio) => {
+    try {
+      return await gpoFetch(`/patrimonio/historico?${GPO_QS}&idpatrimonio=${idpatrimonio}`);
+    } catch {
+      erros++;
+      return [] as any[];
+    }
+  });
+
+  const entradas: any[] = [];
+  legacyIds.forEach((idpatrimonio, idx) => {
+    const patrimonioId = patrimonioIdPorLegacyId.get(idpatrimonio);
+    if (!patrimonioId) return;
+    for (const h of historicoPorItem[idx] || []) {
+      const responsavelNome = normUpper(h.nome);
+      entradas.push({
+        patrimonio_id: patrimonioId,
+        legacy_id: normNum(h.id),
+        status: normUpper(h.tipohistorico),
+        responsavel_nome: responsavelNome,
+        responsavel_pessoa_id: responsavelNome ? pessoaPorNome.get(responsavelNome) ?? null : null,
+        data_entrega: normDate(h.dataentrega),
+        data_devolucao: normDate(h.datadevolucao),
+        // data_evento é NOT NULL — GPO sempre manda "data", mas por segurança
+        // cai pra agora() se algum registro vier sem ela, em vez de violar a
+        // constraint e derrubar o lote inteiro.
+        data_evento: h.data || new Date().toISOString(),
+        observacao: normStr(h.observacao),
+        origem: "gpo",
+      });
+    }
+  });
+
+  for (const batch of chunk(entradas.filter((e) => e.legacy_id !== null), 500)) {
+    const { error } = await admin.from("patrimonio_historico").upsert(batch, { onConflict: "patrimonio_id,legacy_id" });
+    if (error) throw new Error(`Falha ao sincronizar histórico de patrimônio: ${error.message}`);
+  }
+
+  return { total: entradas.length, erros };
 }
 
 /* ---------------- Orquestração ---------------- */
