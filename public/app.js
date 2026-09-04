@@ -3335,7 +3335,7 @@
       '<div class="field span2"><label>E-mail *</label><input type="email" name="email" value="' + esc(u ? u.email : "") + '"' + (isNew ? " required" : " disabled") + ">" +
       (isNew ? "" : '<div class="hint" style="margin-top:4px;">O e-mail não pode ser alterado depois que o usuário é criado.</div>') + "</div>" +
       '<div class="field"><label>Papel</label><select name="role"><option value="usuario"' + (u && u.role === "usuario" ? " selected" : "") + '>Usuário</option><option value="admin"' + (u && u.role === "admin" ? " selected" : "") + ">Administrador</option></select></div>" +
-      (isNew ? '<div class="field"><label>Senha inicial *</label><input type="text" name="senhaInicial" required minlength="6" placeholder="Defina a senha temporária"></div>' : "") +
+      (isNew ? '<div class="field"><label>Senha inicial *</label><input type="text" name="senhaInicial" data-no-uppercase autocomplete="new-password" required minlength="6" placeholder="Defina a senha temporária"></div>' : "") +
       "</div>" +
       '<div class="hint" style="margin:14px 0 6px;">Permissões por página (ignoradas se o papel for Administrador — administradores têm acesso completo)</div>' +
       '<div class="table-scroll"><table class="data perm-table"><thead><tr><th>Página</th>' + ACTIONS.map(function (ac) { return '<th style="text-align:center;">' + esc(ac.label) + "</th>"; }).join("") + "</tr></thead><tbody>" + permHtml + "</tbody></table></div>" +
@@ -3382,7 +3382,7 @@
     if (!u) return;
     var html = '<div class="modal-box"><h3>Redefinir senha</h3><p>Defina uma nova senha temporária para <strong>' + esc(u.nome) + "</strong>. Ele(a) precisará trocá-la no próximo login.</p>" +
       '<form id="reset-senha-form" class="field-grid one">' +
-      '<div class="field"><label>Nova senha temporária *</label><input type="text" name="senha" required minlength="6"></div>' +
+      '<div class="field"><label>Nova senha temporária *</label><input type="text" name="senha" data-no-uppercase autocomplete="new-password" required minlength="6"></div>' +
       '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="submit" class="btn primary">Redefinir</button></div>' +
       "</form></div>";
     openModal(html);
@@ -3787,6 +3787,7 @@
   // porque os campos delas são todos type="email"/"password".
   function shouldUppercase(input) {
     if (!input || (input.tagName !== "INPUT" && input.tagName !== "TEXTAREA")) return false;
+    if (input.hasAttribute && input.hasAttribute("data-no-uppercase")) return false;
     if (input.tagName === "INPUT") {
       var t = (input.type || "text").toLowerCase();
       if (t === "email" || t === "password" || t === "date" || t === "number" || t === "file") return false;
