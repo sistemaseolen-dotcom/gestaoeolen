@@ -1525,7 +1525,7 @@
     return '<div class="foto-slot" data-slot="' + esc(slotKey) + '">' +
       (colabLabel ? '<div class="foto-slot-label">' + esc(colabLabel) + "</div>" : "") +
       (f && f.url
-        ? '<div class="foto-slot-preview"><img src="' + esc(f.url) + '" alt=""><button type="button" class="btn ghost sm foto-slot-remove" data-remove-foto="' + f.id + '" title="Remover foto">' + ICONS.trash + "</button></div>"
+        ? '<div class="foto-slot-preview"><img src="' + esc(f.url) + '" alt="" class="foto-slot-img" data-view-foto title="Clique para ampliar"><button type="button" class="btn ghost sm foto-slot-remove" data-remove-foto="' + f.id + '" title="Remover foto">' + ICONS.trash + "</button></div>"
         : '<div class="foto-slot-empty">' + ICONS.camera + "<span>Sem foto</span></div>") +
       '<div class="foto-slot-actions">' +
       '<label class="btn sm">' + ICONS.camera + (f ? "Tirar outra foto" : "Tirar foto") + '<input type="file" accept="image/*" capture="environment" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>' +
@@ -1595,6 +1595,11 @@
         this.value = "";
       });
     });
+    $all("[data-view-foto]", container).forEach(function (img) {
+      img.addEventListener("click", function () {
+        openFotoLightbox(img.getAttribute("src"));
+      });
+    });
     $all("[data-remove-foto]", container).forEach(function (btn) {
       btn.addEventListener("click", function (ev) {
         ev.preventDefault();
@@ -1612,20 +1617,66 @@
 
   /* ---------------- Foto: geolocalização + marca d'água ----------------
      Preserva a mesma funcionalidade do app antigo: cada foto tirada em
-     campo grava, sobreposto na própria imagem, o site, a data/hora e a
-     coordenada GPS de quem tirou — carimbo feito no navegador (canvas)
-     antes do upload, não depois. */
-  function getGeolocationLine() {
+     campo grava, sobreposto na própria imagem (num cartão no canto inferior
+     esquerdo, igual ao app antigo), o site, o horário, a data, o endereço
+     (via geocodificação reversa do GPS) e a coordenada lat/long — carimbo
+     feito no navegador (canvas) antes do upload, não depois. */
+  function getGeolocation() {
     return new Promise(function (resolve) {
-      if (!navigator.geolocation) { resolve("Localização indisponível"); return; }
+      if (!navigator.geolocation) { resolve(null); return; }
       navigator.geolocation.getCurrentPosition(
-        function (pos) { resolve("Lat " + pos.coords.latitude.toFixed(6) + ", Lon " + pos.coords.longitude.toFixed(6)); },
-        function () { resolve("Localização indisponível"); },
+        function (pos) { resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }); },
+        function () { resolve(null); },
         { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
       );
     });
   }
-  function watermarkedBlob(file, linhas) {
+  function buscarEndereco(lat, lon) {
+    return apiFetch("/api/geo/reverse-geocode?lat=" + encodeURIComponent(lat) + "&lon=" + encodeURIComponent(lon))
+      .then(function (data) { return (data && data.endereco) || null; })
+      .catch(function () { return null; });
+  }
+  function formatarDataHoraWatermark(date) {
+    var dias = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    function p2(n) { return String(n).padStart(2, "0"); }
+    return {
+      hora: p2(date.getHours()) + ":" + p2(date.getMinutes()),
+      data: p2(date.getDate()) + "/" + p2(date.getMonth() + 1) + "/" + date.getFullYear(),
+      dia: dias[date.getDay()]
+    };
+  }
+  function formatarLatLongWatermark(lat, lon) {
+    var latTxt = Math.abs(lat).toFixed(6) + "°" + (lat < 0 ? "S" : "N");
+    var lonTxt = Math.abs(lon).toFixed(6) + "°" + (lon < 0 ? "W" : "E");
+    return "Lat/Long: " + latTxt + ", " + lonTxt;
+  }
+  function wrapCanvasText(ctx, text, maxWidth) {
+    var words = (text || "").split(" ");
+    var lines = [];
+    var current = "";
+    words.forEach(function (w) {
+      var test = current ? current + " " + w : w;
+      if (current && ctx.measureText(test).width > maxWidth) {
+        lines.push(current);
+        current = w;
+      } else {
+        current = test;
+      }
+    });
+    if (current) lines.push(current);
+    return lines;
+  }
+  function roundRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+  // info: { siteId, endereco (string|null), lat (number|null), lon (number|null) }
+  function watermarkedBlob(file, info) {
     return new Promise(function (resolve, reject) {
       var url = URL.createObjectURL(file);
       var img = new Image();
@@ -1636,16 +1687,70 @@
         canvas.height = img.naturalHeight || 900;
         var ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        var fontSize = Math.max(16, Math.round(canvas.width * 0.024));
-        var lineHeight = Math.round(fontSize * 1.35);
-        var pad = Math.round(fontSize * 0.6);
-        var barHeight = lineHeight * linhas.length + pad * 2;
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
-        ctx.fillStyle = "#fff";
-        ctx.font = fontSize + "px sans-serif";
+
+        var scale = canvas.width / 1080;
+        var padBox = Math.max(10, Math.round(16 * scale));
+        var siteSize = Math.max(13, Math.round(19 * scale));
+        var horaSize = Math.max(20, Math.round(30 * scale));
+        var smallSize = Math.max(11, Math.round(14 * scale));
+        var rowGap = Math.round(smallSize * 0.45);
+        var margin = Math.round(canvas.width * 0.03);
+        var boxWidth = Math.min(canvas.width - margin * 2, Math.round(canvas.width * 0.82));
+
         ctx.textBaseline = "top";
-        linhas.forEach(function (linha, i) { ctx.fillText(linha, pad, canvas.height - barHeight + pad + i * lineHeight); });
+        ctx.font = smallSize + "px sans-serif";
+        var enderecoLinhas = info.endereco ? wrapCanvasText(ctx, info.endereco, boxWidth - padBox * 2) : [];
+        var temLatLong = info.lat != null && info.lon != null;
+        var latlongTexto = temLatLong ? formatarLatLongWatermark(info.lat, info.lon) : null;
+
+        var contentHeight = siteSize + rowGap + horaSize + rowGap +
+          enderecoLinhas.length * (smallSize + rowGap) +
+          (latlongTexto ? smallSize : 0);
+        var boxHeight = contentHeight + padBox * 2;
+        var boxX = margin;
+        var boxY = canvas.height - boxHeight - margin;
+        var radius = Math.round(10 * scale);
+
+        ctx.fillStyle = "rgba(0,0,0,0.62)";
+        roundRectPath(ctx, boxX, boxY, boxWidth, boxHeight, radius);
+        ctx.fill();
+
+        var textX = boxX + padBox;
+        var cursorY = boxY + padBox;
+        ctx.fillStyle = "#ffffff";
+
+        // Site ID
+        ctx.font = "bold " + siteSize + "px sans-serif";
+        ctx.fillText((info.siteId || "").toUpperCase(), textX, cursorY);
+        cursorY += siteSize + rowGap;
+
+        // Horário grande + divisor + data/dia-da-semana
+        ctx.font = "bold " + horaSize + "px sans-serif";
+        ctx.fillText(info.hora, textX, cursorY);
+        var horaWidth = ctx.measureText(info.hora).width;
+        var dividerX = textX + horaWidth + Math.round(12 * scale);
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = Math.max(1, Math.round(2 * scale));
+        ctx.beginPath();
+        ctx.moveTo(dividerX, cursorY + Math.round(2 * scale));
+        ctx.lineTo(dividerX, cursorY + horaSize - Math.round(2 * scale));
+        ctx.stroke();
+        var dataX = dividerX + Math.round(10 * scale);
+        ctx.font = smallSize + "px sans-serif";
+        ctx.fillText(info.data, dataX, cursorY + Math.round(1 * scale));
+        ctx.fillText(info.dia, dataX, cursorY + smallSize + Math.round(3 * scale));
+        cursorY += horaSize + rowGap;
+
+        // Endereço (quebrado em linhas conforme a largura do cartão)
+        ctx.font = smallSize + "px sans-serif";
+        enderecoLinhas.forEach(function (linha) {
+          ctx.fillText(linha, textX, cursorY);
+          cursorY += smallSize + rowGap;
+        });
+
+        // Lat/Long
+        if (latlongTexto) ctx.fillText(latlongTexto, textX, cursorY);
+
         canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("Falha ao gerar a imagem.")); }, "image/jpeg", 0.9);
       };
       img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Não foi possível carregar a imagem.")); };
@@ -1656,13 +1761,19 @@
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) { toast("Imagem muito grande (máx. 8MB).", "error"); return; }
     setSaveDot("saving");
-    getGeolocationLine().then(function (geoLine) {
-      var linhas = [
-        (a.siteId || "") + (a.empresa ? " — " + a.empresa : ""),
-        fmtDateHoraBR(new Date().toISOString()),
-        geoLine
-      ];
-      return watermarkedBlob(file, linhas);
+    getGeolocation().then(function (geo) {
+      var enderecoPromise = geo ? buscarEndereco(geo.lat, geo.lon) : Promise.resolve(null);
+      return enderecoPromise.then(function (endereco) {
+        var agora = new Date();
+        var dh = formatarDataHoraWatermark(agora);
+        return watermarkedBlob(file, {
+          siteId: a.siteId || "",
+          endereco: endereco,
+          lat: geo ? geo.lat : null,
+          lon: geo ? geo.lon : null,
+          hora: dh.hora, data: dh.data, dia: dh.dia
+        });
+      });
     }).then(function (blob) {
       var fd = new FormData();
       fd.append("file", blob, slotKey + ".jpg");
@@ -3678,6 +3789,16 @@
   }
   function closeModal() {
     $("#modal-overlay").classList.remove("open");
+  }
+  function openFotoLightbox(url) {
+    openModal(
+      '<div class="lightbox-box">' +
+      '<button type="button" class="lightbox-close" id="lightbox-close" title="Fechar" aria-label="Fechar">' + ICONS.close + "</button>" +
+      '<img src="' + esc(url) + '" alt="" class="lightbox-img">' +
+      "</div>"
+    );
+    var btn = $("#lightbox-close");
+    if (btn) btn.addEventListener("click", closeModal);
   }
 
   /* ---------------- Exportar para Excel ----------------

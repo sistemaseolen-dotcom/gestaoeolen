@@ -575,7 +575,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 }
 .foto-slot-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-faint); }
 .foto-slot-preview { position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
-.foto-slot-preview img { display: block; width: 100%; height: 110px; object-fit: cover; }
+.foto-slot-preview img { display: block; width: 100%; height: 110px; object-fit: cover; cursor: zoom-in; }
 .foto-slot-remove {
   position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.55); color: #fff;
   border: none; padding: 4px; border-radius: 999px;
@@ -594,8 +594,29 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   border-radius: var(--radius-sm); background: #fff; touch-action: none; cursor: crosshair;
 }
 
+/* Lightbox de foto (clique pra ampliar) */
+.lightbox-box { position: relative; width: auto; max-width: min(920px, 94vw); max-height: 92vh; padding: 0; background: transparent; box-shadow: none; }
+.lightbox-img { display: block; max-width: min(920px, 94vw); max-height: 92vh; width: auto; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); background: #fff; }
+.lightbox-close {
+  position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 999px;
+  background: #fff; border: 1px solid var(--border-strong); color: var(--ink); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; box-shadow: var(--shadow-lg);
+}
+.lightbox-close .ic { width: 16px; height: 16px; }
+
 @media print {
   .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura { display: none !important; }
   .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; }
   body { background: #fff; }
+
+  /* Fotos da auditoria: inteiras (sem cortar) e uma por linha, ocupando a largura. */
+  .foto-slot-grid { display: block; }
+  .foto-slot {
+    display: block; border: none; padding: 0; margin: 0 0 18px; background: transparent;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .foto-slot-label { margin-bottom: 6px; }
+  .foto-slot-preview { border-radius: 0; overflow: visible; background: transparent; }
+  .foto-slot-preview img { width: 100%; height: auto; max-width: 100%; object-fit: contain; cursor: default; }
+  .foto-slot-empty { display: none; }
 }
