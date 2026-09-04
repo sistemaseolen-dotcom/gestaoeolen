@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { canView } from "@/lib/permissions";
 
 // Hidratação inicial da SPA — equivalente ao antigo `#seed-data` embutido na
 // página. NÃO inclui usuarios nem audit_log (essa última é paginada à parte
@@ -33,7 +34,14 @@ export async function GET() {
 
   const admin = supabaseAdmin();
 
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios] = await Promise.all([
+  // Auditorias só é buscada para quem tem acesso à página — diferente das
+  // demais tabelas (buscadas sempre, comportamento já existente e mantido
+  // como está pra não regredir nenhuma tela hoje em uso). Isso importa aqui
+  // em especial: um técnico de campo (acesso só a Auditorias) não precisa
+  // baixar o cadastro inteiro de pessoas/empresas/treinamentos no celular.
+  const podeAuditorias = canView(gate.user, "auditorias");
+
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias] = await Promise.all([
     fetchAllRows(admin, "pessoas"),
     fetchAllRows(admin, "empresas"),
     fetchAllRows(admin, "treinamentos"),
@@ -41,9 +49,15 @@ export async function GET() {
     fetchAllRows(admin, "equipe_membros"),
     fetchAllRows(admin, "listas_opcoes"),
     fetchAllRows(admin, "patrimonios"),
+    podeAuditorias
+      ? admin
+          .from("auditorias")
+          .select("id, standard, site_id, empresa, data, status, inspetor_nome, num_colaboradores, criado_por_nome, criado_em, atualizado_em, finalizado_em")
+          .order("data", { ascending: false })
+      : Promise.resolve({ data: [] as any[], error: null as any }),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -72,6 +86,7 @@ export async function GET() {
     treinamentos: treinamentos.data,
     equipes: equipesComMembros,
     patrimonios: patrimonios.data,
+    auditorias: auditorias.data,
     listas,
   });
 }

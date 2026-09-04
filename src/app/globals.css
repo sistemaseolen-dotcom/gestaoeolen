@@ -553,3 +553,49 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 }
 .field-audit-note .ic { width: 11px; height: 11px; flex-shrink: 0; }
 .field-audit-note strong { color: var(--ink-soft); font-weight: 600; }
+
+/* ---------------- Auditorias: checklist, fotos e assinatura ---------------- */
+.checklist-item { padding: 14px 0; border-bottom: 1px solid var(--border); }
+.checklist-item:last-child { border-bottom: none; }
+.checklist-item-label { font-size: 13.5px; line-height: 1.45; margin-bottom: 10px; }
+.resposta-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.resposta-btn {
+  padding: 7px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--ink-soft); font-size: 12.5px; font-weight: 600; cursor: pointer;
+}
+.resposta-btn:hover { border-color: var(--accent); }
+.resposta-btn.active.ok { background: var(--success-soft); border-color: transparent; color: var(--success-ink); }
+.resposta-btn.active.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger-ink); }
+.resposta-btn.active.neutral { background: var(--neutral-soft); border-color: transparent; color: var(--neutral-ink); }
+
+.foto-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.foto-slot {
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
+  display: flex; flex-direction: column; gap: 8px; background: var(--surface-alt);
+}
+.foto-slot-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-faint); }
+.foto-slot-preview { position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+.foto-slot-preview img { display: block; width: 100%; height: 110px; object-fit: cover; }
+.foto-slot-remove {
+  position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.55); color: #fff;
+  border: none; padding: 4px; border-radius: 999px;
+}
+.foto-slot-remove .ic { width: 13px; height: 13px; }
+.foto-slot-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  height: 110px; border-radius: var(--radius-sm); border: 1.5px dashed var(--border-strong); color: var(--ink-faint); font-size: 11.5px;
+}
+.foto-slot-empty .ic { width: 22px; height: 22px; }
+.foto-slot-actions { display: flex; flex-direction: column; gap: 6px; }
+.foto-slot-actions .btn { width: 100%; justify-content: center; cursor: pointer; }
+
+.assinatura-canvas {
+  width: 100%; max-width: 600px; height: 200px; border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-sm); background: #fff; touch-action: none; cursor: crosshair;
+}
+
+@media print {
+  .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura { display: none !important; }
+  .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; }
+  body { background: #fff; }
+}

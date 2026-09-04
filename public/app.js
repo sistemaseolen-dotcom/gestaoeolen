@@ -82,7 +82,9 @@
     user: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     history: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>',
     edit: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>',
-    patrimonio: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>'
+    patrimonio: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+    auditorias: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V3"/><path d="m9 12 2 2 4-4"/><path d="M8 17h8"/></svg>',
+    camera: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>'
   };
 
   /* ---------------- State ---------------- */
@@ -92,7 +94,8 @@
     equipes: { q: "", status: "", page: 1 },
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
-    patrimonio: { q: "", page: 1 }
+    patrimonio: { q: "", page: 1 },
+    auditorias: { q: "", status: "", page: 1 }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -103,7 +106,8 @@
     { key: "equipes", label: "Equipes" },
     { key: "empresas", label: "Empresas" },
     { key: "documentos", label: "Treinamentos/documentos" },
-    { key: "patrimonio", label: "Patrimônio" }
+    { key: "patrimonio", label: "Patrimônio" },
+    { key: "auditorias", label: "Auditorias" }
   ];
   var ACTIONS = [
     { key: "ver", label: "Ver" },
@@ -136,6 +140,7 @@
     if (canView("equipes")) return "equipes";
     if (canView("empresas")) return "empresas";
     if (canView("patrimonio")) return "patrimonio";
+    if (canView("auditorias")) return "auditorias";
     return null;
   }
 
@@ -549,6 +554,24 @@
       arquivoNome: row.arquivo_nome, arquivoPath: row.arquivo_path
     };
   }
+  function mapAuditoriaFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, legacyId: row.legacy_id, standard: row.standard, siteId: row.site_id, empresa: row.empresa,
+      data: row.data, status: row.status, inspetorNome: row.inspetor_nome, numColaboradores: row.num_colaboradores,
+      colaboradores: row.colaboradores || [], respostas: row.respostas || {}, observacaoFinal: row.observacao_final,
+      criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
+      criadoEm: row.criado_em, atualizadoEm: row.atualizado_em, finalizadoEm: row.finalizado_em,
+      fotos: (row.fotos || []).map(mapAuditoriaFotoFromApi)
+    };
+  }
+  function mapAuditoriaFotoFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, slotKey: row.slot_key, label: row.label, comentario: row.comentario,
+      arquivoPath: row.arquivo_path, sortOrder: row.sort_order, url: row.url
+    };
+  }
   function mapUsuarioFromApi(row) {
     if (!row) return row;
     return {
@@ -566,6 +589,7 @@
         treinamentos: (data.treinamentos || []).map(mapTreinamentoFromApi),
         equipes: (data.equipes || []).map(mapEquipeFromApi),
         patrimonios: (data.patrimonios || []).map(mapPatrimonioFromApi),
+        auditorias: (data.auditorias || []).map(mapAuditoriaFromApi),
         listas: data.listas || {}
       };
     });
@@ -581,6 +605,7 @@
       STATE.treinamentos = data.treinamentos;
       STATE.equipes = data.equipes;
       STATE.patrimonios = data.patrimonios;
+      STATE.auditorias = data.auditorias;
       STATE.listas = data.listas;
       ensureListasSeed();
     });
@@ -606,6 +631,7 @@
     if (canView("equipes")) navItems.push(["equipes", "Equipes", ICONS.equipes, countTeamLideres(true)]);
     if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
     if (canView("patrimonio")) navItems.push(["patrimonio", "Patrimônio", ICONS.patrimonio, STATE.patrimonios.length]);
+    if (canView("auditorias")) navItems.push(["auditorias", "Auditorias", ICONS.auditorias, STATE.auditorias.length]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
@@ -1419,6 +1445,572 @@
     $("#drawer-close").addEventListener("click", closeDrawer);
     $("#drawer-cancel").addEventListener("click", closeDrawer);
   }
+
+  /* ================================================================
+     AUDITORIAS — checklist de segurança do trabalho (NOKIA/ERICSSON)
+     ================================================================
+     Migrado do sistema antigo (Claude Artifact separado). Preserva a mesma
+     funcionalidade: fotos com marca d'água (data/hora + geolocalização),
+     assinatura do inspetor, Sim/Não/N/A por item, e os mesmos 46 itens do
+     checklist NOKIA. As chaves internas de resposta (q1, q7, q10…) e os
+     slot_key de foto (foto_ca_capacete_1 etc.) são EXATAMENTE os que o app
+     antigo usava — preservados de propósito pra ficar compatível com os 6
+     registros já migrados (não trocar por uma numeração "limpa"). */
+  function statusPillAuditoria(status) {
+    return status === "CONCLUIDO" ? '<span class="pill ok">Concluído</span>' : '<span class="pill warn">Rascunho</span>';
+  }
+  function colaboradorLabel(i) { return i === 1 ? "Líder" : "Colaborador " + i; }
+
+  var AUDITORIA_ITEMS_NOKIA = [
+    { n: 1, secao: "FOTOS INICIAIS", tipo: "foto", label: "Selfie do inspetor no site", slot: "foto_selfie_inspetor" },
+    { n: 2, tipo: "foto", label: "Foto da torre", slot: "foto_torre" },
+    { n: 3, tipo: "foto", label: "Foto do terreno do site (1)", slot: "foto_terreno_1" },
+    { n: 4, tipo: "foto", label: "Foto do terreno do site (2)", slot: "foto_terreno_2" },
+    { n: 5, tipo: "foto", label: "Foto do terreno do site (3)", slot: "foto_terreno_3" },
+    { n: 6, tipo: "foto", label: "Foto do kit de primeiros socorros", slot: "foto_kit_primeiros_socorros" },
+
+    { n: 7, secao: "VISÃO GERAL", tipo: "pergunta", label: "Todos os membros da equipe possuem treinamentos e documentação de segurança do trabalho registrados e atualizados?", key: "q1", opcoes: ["Sim", "Não"] },
+    { n: 8, tipo: "foto", label: "Foto dos RG/Habilitação/Crachá (identificação) dos colaboradores trabalhando no site. Obrigatório mínimo de 2 (duas) pessoas.", slotBase: "foto_rg", porColaborador: true },
+    { n: 9, tipo: "foto", label: "Foto da Equipe utilizando o EPI completo", slotBase: "foto_supervisor", porColaborador: true },
+
+    { n: 10, secao: "EPI", subsecao: "Capacete", tipo: "pergunta", label: "Capacete em condições de uso e CA dentro da validade?", key: "q7", opcoes: ["Sim", "Não"] },
+    { n: 11, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true },
+    { n: 12, subsecao: "Óculos", tipo: "pergunta", label: "Óculos em condições de uso e CA dentro da validade?", key: "q10", opcoes: ["Sim", "Não"] },
+    { n: 13, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true },
+    { n: 14, subsecao: "Luvas", tipo: "pergunta", label: "Luva em condições de uso e CA dentro da validade?", key: "q13", opcoes: ["Sim", "Não"] },
+    { n: 15, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true },
+    { n: 16, subsecao: "Cinto", tipo: "pergunta", label: "Cinto em condições de uso e CA dentro da validade?", key: "q16", opcoes: ["Sim", "Não"] },
+    { n: 17, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true },
+    { n: 18, subsecao: "Trava-quedas", tipo: "pergunta", label: "Trava-quedas em condições de uso e CA dentro da validade?", key: "q18", opcoes: ["Sim", "Não"] },
+    { n: 19, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true },
+    { n: 20, subsecao: "Talabarte Simples", tipo: "pergunta", label: "Talabarte simples em condições de uso e CA dentro da validade?", key: "q21", opcoes: ["Sim", "Não"] },
+    { n: 21, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true },
+    { n: 22, subsecao: "Talabarte Y", tipo: "pergunta", label: "Talabarte Y em condições de uso e CA dentro da validade?", key: "q24", opcoes: ["Sim", "Não"] },
+    { n: 23, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true },
+    { n: 24, subsecao: "Botas", tipo: "pergunta", label: "Botas em condições de uso e CA dentro da validade?", key: "q27", opcoes: ["Sim", "Não"] },
+    { n: 25, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true },
+
+    { n: 26, secao: "EPC", subsecao: "Içamento", tipo: "pergunta", label: "A quantidade de recursos para execução da tarefa é adequada? (acima de 20kg, mínimo 3 pessoas)", key: "q28", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 27, tipo: "pergunta", label: "A corda está em boas condições de uso?", key: "q29", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 28, tipo: "pergunta", label: "A roldana está em boas condições de uso?", key: "q30", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 29, tipo: "pergunta", label: "A cinta de amarração está em boas condições de uso?", key: "q31", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 30, tipo: "pergunta", label: "O guincho está em boas condições de uso?", key: "q32", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 31, subsecao: "Veículo", tipo: "pergunta", label: "O veículo é adequado para a atividade?", key: "q33", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 32, tipo: "pergunta", label: "Os pneus estão em boas condições de uso?", key: "q34", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 33, tipo: "pergunta", label: "O motorista está devidamente habilitado?", key: "q35", opcoes: ["Sim", "Não", "N/A"] },
+
+    { n: 34, secao: "RISCOS", tipo: "pergunta", label: "Existe risco relacionado a bordas desprotegidas, superfícies frágeis, telha de amianto, telha de fibra ou telha corrugada?", key: "q36", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 35, tipo: "pergunta", label: "Existe risco em estruturas verticais (corrosão, falta de linha de vida, parafusos soltos, escadas com corrosão, pontos de ancoragem inseguros)?", key: "q37", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 36, tipo: "pergunta", label: "Existem riscos potenciais por conta de construção em andamento no site?", key: "q38", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 37, tipo: "pergunta", label: "Existe risco identificado com dispositivos elétricos, cabos e conexões?", key: "q39", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 38, tipo: "pergunta", label: "Existe risco com materiais inflamáveis ou outros materiais perigosos no site?", key: "q40", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 39, tipo: "pergunta", label: "Existe risco com piso escorregadio ou similar identificado?", key: "q41", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 40, tipo: "pergunta", label: "Existe risco com escadas, elevadores, áreas de entrega de equipamentos?", key: "q42", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 41, tipo: "pergunta", label: "Existe extintor adequado e bem conservado, equipe treinada para utilizá-lo, saída de emergência e via de evacuação livre de obstáculos? (aplicável apenas para sites indoor)", key: "q43", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 42, tipo: "pergunta", label: "Existe risco ou outro problema no site que possa colocar a equipe em perigo?", key: "q44", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 43, tipo: "pergunta", label: "O espaço abaixo da estrutura (torre/telhado/poste) - zona de segurança - está devidamente identificado e cercado?", key: "q45", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 44, tipo: "pergunta", label: "As condições climáticas permitem iniciar as atividades?", key: "q46", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 45, tipo: "pergunta", label: "A equipe conhece e aplica as regras que salvam vidas da empresa?", key: "q47", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 46, tipo: "pergunta", label: "Existe mais algum risco observado?", key: "q48", opcoes: ["Sim", "Não", "N/A"] }
+  ];
+  var AUDITORIA_ITEMS_POR_PADRAO = { NOKIA: AUDITORIA_ITEMS_NOKIA, ERICSSON: [] };
+
+  function fotoPorSlot(a, slotKey) {
+    var arr = a.fotos || [];
+    for (var i = 0; i < arr.length; i++) if (arr[i].slotKey === slotKey) return arr[i];
+    return null;
+  }
+
+  function fotoSlotHtml(a, slotKey, colabLabel) {
+    var f = fotoPorSlot(a, slotKey);
+    return '<div class="foto-slot" data-slot="' + esc(slotKey) + '">' +
+      (colabLabel ? '<div class="foto-slot-label">' + esc(colabLabel) + "</div>" : "") +
+      (f && f.url
+        ? '<div class="foto-slot-preview"><img src="' + esc(f.url) + '" alt=""><button type="button" class="btn ghost sm foto-slot-remove" data-remove-foto="' + f.id + '" title="Remover foto">' + ICONS.trash + "</button></div>"
+        : '<div class="foto-slot-empty">' + ICONS.camera + "<span>Sem foto</span></div>") +
+      '<div class="foto-slot-actions">' +
+      '<label class="btn sm">' + ICONS.camera + (f ? "Tirar outra foto" : "Tirar foto") + '<input type="file" accept="image/*" capture="environment" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>' +
+      '<label class="btn sm ghost">Escolher da galeria<input type="file" accept="image/*" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>' +
+      "</div></div>";
+  }
+
+  function perguntaHtml(a, item) {
+    var atual = (a.respostas || {})[item.key] || "";
+    var botoes = item.opcoes.map(function (op) {
+      var cls = "resposta-btn" + (atual === op ? " active " + (op === "Sim" ? "ok" : op === "Não" ? "danger" : "neutral") : "");
+      return '<button type="button" class="' + cls + '" data-resposta-key="' + esc(item.key) + '" data-resposta-valor="' + esc(op) + '">' + esc(op) + "</button>";
+    }).join("");
+    return '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="resposta-group">' + botoes + "</div></div>";
+  }
+
+  function checklistHtml(a) {
+    var items = AUDITORIA_ITEMS_POR_PADRAO[a.standard] || [];
+    if (!items.length) {
+      return '<div class="hint">O checklist do padrão ' + esc(a.standard || "—") + " ainda não foi configurado nesta tela (só o padrão NOKIA foi migrado até agora). Fale com quem está cuidando do sistema pra adicionarmos os itens desse padrão.</div>";
+    }
+    var html = "";
+    items.forEach(function (item) {
+      if (item.secao) html += '<div class="form-section-title" style="margin-top:20px;">' + esc(item.secao) + "</div>";
+      if (item.subsecao) html += '<div class="form-section-title" style="opacity:.72;font-size:11px;margin-top:12px;">' + esc(item.subsecao) + "</div>";
+      if (item.tipo === "pergunta") {
+        html += perguntaHtml(a, item);
+      } else if (item.porColaborador) {
+        html += '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="foto-slot-grid">';
+        for (var i = 1; i <= (a.numColaboradores || 1); i++) html += fotoSlotHtml(a, item.slotBase + "_" + i, colaboradorLabel(i));
+        html += "</div></div>";
+      } else {
+        html += '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="foto-slot-grid">' + fotoSlotHtml(a, item.slot, null) + "</div></div>";
+      }
+    });
+    return html;
+  }
+
+  function wireChecklistEvents(container, a, onAfterChange) {
+    if (!container) return;
+    $all("[data-resposta-key]", container).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
+        var key = btn.getAttribute("data-resposta-key");
+        var valor = btn.getAttribute("data-resposta-valor");
+        a.respostas = a.respostas || {};
+        a.respostas[key] = valor;
+        $all('[data-resposta-key="' + key + '"]', container).forEach(function (b) {
+          b.classList.remove("active", "ok", "danger", "neutral");
+          var v = b.getAttribute("data-resposta-valor");
+          if (v === valor) b.classList.add("active", v === "Sim" ? "ok" : v === "Não" ? "danger" : "neutral");
+        });
+        var patch = {}; patch[key] = valor;
+        setSaveDot("saving");
+        apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { respostas: patch } })
+          .then(function () { setSaveDot(null); })
+          .catch(function (err) { setSaveDot("error"); handleApiError(err); });
+      });
+    });
+    $all("[data-foto-input]", container).forEach(function (input) {
+      input.addEventListener("change", function () {
+        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
+        var file = this.files && this.files[0];
+        var slotKey = this.getAttribute("data-foto-input");
+        capturarEUpload(a, slotKey, function () { if (onAfterChange) onAfterChange(); }, file);
+        this.value = "";
+      });
+    });
+    $all("[data-remove-foto]", container).forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
+        var fotoId = Number(btn.getAttribute("data-remove-foto"));
+        apiFetch("/api/auditorias/" + a.id + "/fotos/" + fotoId, { method: "DELETE" })
+          .then(function () {
+            a.fotos = (a.fotos || []).filter(function (f) { return f.id !== fotoId; });
+            toast("Foto removida.", "success");
+            if (onAfterChange) onAfterChange();
+          }).catch(handleApiError);
+      });
+    });
+  }
+
+  /* ---------------- Foto: geolocalização + marca d'água ----------------
+     Preserva a mesma funcionalidade do app antigo: cada foto tirada em
+     campo grava, sobreposto na própria imagem, o site, a data/hora e a
+     coordenada GPS de quem tirou — carimbo feito no navegador (canvas)
+     antes do upload, não depois. */
+  function getGeolocationLine() {
+    return new Promise(function (resolve) {
+      if (!navigator.geolocation) { resolve("Localização indisponível"); return; }
+      navigator.geolocation.getCurrentPosition(
+        function (pos) { resolve("Lat " + pos.coords.latitude.toFixed(6) + ", Lon " + pos.coords.longitude.toFixed(6)); },
+        function () { resolve("Localização indisponível"); },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+      );
+    });
+  }
+  function watermarkedBlob(file, linhas) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || 1200;
+        canvas.height = img.naturalHeight || 900;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        var fontSize = Math.max(16, Math.round(canvas.width * 0.024));
+        var lineHeight = Math.round(fontSize * 1.35);
+        var pad = Math.round(fontSize * 0.6);
+        var barHeight = lineHeight * linhas.length + pad * 2;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(0, canvas.height - barHeight, canvas.width, barHeight);
+        ctx.fillStyle = "#fff";
+        ctx.font = fontSize + "px sans-serif";
+        ctx.textBaseline = "top";
+        linhas.forEach(function (linha, i) { ctx.fillText(linha, pad, canvas.height - barHeight + pad + i * lineHeight); });
+        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("Falha ao gerar a imagem.")); }, "image/jpeg", 0.9);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Não foi possível carregar a imagem.")); };
+      img.src = url;
+    });
+  }
+  function capturarEUpload(a, slotKey, onDone, file) {
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { toast("Imagem muito grande (máx. 8MB).", "error"); return; }
+    setSaveDot("saving");
+    getGeolocationLine().then(function (geoLine) {
+      var linhas = [
+        (a.siteId || "") + (a.empresa ? " — " + a.empresa : ""),
+        fmtDateHoraBR(new Date().toISOString()),
+        geoLine
+      ];
+      return watermarkedBlob(file, linhas);
+    }).then(function (blob) {
+      var fd = new FormData();
+      fd.append("file", blob, slotKey + ".jpg");
+      fd.append("slotKey", slotKey);
+      return apiFetch("/api/auditorias/" + a.id + "/fotos", { method: "POST", body: fd, isFormData: true });
+    }).then(function (data) {
+      var foto = mapAuditoriaFotoFromApi(data);
+      a.fotos = (a.fotos || []).filter(function (f) { return f.slotKey !== slotKey; });
+      a.fotos.push(foto);
+      setSaveDot(null);
+      toast("Foto enviada.", "success");
+      if (onDone) onDone();
+    }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
+  }
+
+  /* ---------------- Assinatura do inspetor (canvas) ---------------- */
+  function setupSignaturePad(canvas) {
+    var ctx = canvas.getContext("2d");
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#1a1a1a";
+    var drawing = false, last = null;
+    function pos(ev) {
+      var r = canvas.getBoundingClientRect();
+      var touch = ev.touches && ev.touches[0];
+      var cx = (touch ? touch.clientX : ev.clientX) - r.left;
+      var cy = (touch ? touch.clientY : ev.clientY) - r.top;
+      return { x: cx * (canvas.width / r.width), y: cy * (canvas.height / r.height) };
+    }
+    function start(ev) { ev.preventDefault(); drawing = true; last = pos(ev); }
+    function move(ev) {
+      if (!drawing) return;
+      ev.preventDefault();
+      var p = pos(ev);
+      ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+      last = p;
+    }
+    function end() { drawing = false; }
+    canvas.addEventListener("pointerdown", start);
+    canvas.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end);
+  }
+  function salvarAssinatura(a, canvas, onSaved) {
+    if (!canDo("auditorias", "editar")) return;
+    canvas.toBlob(function (blob) {
+      if (!blob) return;
+      var fd = new FormData();
+      fd.append("file", blob, "assinatura.png");
+      fd.append("slotKey", "assinatura_inspetor");
+      setSaveDot("saving");
+      apiFetch("/api/auditorias/" + a.id + "/fotos", { method: "POST", body: fd, isFormData: true })
+        .then(function (data) {
+          var foto = mapAuditoriaFotoFromApi(data);
+          a.fotos = (a.fotos || []).filter(function (f) { return f.slotKey !== "assinatura_inspetor"; });
+          a.fotos.push(foto);
+          setSaveDot(null);
+          if (onSaved) onSaved(foto);
+        }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
+    }, "image/png");
+  }
+
+  /* ---------------- Lista ---------------- */
+  function renderAuditoriasList(main) {
+    var ui = uiState.auditorias;
+    function computeFiltered() {
+      var all = STATE.auditorias.slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || (b.id - a.id); });
+      return all.filter(function (a) {
+        if (ui.status && a.status !== ui.status) return false;
+        if (!ui.q) return true;
+        var hay = normalize([a.siteId, a.empresa, a.inspetorNome].join(" "));
+        return hay.indexOf(normalize(ui.q)) !== -1;
+      });
+    }
+    function draw() {
+      var filtered = computeFiltered();
+      withFocusPreserved(function () { drawInto(filtered); });
+    }
+    function drawInto(filtered) {
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+      var body = pg.items.map(function (a) {
+        return '<tr data-id="' + a.id + '">' +
+          '<td class="mono">' + esc(a.siteId || "—") + "</td>" +
+          "<td>" + esc(a.empresa || "—") + "</td>" +
+          "<td>" + fmtDateBR(a.data) + "</td>" +
+          "<td>" + esc(a.inspetorNome || "—") + "</td>" +
+          "<td>" + esc(a.standard || "—") + "</td>" +
+          "<td>" + statusPillAuditoria(a.status) + "</td></tr>";
+      }).join("");
+      var toolbar =
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="auditoria-q" placeholder="Buscar por site, empresa ou inspetor…" value="' + esc(ui.q) + '"></div>' +
+        '<select class="filter" id="auditoria-status"><option value="">Todos os status</option>' +
+        '<option value="RASCUNHO"' + (ui.status === "RASCUNHO" ? " selected" : "") + '>Rascunho</option>' +
+        '<option value="CONCLUIDO"' + (ui.status === "CONCLUIDO" ? " selected" : "") + ">Concluído</option></select>";
+
+      main.innerHTML =
+        '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Checklist de segurança do trabalho realizado em campo, com fotos e assinatura do inspetor</div></div>' +
+        (canDo("auditorias", "criar") ? '<button class="btn primary" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
+        tableShell({
+          toolbar: toolbar,
+          headHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Padrão</th><th>Status</th>",
+          bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+          empty: "Nenhuma auditoria encontrada."
+        });
+
+      if ($("#btn-new-auditoria")) $("#btn-new-auditoria").addEventListener("click", openNovaAuditoriaForm);
+      $("#auditoria-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#auditoria-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
+      $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/auditorias/" + row.getAttribute("data-id")); }); });
+      bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+    }
+    draw();
+  }
+
+  function colabInputsHtml(qtd, valores) {
+    valores = valores || [];
+    var html = "";
+    for (var i = 1; i <= qtd; i++) {
+      html += '<div class="field"><label>' + colaboradorLabel(i) + '</label><input type="text" name="colaborador_' + i + '" value="' + esc(valores[i - 1] || "") + '"></div>';
+    }
+    return html;
+  }
+
+  function openNovaAuditoriaForm() {
+    var html =
+      '<div class="drawer-head"><div><h2>Nova auditoria</h2><div class="sub">Checklist de segurança do trabalho — preencha os dados e depois complete o checklist</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="nova-auditoria-form"><div class="field-grid">' +
+      field("Site ID *", "siteId", "text", null, { required: true }) +
+      field("Empresa", "empresa", "text", null) +
+      field("Data", "data", "date", { data: todayISO() }) +
+      field("Inspetor", "inspetorNome", "text", { inspetorNome: CURRENT_USER ? CURRENT_USER.nome : "" }) +
+      selectField("Padrão", "standard", ["NOKIA", "ERICSSON"], "NOKIA", { required: true }) +
+      '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="nova-auditoria-numcolab"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></div>' +
+      '</div><div class="field-grid" id="nova-auditoria-colabs">' + colabInputsHtml(2) + "</div>" +
+      "</form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="nova-auditoria-form" class="btn primary">' + ICONS.check + "Criar auditoria</button></div></div>";
+    openDrawer(html);
+    $("#nova-auditoria-numcolab").addEventListener("change", function () {
+      $("#nova-auditoria-colabs").innerHTML = colabInputsHtml(Number(this.value));
+    });
+    $("#nova-auditoria-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("auditorias", "criar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var qtd = Number(fd.get("numColaboradores")) || 1;
+      var colabs = [];
+      for (var i = 1; i <= qtd; i++) { var v = (fd.get("colaborador_" + i) || "").toString().trim(); if (v) colabs.push(v); }
+      var siteId = (fd.get("siteId") || "").toString().trim();
+      if (!siteId) { toast("Informe o Site ID.", "error"); return; }
+      var body = {
+        siteId: siteId,
+        empresa: (fd.get("empresa") || "").toString().trim(),
+        data: emptyToNull((fd.get("data") || "").toString()),
+        inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
+        standard: fd.get("standard"),
+        numColaboradores: qtd,
+        colaboradores: colabs
+      };
+      apiFetch("/api/auditorias", { method: "POST", body: body })
+        .then(function (data) {
+          var rec = mapAuditoriaFromApi(data);
+          STATE.auditorias.push(rec);
+          closeDrawer();
+          renderShellCounts();
+          toast("Auditoria criada.", "success");
+          navigate("#/auditorias/" + rec.id);
+        }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
+  }
+
+  function openAuditoriaHeaderForm(a, onSaved) {
+    var html =
+      '<div class="drawer-head"><div><h2>Editar dados da auditoria</h2><div class="sub">Site, empresa, inspetor e colaboradores</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="auditoria-form"><div class="field-grid">' +
+      field("Site ID *", "siteId", "text", { siteId: a.siteId }, { required: true }) +
+      field("Empresa", "empresa", "text", { empresa: a.empresa }) +
+      field("Data", "data", "date", { data: a.data }) +
+      field("Inspetor", "inspetorNome", "text", { inspetorNome: a.inspetorNome }) +
+      selectField("Padrão", "standard", ["NOKIA", "ERICSSON"], a.standard, { required: true }) +
+      '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="auditoria-form-numcolab">' +
+      [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (a.numColaboradores === n ? " selected" : "") + ">" + n + "</option>"; }).join("") +
+      "</select></div>" +
+      '</div><div class="field-grid" id="auditoria-form-colabs">' + colabInputsHtml(a.numColaboradores || 1, a.colaboradores) + "</div>" +
+      "</form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="auditoria-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+    openDrawer(html);
+    $("#auditoria-form-numcolab").addEventListener("change", function () {
+      $("#auditoria-form-colabs").innerHTML = colabInputsHtml(Number(this.value), a.colaboradores);
+    });
+    $("#auditoria-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var qtd = Number(fd.get("numColaboradores")) || 1;
+      var colabs = [];
+      for (var i = 1; i <= qtd; i++) { var v = (fd.get("colaborador_" + i) || "").toString().trim(); if (v) colabs.push(v); }
+      var siteId = (fd.get("siteId") || "").toString().trim();
+      if (!siteId) { toast("Informe o Site ID.", "error"); return; }
+      var body = {
+        siteId: siteId,
+        empresa: (fd.get("empresa") || "").toString().trim(),
+        data: emptyToNull((fd.get("data") || "").toString()),
+        inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
+        standard: fd.get("standard"),
+        numColaboradores: qtd,
+        colaboradores: colabs
+      };
+      apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: body })
+        .then(function (data) {
+          closeDrawer();
+          toast("Dados atualizados.", "success");
+          if (onSaved) onSaved(mapAuditoriaFromApi(data));
+        }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
+  }
+
+  function renderAuditoriaDetail(main, id) {
+    main.innerHTML = '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditorias</button></div></div><div class="hint" style="padding:20px;">Carregando…</div>';
+    $("#back-btn").addEventListener("click", function () { navigate("#/auditorias"); });
+    apiFetch("/api/auditorias/" + id)
+      .then(function (data) { drawAuditoriaDetail(main, mapAuditoriaFromApi(data)); })
+      .catch(function (err) {
+        main.innerHTML = '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditorias</button></div></div>';
+        $("#back-btn").addEventListener("click", function () { navigate("#/auditorias"); });
+        handleApiError(err);
+      });
+  }
+
+  function drawAuditoriaDetail(main, a) {
+    function syncListaLeve() {
+      var idx = STATE.auditorias.findIndex(function (x) { return x.id === a.id; });
+      var leve = {
+        id: a.id, standard: a.standard, siteId: a.siteId, empresa: a.empresa, data: a.data, status: a.status,
+        inspetorNome: a.inspetorNome, numColaboradores: a.numColaboradores, criadoPorNome: a.criadoPorNome,
+        criadoEm: a.criadoEm, atualizadoEm: a.atualizadoEm, finalizadoEm: a.finalizadoEm
+      };
+      if (idx !== -1) STATE.auditorias[idx] = leve; else STATE.auditorias.push(leve);
+    }
+    function redrawChecklist() {
+      var el = document.getElementById("auditoria-checklist");
+      if (el) { el.innerHTML = checklistHtml(a); wireChecklistEvents(el, a, redrawChecklist); }
+    }
+
+    main.innerHTML =
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditorias</button><h1 style="margin-top:6px;">' + esc(a.siteId || "Auditoria " + a.id) + "</h1>" +
+      '<div class="sub">' + esc(a.empresa || "—") + " · " + esc(a.standard) + " · " + statusPillAuditoria(a.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("site_id", "Site ID") + fieldNoteHtml("status", "Status") + "</div>" +
+      "</div>" +
+      '<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      (canDo("auditorias", "editar") ? '<button class="btn" id="btn-edit-auditoria">Editar dados</button>' : "") +
+      (canDo("auditorias", "editar") ? '<button class="btn" id="btn-toggle-status">' + (a.status === "CONCLUIDO" ? "Reabrir" : "Concluir") + "</button>" : "") +
+      '<button class="btn" id="btn-baixar-auditoria">' + ICONS.download + "Baixar</button>" +
+      '<button class="btn" id="btn-compartilhar-auditoria">Compartilhar</button>' +
+      (canDo("auditorias", "excluir") ? '<button class="btn danger" id="btn-del-auditoria">' + ICONS.trash + "Excluir</button>" : "") +
+      "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Dados da auditoria</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Site ID", a.siteId, "site_id") + detailItem("Empresa", a.empresa, "empresa") +
+      detailItem("Data", fmtDateBR(a.data), "data") + detailItem("Padrão", a.standard, "standard") +
+      detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
+      detailItem("Criado por", a.criadoPorNome) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Checklist</h3></div><div class="panel-body pad" id="auditoria-checklist">' + checklistHtml(a) + "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Observações finais</h3></div><div class="panel-body pad">' +
+      '<textarea id="auditoria-obs" style="width:100%;min-height:90px;" placeholder="Observações gerais sobre a auditoria…">' + esc(a.observacaoFinal) + "</textarea></div></div>" +
+      '<div class="panel no-print"><div class="panel-head"><h3>Assinatura do inspetor</h3><button type="button" class="btn sm ghost" id="btn-limpar-assinatura">Limpar</button></div>' +
+      '<div class="panel-body pad"><canvas id="auditoria-assinatura" class="assinatura-canvas" width="600" height="200"></canvas></div></div>' +
+      historyPanelHtml("auditoria", a.id);
+    loadHistoryPanel("auditoria", a.id);
+
+    var assinaturaFoto = (a.fotos || []).filter(function (f) { return f.slotKey === "assinatura_inspetor"; })[0] || null;
+    var canvas = document.getElementById("auditoria-assinatura");
+    setupSignaturePad(canvas);
+    if (assinaturaFoto && assinaturaFoto.url) {
+      var img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = function () { canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height); };
+      img.src = assinaturaFoto.url;
+    }
+    var salvarAssinaturaDebounced = debounce(function () {
+      salvarAssinatura(a, canvas, function (foto) { assinaturaFoto = foto; });
+    }, 900);
+    canvas.addEventListener("pointerup", salvarAssinaturaDebounced);
+    canvas.addEventListener("touchend", salvarAssinaturaDebounced);
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/auditorias"); });
+    if ($("#btn-edit-auditoria")) $("#btn-edit-auditoria").addEventListener("click", function () {
+      openAuditoriaHeaderForm(a, function (patched) {
+        a.siteId = patched.siteId; a.empresa = patched.empresa; a.data = patched.data; a.inspetorNome = patched.inspetorNome;
+        a.standard = patched.standard; a.numColaboradores = patched.numColaboradores; a.colaboradores = patched.colaboradores;
+        syncListaLeve();
+        drawAuditoriaDetail(main, a);
+        renderShellCounts();
+      });
+    });
+    if ($("#btn-toggle-status")) $("#btn-toggle-status").addEventListener("click", function () {
+      if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var novoStatus = a.status === "CONCLUIDO" ? "RASCUNHO" : "CONCLUIDO";
+      setSaveDot("saving");
+      apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { status: novoStatus } })
+        .then(function (data) {
+          a.status = data.status; a.finalizadoEm = data.finalizado_em;
+          syncListaLeve();
+          setSaveDot(null);
+          toast(novoStatus === "CONCLUIDO" ? "Auditoria concluída." : "Auditoria reaberta.", "success");
+          drawAuditoriaDetail(main, a);
+        }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
+    });
+    $("#btn-baixar-auditoria").addEventListener("click", function () { window.print(); });
+    $("#btn-compartilhar-auditoria").addEventListener("click", function () {
+      if (navigator.share) {
+        navigator.share({ title: "Auditoria " + (a.siteId || ""), text: "Auditoria de segurança do trabalho — " + (a.siteId || ""), url: location.href }).catch(function () {});
+      } else {
+        toast("Compartilhamento não é suportado neste navegador. Copie o link da página.", "error");
+      }
+    });
+    if ($("#btn-del-auditoria")) $("#btn-del-auditoria").addEventListener("click", function () {
+      confirmDelete("auditoria", a.id, a.siteId || ("Auditoria " + a.id), { after: function () { navigate("#/auditorias"); } });
+    });
+    $("#auditoria-obs").addEventListener("blur", function () {
+      if (!canDo("auditorias", "editar")) return;
+      var val = this.value;
+      if (val === (a.observacaoFinal || "")) return;
+      setSaveDot("saving");
+      apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { observacaoFinal: val } })
+        .then(function () { a.observacaoFinal = val; setSaveDot(null); })
+        .catch(function (err) { setSaveDot("error"); handleApiError(err); });
+    });
+    $("#btn-limpar-assinatura").addEventListener("click", function () {
+      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+      if (assinaturaFoto) {
+        apiFetch("/api/auditorias/" + a.id + "/fotos/" + assinaturaFoto.id, { method: "DELETE" })
+          .then(function () { a.fotos = a.fotos.filter(function (f) { return f.id !== assinaturaFoto.id; }); assinaturaFoto = null; })
+          .catch(handleApiError);
+      }
+    });
+
+    wireChecklistEvents(document.getElementById("auditoria-checklist"), a, redrawChecklist);
+  }
+
 
   function renderEquipeDetail(main, id) {
     var e = byId(STATE.equipes, id);
@@ -2606,7 +3198,7 @@
   // própria tela da pessoa em vez de ir pra lista geral de treinamentos.
   function confirmDelete(kind, id, label, opts) {
     opts = opts || {};
-    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : "documentos";
+    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : kind === "auditoria" ? "auditorias" : "documentos";
     if (!canDo(pageKey, "excluir")) { toast("Você não tem permissão para excluir.", "error"); return; }
     var html =
       '<div class="modal-box"><h3>Excluir registro?</h3><p>Tem certeza que deseja excluir <strong>' + esc(label) + '</strong>? Esta ação não pode ser desfeita.</p>' +
@@ -2618,6 +3210,7 @@
         : kind === "equipe" ? "/api/equipes/" + id
         : kind === "empresa" ? "/api/empresas/" + id
         : kind === "patrimonio" ? "/api/patrimonios/" + id
+        : kind === "auditoria" ? "/api/auditorias/" + id
         : "/api/treinamentos/" + id;
       apiFetch(endpoint, { method: "DELETE" }).then(function () {
         // Espelha localmente a cascata que o banco já faz no servidor, pra
@@ -2638,6 +3231,8 @@
           STATE.treinamentos = STATE.treinamentos.filter(function (t) { return t.id !== id; });
         } else if (kind === "patrimonio") {
           STATE.patrimonios = STATE.patrimonios.filter(function (p) { return p.id !== id; });
+        } else if (kind === "auditoria") {
+          STATE.auditorias = STATE.auditorias.filter(function (a) { return a.id !== id; });
         }
         closeModal();
         renderShellCounts();
@@ -2817,7 +3412,7 @@
   function renderAdminLog(main) {
     uiState.adminLog = uiState.adminLog || { q: "", entidade: "", page: 1 };
     var ui = uiState.adminLog;
-    var entidadeLabels = { pessoa: "Pessoa", equipe: "Equipe", empresa: "Empresa", treinamento: "Documento", usuario: "Usuário", lista: "Lista" };
+    var entidadeLabels = { pessoa: "Pessoa", equipe: "Equipe", empresa: "Empresa", treinamento: "Documento", usuario: "Usuário", lista: "Lista", patrimonio: "Patrimônio", auditoria: "Auditoria" };
 
     function fetchLog(page, pageSize) {
       var params = "?page=" + page + "&pageSize=" + pageSize;
@@ -3251,7 +3846,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", auditorias: "auditorias" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -3268,6 +3863,7 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
+    else if (route.view === "auditorias") route.id ? renderAuditoriaDetail(main, route.id) : renderAuditoriasList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id) closeDrawer();
   }
@@ -3282,7 +3878,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], listas: {} };
+          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], listas: {} };
           render();
           return;
         }

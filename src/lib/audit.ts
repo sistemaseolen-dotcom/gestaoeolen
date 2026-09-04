@@ -5,7 +5,7 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import type { UsuarioRow } from "./permissions";
 
-export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio";
+export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "auditoria";
 
 // Rótulos amigáveis por campo, por entidade — espelha FIELD_LABELS do app.js.
 export const FIELD_LABELS: Record<string, Record<string, string>> = {
@@ -39,6 +39,11 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
   patrimonio: {
     codigo: "Código", tipo: "Tipo", modelo: "Modelo", serie: "Série", valor: "Valor",
     status: "Status", responsavel_nome: "Responsável",
+  },
+  auditoria: {
+    site_id: "Site ID", empresa: "Empresa", data: "Data", standard: "Padrão", status: "Status",
+    inspetor_nome: "Inspetor", num_colaboradores: "Quantos colaboradores", colaboradores: "Colaboradores",
+    observacao_final: "Observações finais",
   },
 };
 

@@ -2,7 +2,7 @@
 // isAdmin, PAGES, ACTIONS). Mantido 1:1 de propósito — qualquer rota nova
 // deve reusar isto, nunca reimplementar a checagem na mão.
 
-export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio"] as const;
+export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "auditorias"] as const;
 export type Page = (typeof PAGES)[number];
 
 export const ACTIONS = ["ver", "criar", "editar", "excluir"] as const;
