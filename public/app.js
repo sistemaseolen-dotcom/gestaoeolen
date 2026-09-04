@@ -1513,7 +1513,6 @@
     { n: 45, tipo: "pergunta", label: "A equipe conhece e aplica as regras que salvam vidas da empresa?", key: "q47", opcoes: ["Sim", "Não", "N/A"] },
     { n: 46, tipo: "pergunta", label: "Existe mais algum risco observado?", key: "q48", opcoes: ["Sim", "Não", "N/A"] }
   ];
-  var AUDITORIA_ITEMS_POR_PADRAO = { NOKIA: AUDITORIA_ITEMS_NOKIA, ERICSSON: [] };
 
   function fotoPorSlot(a, slotKey) {
     var arr = a.fotos || [];
@@ -1544,10 +1543,11 @@
   }
 
   function checklistHtml(a) {
-    var items = AUDITORIA_ITEMS_POR_PADRAO[a.standard] || [];
-    if (!items.length) {
-      return '<div class="hint">O checklist do padrão ' + esc(a.standard || "—") + " ainda não foi configurado nesta tela (só o padrão NOKIA foi migrado até agora). Fale com quem está cuidando do sistema pra adicionarmos os itens desse padrão.</div>";
-    }
+    // Não existe mais distinção de padrão (NOKIA/ERICSSON) — hoje é um único
+    // checklist unificado, usado em toda auditoria. A coluna `standard` no
+    // banco continua existindo só por compatibilidade com os registros já
+    // migrados (sempre "NOKIA"), mas não aparece mais em nenhuma tela.
+    var items = AUDITORIA_ITEMS_NOKIA;
     var html = "";
     items.forEach(function (item) {
       if (item.secao) html += '<div class="form-section-title" style="margin-top:20px;">' + esc(item.secao) + "</div>";
@@ -1752,7 +1752,6 @@
           "<td>" + esc(a.empresa || "—") + "</td>" +
           "<td>" + fmtDateBR(a.data) + "</td>" +
           "<td>" + esc(a.inspetorNome || "—") + "</td>" +
-          "<td>" + esc(a.standard || "—") + "</td>" +
           "<td>" + statusPillAuditoria(a.status) + "</td></tr>";
       }).join("");
       var toolbar =
@@ -1766,7 +1765,7 @@
         (canDo("auditorias", "criar") ? '<button class="btn primary" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Padrão</th><th>Status</th>",
+          headHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada."
         });
@@ -1798,7 +1797,6 @@
       field("Empresa", "empresa", "text", null) +
       field("Data", "data", "date", { data: todayISO() }) +
       field("Inspetor", "inspetorNome", "text", { inspetorNome: CURRENT_USER ? CURRENT_USER.nome : "" }) +
-      selectField("Padrão", "standard", ["NOKIA", "ERICSSON"], "NOKIA", { required: true }) +
       '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="nova-auditoria-numcolab"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></div>' +
       '</div><div class="field-grid" id="nova-auditoria-colabs">' + colabInputsHtml(2) + "</div>" +
       "</form>" +
@@ -1821,7 +1819,6 @@
         empresa: (fd.get("empresa") || "").toString().trim(),
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
-        standard: fd.get("standard"),
         numColaboradores: qtd,
         colaboradores: colabs
       };
@@ -1848,7 +1845,6 @@
       field("Empresa", "empresa", "text", { empresa: a.empresa }) +
       field("Data", "data", "date", { data: a.data }) +
       field("Inspetor", "inspetorNome", "text", { inspetorNome: a.inspetorNome }) +
-      selectField("Padrão", "standard", ["NOKIA", "ERICSSON"], a.standard, { required: true }) +
       '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="auditoria-form-numcolab">' +
       [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (a.numColaboradores === n ? " selected" : "") + ">" + n + "</option>"; }).join("") +
       "</select></div>" +
@@ -1873,7 +1869,6 @@
         empresa: (fd.get("empresa") || "").toString().trim(),
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
-        standard: fd.get("standard"),
         numColaboradores: qtd,
         colaboradores: colabs
       };
@@ -1917,7 +1912,7 @@
 
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditorias</button><h1 style="margin-top:6px;">' + esc(a.siteId || "Auditoria " + a.id) + "</h1>" +
-      '<div class="sub">' + esc(a.empresa || "—") + " · " + esc(a.standard) + " · " + statusPillAuditoria(a.status) + "</div>" +
+      '<div class="sub">' + esc(a.empresa || "—") + " · " + statusPillAuditoria(a.status) + "</div>" +
       '<div class="header-field-notes">' + fieldNoteHtml("site_id", "Site ID") + fieldNoteHtml("status", "Status") + "</div>" +
       "</div>" +
       '<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;">' +
@@ -1929,7 +1924,7 @@
       "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados da auditoria</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Site ID", a.siteId, "site_id") + detailItem("Empresa", a.empresa, "empresa") +
-      detailItem("Data", fmtDateBR(a.data), "data") + detailItem("Padrão", a.standard, "standard") +
+      detailItem("Data", fmtDateBR(a.data), "data") +
       detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
       detailItem("Criado por", a.criadoPorNome) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
       "</div></div></div>" +
