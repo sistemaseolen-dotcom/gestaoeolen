@@ -385,6 +385,13 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .repeat-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .list-toolbar-btn { align-self: flex-start; }
 
+/* ---------------- Configurações (Administrador) ---------------- */
+.config-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
+.config-row:last-child { border-bottom: none; }
+.config-row-text { max-width: 560px; }
+.config-row-title { font-weight: 600; font-size: 13.5px; margin-bottom: 3px; }
+.config-row .btn { flex-shrink: 0; }
+
 .toast-stack { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 90; max-width: min(320px, 90vw); }
 .toast { background: var(--surface-raised); border: 1px solid var(--border); box-shadow: var(--shadow-md); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 12.5px; display: flex; gap: 8px; align-items: flex-start; }
 .toast.error { border-color: color-mix(in srgb, var(--danger) 40%, transparent); }

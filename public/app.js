@@ -590,7 +590,8 @@
         equipes: (data.equipes || []).map(mapEquipeFromApi),
         patrimonios: (data.patrimonios || []).map(mapPatrimonioFromApi),
         auditorias: (data.auditorias || []).map(mapAuditoriaFromApi),
-        listas: data.listas || {}
+        listas: data.listas || {},
+        config: data.configuracoes || {}
       };
     });
   }
@@ -607,6 +608,7 @@
       STATE.patrimonios = data.patrimonios;
       STATE.auditorias = data.auditorias;
       STATE.listas = data.listas;
+      STATE.config = data.config;
       ensureListasSeed();
     });
   }
@@ -1520,17 +1522,30 @@
     return null;
   }
 
+  // Regra de origem da foto (pedido do Diego): auditoria REMOTA só aceita
+  // foto da galeria (o auditor não está no local pra tirar foto na hora).
+  // Auditoria PRESENCIAL (ou sem modalidade definida — registros antigos)
+  // só aceita foto tirada na hora pela câmera, a não ser que o admin tenha
+  // liberado a galeria também em Administrador > Configurações (exceção
+  // pontual, não a regra normal).
+  function permiteGaleriaPresencial() {
+    return !!(STATE.config && STATE.config.auditoria_permitir_galeria_presencial);
+  }
   function fotoSlotHtml(a, slotKey, colabLabel) {
     var f = fotoPorSlot(a, slotKey);
+    var remota = a.modalidade === "REMOTA";
+    var botaoCamera = !remota
+      ? '<label class="btn sm">' + ICONS.camera + (f ? "Tirar outra foto" : "Tirar foto") + '<input type="file" accept="image/*" capture="environment" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>'
+      : "";
+    var botaoGaleria = (remota || permiteGaleriaPresencial())
+      ? '<label class="btn sm ghost">Escolher da galeria<input type="file" accept="image/*" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>'
+      : "";
     return '<div class="foto-slot" data-slot="' + esc(slotKey) + '">' +
       (colabLabel ? '<div class="foto-slot-label">' + esc(colabLabel) + "</div>" : "") +
       (f && f.url
         ? '<div class="foto-slot-preview"><img src="' + esc(f.url) + '" alt="" class="foto-slot-img" data-view-foto title="Clique para ampliar"><button type="button" class="btn ghost sm foto-slot-remove" data-remove-foto="' + f.id + '" title="Remover foto">' + ICONS.trash + "</button></div>"
         : '<div class="foto-slot-empty">' + ICONS.camera + "<span>Sem foto</span></div>") +
-      '<div class="foto-slot-actions">' +
-      '<label class="btn sm">' + ICONS.camera + (f ? "Tirar outra foto" : "Tirar foto") + '<input type="file" accept="image/*" capture="environment" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>' +
-      '<label class="btn sm ghost">Escolher da galeria<input type="file" accept="image/*" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>' +
-      "</div></div>";
+      '<div class="foto-slot-actions">' + botaoCamera + botaoGaleria + "</div></div>";
   }
 
   function perguntaHtml(a, item) {
@@ -3716,9 +3731,10 @@
       '<button type="button" class="section-tab' + (active === "log" ? " active" : "") + '" data-admintab="log">Log de alterações</button>' +
       '<button type="button" class="section-tab' + (active === "listas" ? " active" : "") + '" data-admintab="listas">Listas</button>' +
       '<button type="button" class="section-tab' + (active === "sync" ? " active" : "") + '" data-admintab="sync">Sincronização GPO</button>' +
+      '<button type="button" class="section-tab' + (active === "config" ? " active" : "") + '" data-admintab="config">Configurações</button>' +
       "</div>";
   }
-  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas", sync: "#/admin/sync" };
+  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas", sync: "#/admin/sync", config: "#/admin/config" };
   function bindAdminTabs(main) {
     $all("[data-admintab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () { navigate(ADMIN_TAB_ROUTES[btn.getAttribute("data-admintab")] || "#/admin"); });
@@ -3873,7 +3889,7 @@
   function renderAdminLog(main) {
     uiState.adminLog = uiState.adminLog || { q: "", entidade: "", page: 1 };
     var ui = uiState.adminLog;
-    var entidadeLabels = { pessoa: "Pessoa", equipe: "Equipe", empresa: "Empresa", treinamento: "Documento", usuario: "Usuário", lista: "Lista", patrimonio: "Patrimônio", auditoria: "Auditoria" };
+    var entidadeLabels = { pessoa: "Pessoa", equipe: "Equipe", empresa: "Empresa", treinamento: "Documento", usuario: "Usuário", lista: "Lista", patrimonio: "Patrimônio", auditoria: "Auditoria", configuracao: "Configuração" };
 
     function fetchLog(page, pageSize) {
       var params = "?page=" + page + "&pageSize=" + pageSize;
@@ -4082,6 +4098,58 @@
       '<div class="panel"><div class="panel-body pad">' +
       '<p class="hint" style="margin-bottom:14px;">Gerencie as opções que aparecem nos campos de seleção do cadastro de pessoas (Cargo, Tipo de pessoa, Status e Projeto). As alterações valem para todos os usuários.</p>' +
       '<div id="listas-body"></div>' +
+      "</div></div>";
+    bindAdminTabs(main);
+    draw();
+  }
+
+  // Configurações globais simples (hoje só uma: liberar galeria em
+  // auditoria presencial). Pensado pra crescer — cada linha vem de
+  // CONFIG_ITEMS_ADMIN, então uma configuração nova é só mais uma entrada
+  // nessa lista, sem mexer no resto da tela.
+  var CONFIG_ITEMS_ADMIN = [
+    {
+      chave: "auditoria_permitir_galeria_presencial",
+      titulo: "Permitir fotos da galeria em auditorias presenciais",
+      descricao: "Por padrão, auditorias presenciais só aceitam fotos tiradas na hora (câmera) — auditorias remotas continuam sempre podendo usar a galeria. Ative aqui só em casos pontuais (ex.: problema com a câmera no momento da vistoria); o recomendado é manter desativado."
+    }
+  ];
+  function renderAdminConfiguracoes(main) {
+    function draw() {
+      var itemsHtml = CONFIG_ITEMS_ADMIN.map(function (item) {
+        var ativo = !!(STATE.config && STATE.config[item.chave]);
+        return '<div class="config-row">' +
+          '<div class="config-row-text"><div class="config-row-title">' + esc(item.titulo) + " " + (ativo ? '<span class="pill ok">Ativado</span>' : '<span class="pill neutral">Desativado</span>') + '</div><div class="hint">' + esc(item.descricao) + "</div></div>" +
+          '<button type="button" class="btn ghost sm" data-toggle-config="' + esc(item.chave) + '">' + (ativo ? "Desativar" : "Ativar") + "</button>" +
+          "</div>";
+      }).join("");
+
+      var body = $("#config-body", main);
+      body.innerHTML = itemsHtml;
+
+      $all("[data-toggle-config]", body).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var chave = btn.getAttribute("data-toggle-config");
+          var novoValor = !(STATE.config && STATE.config[chave]);
+          btn.disabled = true;
+          apiFetch("/api/configuracoes", { method: "PATCH", body: { chave: chave, valor: novoValor } })
+            .then(function () {
+              STATE.config = STATE.config || {};
+              STATE.config[chave] = novoValor;
+              toast(novoValor ? "Configuração ativada." : "Configuração desativada.", "success");
+              draw();
+            })
+            .catch(function (err) { btn.disabled = false; handleApiError(err); });
+        });
+      });
+    }
+
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div></div>' +
+      adminTabsHtml("config") +
+      '<div class="panel"><div class="panel-body pad">' +
+      '<p class="hint" style="margin-bottom:14px;">Regras e exceções que valem para todos os usuários do sistema.</p>' +
+      '<div id="config-body"></div>' +
       "</div></div>";
     bindAdminTabs(main);
     draw();
@@ -4331,7 +4399,7 @@
 
     if (route.view === "admin") {
       if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
-      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "sync" ? renderAdminSync(main) : renderAdminUsuarios(main);
+      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "sync" ? renderAdminSync(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
       if (!route.id) closeDrawer();
       return;
     }
@@ -4368,7 +4436,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], listas: {} };
+          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], listas: {}, config: {} };
           render();
           return;
         }
@@ -4380,7 +4448,7 @@
       })
       .catch(function () {
         CURRENT_USER = null;
-        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], listas: {} };
+        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], listas: {}, config: {} };
         render();
       });
   }

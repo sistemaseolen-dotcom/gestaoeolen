@@ -5,7 +5,7 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import type { UsuarioRow } from "./permissions";
 
-export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "auditoria";
+export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "auditoria" | "configuracao";
 
 // Rótulos amigáveis por campo, por entidade — espelha FIELD_LABELS do app.js.
 export const FIELD_LABELS: Record<string, Record<string, string>> = {

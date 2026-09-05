@@ -41,7 +41,7 @@ export async function GET() {
   // baixar o cadastro inteiro de pessoas/empresas/treinamentos no celular.
   const podeAuditorias = canView(gate.user, "auditorias");
 
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes] = await Promise.all([
     fetchAllRows(admin, "pessoas"),
     fetchAllRows(admin, "empresas"),
     fetchAllRows(admin, "treinamentos"),
@@ -55,9 +55,10 @@ export async function GET() {
           .select("id, standard, site_id, empresa, data, status, inspetor_nome, num_colaboradores, colaboradores, respostas, modalidade, criado_por_nome, criado_em, atualizado_em, finalizado_em")
           .order("data", { ascending: false })
       : Promise.resolve({ data: [] as any[], error: null as any }),
+    admin.from("configuracoes").select("chave, valor"),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -80,6 +81,9 @@ export async function GET() {
     listas[opt.lista].push(opt.valor);
   }
 
+  const config: Record<string, any> = {};
+  for (const row of configuracoes.data || []) config[row.chave] = row.valor;
+
   return NextResponse.json({
     pessoas: pessoas.data,
     empresas: empresas.data,
@@ -88,5 +92,6 @@ export async function GET() {
     patrimonios: patrimonios.data,
     auditorias: auditorias.data,
     listas,
+    configuracoes: config,
   });
 }
