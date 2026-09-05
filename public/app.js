@@ -1890,11 +1890,32 @@
     draw();
   }
 
+  // Colaborador da auditoria não é mais texto livre — é selecionado a partir
+  // da lista de pessoas ATIVAS com um dos cargos de campo (Diego pediu:
+  // Team Líder, Membro, Técnico, Vistoriador, Clean Up — fica de fora
+  // "Auditor de qualidade", que não vai a campo nessas funções).
+  var CARGOS_COLAB_AUDITORIA = ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP"];
+  function pessoasParaAuditoria() {
+    return STATE.pessoas
+      .filter(function (p) { return p.status === "ATIVO" && CARGOS_COLAB_AUDITORIA.indexOf((p.cargo || "").trim().toUpperCase()) !== -1; })
+      .slice()
+      .sort(function (x, y) { return (x.nome || "").localeCompare(y.nome || "", "pt-BR"); });
+  }
   function colabInputsHtml(qtd, valores) {
     valores = valores || [];
+    var pessoas = pessoasParaAuditoria();
     var html = "";
     for (var i = 1; i <= qtd; i++) {
-      html += '<div class="field"><label>' + colaboradorLabel(i) + '</label><input type="text" name="colaborador_' + i + '" value="' + esc(valores[i - 1] || "") + '"></div>';
+      var atual = (valores[i - 1] || "").toString().trim();
+      var achou = false;
+      var options = '<option value="">Selecione…</option>';
+      pessoas.forEach(function (p) {
+        var sel = p.nome === atual;
+        if (sel) achou = true;
+        options += '<option value="' + esc(p.nome) + '"' + (sel ? " selected" : "") + ">" + esc(p.nome) + " — " + esc((p.cargo || "").trim().toUpperCase()) + "</option>";
+      });
+      if (atual && !achou) options += '<option value="' + esc(atual) + '" selected>' + esc(atual) + " (não está mais na lista)</option>";
+      html += '<div class="field"><label>' + colaboradorLabel(i) + '</label><select name="colaborador_' + i + '">' + options + "</select></div>";
     }
     return html;
   }
