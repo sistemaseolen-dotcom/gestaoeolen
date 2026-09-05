@@ -1525,7 +1525,7 @@
     return '<div class="foto-slot" data-slot="' + esc(slotKey) + '">' +
       (colabLabel ? '<div class="foto-slot-label">' + esc(colabLabel) + "</div>" : "") +
       (f && f.url
-        ? '<div class="foto-slot-preview"><img src="' + esc(f.url) + '" alt="" class="foto-slot-img" data-view-foto title="Clique para ampliar"><button type="button" class="btn ghost sm foto-slot-remove" data-remove-foto="' + f.id + '" title="Remover foto">' + ICONS.trash + "</button></div>"
+        ? '<div class="foto-slot-preview"><button type="button" class="foto-slot-view" data-view-foto title="Clique para ampliar"><img src="' + esc(f.url) + '" alt="" class="foto-slot-img"></button><button type="button" class="btn ghost sm foto-slot-remove" data-remove-foto="' + f.id + '" title="Remover foto">' + ICONS.trash + "</button></div>"
         : '<div class="foto-slot-empty">' + ICONS.camera + "<span>Sem foto</span></div>") +
       '<div class="foto-slot-actions">' +
       '<label class="btn sm">' + ICONS.camera + (f ? "Tirar outra foto" : "Tirar foto") + '<input type="file" accept="image/*" capture="environment" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>' +
@@ -1595,9 +1595,14 @@
         this.value = "";
       });
     });
-    $all("[data-view-foto]", container).forEach(function (img) {
-      img.addEventListener("click", function () {
-        openFotoLightbox(img.getAttribute("src"));
+    $all("[data-view-foto]", container).forEach(function (btn) {
+      // Botão real (não uma <img> solta) — clique/toque funciona de forma
+      // confiável em qualquer navegador/celular, sem depender de heurística
+      // de "o que conta como clicável" que alguns navegadores mobile aplicam
+      // só a elementos nativamente interativos.
+      btn.addEventListener("click", function () {
+        var imgEl = btn.querySelector("img");
+        if (imgEl) openFotoLightbox(imgEl.getAttribute("src"));
       });
     });
     $all("[data-remove-foto]", container).forEach(function (btn) {

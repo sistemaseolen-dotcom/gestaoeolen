@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server";
 import { requireView } from "@/lib/authGuard";
 
-// Serviço público gratuito (OpenStreetMap Nominatim, sem chave) que converte
-// latitude/longitude em endereço — usado pra montar a marca d'água das fotos
-// de Auditoria (site, horário, endereço e lat/long, igual ao app antigo).
-// Roda no SERVIDOR por dois motivos: 1) a política de uso do Nominatim pede
-// um User-Agent identificando a aplicação, o que não dá pra garantir num
-// fetch feito direto do navegador; 2) mantém consistência com o padrão já
-// usado em /api/empresas/cnpj-lookup (chamada externa sempre no servidor).
+// Converte latitude/longitude em endereço — usado pra montar a marca d'água
+// das fotos de Auditoria (site, horário, endereço e lat/long, igual ao app
+// antigo). Roda no SERVIDOR por dois motivos: 1) a política de uso do
+// Nominatim pede um User-Agent identificando a aplicação, o que não dá pra
+// garantir num fetch feito direto do navegador; 2) mantém consistência com o
+// padrão já usado em /api/empresas/cnpj-lookup (chamada externa sempre no
+// servidor).
+//
+// Dois provedores gratuitos, sem chave, em cadeia: o Nominatim (OpenStreetMap)
+// dá mais detalhe (rua, bairro), mas às vezes recusa/ignora chamadas vindas de
+// IP de datacenter/nuvem (política de uso dele, comum em serviços hospedados
+// tipo Vercel) — nesse caso ele "falha silenciosamente" (timeout ou resposta
+// vazia). Cidade e estado são a parte mais importante da marca d'água, então
+// se o Nominatim não devolver os dois, complementa com o BigDataCloud (feito
+// especificamente pra geocodificação reversa a partir de servidor).
 const NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse";
+const BIGDATACLOUD_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client";
 
 const UF_POR_ESTADO: Record<string, string> = {
   "acre": "AC", "alagoas": "AL", "amapa": "AP", "amazonas": "AM", "bahia": "BA",
@@ -27,6 +36,62 @@ function ufDoEstado(estado: string | undefined): string {
   return UF_POR_ESTADO[chave] || estado;
 }
 
+type Endereco = { via: string; bairro: string; cidade: string; uf: string; cep: string };
+
+async function buscarViaNominatim(lat: number, lon: number): Promise<Endereco | null> {
+  try {
+    const res = await fetch(
+      `${NOMINATIM_URL}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          // Política de uso do Nominatim exige um User-Agent identificável.
+          "User-Agent": "ControleEolen/1.0 (auditorias; contato: diego.nunes@eolen.com.br)",
+        },
+        signal: AbortSignal.timeout(6_000),
+      }
+    );
+    if (!res.ok) return null;
+    const raw = await res.json().catch(() => null);
+    const addr = raw?.address || {};
+
+    const via = [addr.road, addr.house_number].filter(Boolean).join(", ");
+    const bairro = addr.suburb || addr.neighbourhood || addr.city_district || addr.quarter || "";
+    const cidade = addr.city || addr.town || addr.village || addr.municipality || addr.county || "";
+    const uf = ufDoEstado(addr.state);
+    const cep = addr.postcode || "";
+
+    if (!via && !bairro && !cidade && !uf) return null;
+    return { via, bairro, cidade, uf, cep };
+  } catch {
+    return null;
+  }
+}
+
+async function buscarViaBigDataCloud(lat: number, lon: number): Promise<Endereco | null> {
+  try {
+    const res = await fetch(
+      `${BIGDATACLOUD_URL}?latitude=${lat}&longitude=${lon}&localityLanguage=pt`,
+      { method: "GET", signal: AbortSignal.timeout(6_000) }
+    );
+    if (!res.ok) return null;
+    const raw = await res.json().catch(() => null);
+    if (!raw) return null;
+
+    const cidade = raw.city || raw.locality || "";
+    const ufBruto = raw.principalSubdivision || "";
+    const uf = ufDoEstado(ufBruto) || ufBruto;
+    const cep = raw.postcode || "";
+    const bairro = raw.locality && raw.locality !== cidade ? raw.locality : "";
+
+    if (!cidade && !uf) return null;
+    return { via: "", bairro, cidade, uf, cep };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: Request) {
   const gate = await requireView("auditorias");
   if (gate.response) return gate.response;
@@ -38,40 +103,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Informe lat e lon válidos." }, { status: 400 });
   }
 
-  let upstreamRes: Response;
-  try {
-    upstreamRes = await fetch(
-      `${NOMINATIM_URL}?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`,
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          // Política de uso do Nominatim exige um User-Agent identificável.
-          "User-Agent": "ControleEolen/1.0 (auditorias; contato: diego.nunes@eolen.com.br)",
-        },
-        signal: AbortSignal.timeout(8_000),
-      }
-    );
-  } catch {
-    return NextResponse.json({ endereco: null, error: "Não foi possível consultar o endereço agora." }, { status: 200 });
+  let r = await buscarViaNominatim(lat, lon);
+
+  // Cidade e estado são a parte mais importante da marca d'água — se o
+  // Nominatim não trouxe os dois, tenta complementar com o BigDataCloud.
+  if (!r || !r.cidade || !r.uf) {
+    const alt = await buscarViaBigDataCloud(lat, lon);
+    if (alt) {
+      r = {
+        via: r?.via || "",
+        bairro: r?.bairro || alt.bairro,
+        cidade: r?.cidade || alt.cidade,
+        uf: r?.uf || alt.uf,
+        cep: r?.cep || alt.cep,
+      };
+    }
   }
 
-  if (!upstreamRes.ok) {
-    return NextResponse.json({ endereco: null, error: "Serviço de endereço indisponível no momento." }, { status: 200 });
-  }
+  if (!r) return NextResponse.json({ endereco: null });
 
-  const raw = await upstreamRes.json().catch(() => null);
-  const addr = raw?.address || {};
-
-  const via = [addr.road, addr.house_number].filter(Boolean).join(", ");
-  const bairro = addr.suburb || addr.neighbourhood || addr.city_district || "";
-  const cidade = addr.city || addr.town || addr.village || addr.municipality || "";
-  const uf = ufDoEstado(addr.state);
-  const cep = addr.postcode || "";
-
-  const parte1 = [via, bairro].filter(Boolean).join(" - ");
-  const parte2 = [cidade, uf].filter(Boolean).join(" - ");
-  const endereco = [parte1, parte2, cep].filter(Boolean).join(", ") || null;
+  const parte1 = [r.via, r.bairro].filter(Boolean).join(" - ");
+  const parte2 = [r.cidade, r.uf].filter(Boolean).join(" - ");
+  const endereco = [parte1, parte2, r.cep].filter(Boolean).join(", ") || null;
 
   return NextResponse.json({ endereco });
 }
