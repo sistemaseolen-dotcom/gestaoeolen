@@ -602,6 +602,20 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   border-radius: var(--radius-sm); background: #fff; touch-action: none; cursor: crosshair;
 }
 
+/* Combo de pessoa (colaborador da auditoria): campo de busca + lista de
+   sugestões. O valor real fica num <input type="hidden"> — este campo de
+   texto é só pra filtrar/exibir. */
+.pessoa-combo { position: relative; }
+.pessoa-combo-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg); max-height: 260px; overflow-y: auto;
+}
+.pessoa-combo-option { padding: 8px 10px; font-size: 13px; cursor: pointer; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.pessoa-combo-option:hover, .pessoa-combo-option:active { background: var(--surface-alt); }
+.pessoa-combo-cargo { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: var(--ink-faint); }
+.pessoa-combo-empty { padding: 10px; font-size: 12.5px; color: var(--ink-faint); }
+
 /* Lightbox de foto (clique pra ampliar) */
 .lightbox-box { position: relative; width: auto; max-width: min(920px, 94vw); max-height: 92vh; padding: 0; background: transparent; box-shadow: none; }
 .lightbox-img { display: block; max-width: min(920px, 94vw); max-height: 92vh; width: auto; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); background: #fff; }

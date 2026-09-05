@@ -1901,23 +1901,73 @@
       .slice()
       .sort(function (x, y) { return (x.nome || "").localeCompare(y.nome || "", "pt-BR"); });
   }
+  // Campo de colaborador: continua sendo obrigatoriamente uma seleção (não
+  // texto livre), mas agora com busca — a lista de pessoas elegíveis é
+  // grande, então digitar filtra por nome/cargo em vez de rolar a lista
+  // inteira procurando. O valor de verdade (o nome, igual antes) fica num
+  // <input type="hidden">; o campo de texto visível é só pra buscar/exibir.
+  function pessoaComboHtml(name, valorAtual, pessoas) {
+    var atual = (valorAtual || "").toString().trim();
+    var achou = pessoas.filter(function (p) { return p.nome === atual; })[0];
+    var display = atual ? (achou ? atual + " — " + (achou.cargo || "").trim().toUpperCase() : atual) : "";
+    return (
+      '<div class="pessoa-combo" data-combo>' +
+      '<input type="hidden" name="' + esc(name) + '" value="' + esc(atual) + '">' +
+      '<input type="text" class="pessoa-combo-input" data-combo-input autocomplete="off" data-no-uppercase placeholder="Buscar por nome ou cargo…" value="' + esc(display) + '">' +
+      '<div class="pessoa-combo-list" data-combo-list hidden></div>' +
+      (atual && !achou ? '<div class="hint" style="margin-top:4px;">Valor salvo não está mais na lista de pessoas elegíveis (ex.: pessoa inativa) — busque e selecione de novo pra atualizar.</div>' : "") +
+      "</div>"
+    );
+  }
   function colabInputsHtml(qtd, valores) {
     valores = valores || [];
     var pessoas = pessoasParaAuditoria();
     var html = "";
     for (var i = 1; i <= qtd; i++) {
-      var atual = (valores[i - 1] || "").toString().trim();
-      var achou = false;
-      var options = '<option value="">Selecione…</option>';
-      pessoas.forEach(function (p) {
-        var sel = p.nome === atual;
-        if (sel) achou = true;
-        options += '<option value="' + esc(p.nome) + '"' + (sel ? " selected" : "") + ">" + esc(p.nome) + " — " + esc((p.cargo || "").trim().toUpperCase()) + "</option>";
-      });
-      if (atual && !achou) options += '<option value="' + esc(atual) + '" selected>' + esc(atual) + " (não está mais na lista)</option>";
-      html += '<div class="field"><label>' + colaboradorLabel(i) + '</label><select name="colaborador_' + i + '">' + options + "</select></div>";
+      html += '<div class="field"><label>' + colaboradorLabel(i) + "</label>" + pessoaComboHtml("colaborador_" + i, valores[i - 1], pessoas) + "</div>";
     }
     return html;
+  }
+  // Liga a busca/seleção de todo pessoa-combo dentro de `root`. `pessoas` é a
+  // lista elegível (já filtrada por cargo+ativo) usada para preencher a
+  // lista de sugestões.
+  function wirePessoaCombo(root, pessoas) {
+    $all("[data-combo]", root).forEach(function (wrap) {
+      var hidden = wrap.querySelector('input[type="hidden"]');
+      var input = wrap.querySelector("[data-combo-input]");
+      var list = wrap.querySelector("[data-combo-list]");
+      if (!hidden || !input || !list) return;
+
+      function cargoDe(p) { return (p && p.cargo || "").trim().toUpperCase(); }
+      function opcoesFiltradas(termo) {
+        var alvo = normalize(termo || "").trim();
+        var base = alvo ? pessoas.filter(function (p) { return normalize(p.nome + " " + cargoDe(p)).indexOf(alvo) !== -1; }) : pessoas;
+        return base.slice(0, 50);
+      }
+      function renderList() {
+        var matches = opcoesFiltradas(input.value);
+        list.innerHTML = matches.length
+          ? matches.map(function (p) {
+              return '<div class="pessoa-combo-option" data-valor="' + esc(p.nome) + '">' + esc(p.nome) + ' <span class="pessoa-combo-cargo">' + esc(cargoDe(p)) + "</span></div>";
+            }).join("")
+          : '<div class="pessoa-combo-empty">Nenhuma pessoa encontrada.</div>';
+        list.hidden = false;
+      }
+      function selecionar(nomeSel) {
+        var p = pessoas.filter(function (x) { return x.nome === nomeSel; })[0];
+        hidden.value = nomeSel;
+        input.value = p ? nomeSel + " — " + cargoDe(p) : nomeSel;
+        list.hidden = true;
+      }
+
+      input.addEventListener("focus", function () { input.select(); renderList(); });
+      input.addEventListener("input", renderList);
+      list.addEventListener("click", function (ev) {
+        var opt = ev.target.closest("[data-valor]");
+        if (opt) selecionar(opt.getAttribute("data-valor"));
+      });
+      input.addEventListener("keydown", function (ev) { if (ev.key === "Escape") { list.hidden = true; input.blur(); } });
+    });
   }
 
   function openNovaAuditoriaForm() {
@@ -1934,8 +1984,10 @@
       "</form>" +
       '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="nova-auditoria-form" class="btn primary">' + ICONS.check + "Criar auditoria</button></div></div>";
     openDrawer(html);
+    wirePessoaCombo($("#nova-auditoria-colabs"), pessoasParaAuditoria());
     $("#nova-auditoria-numcolab").addEventListener("change", function () {
       $("#nova-auditoria-colabs").innerHTML = colabInputsHtml(Number(this.value));
+      wirePessoaCombo($("#nova-auditoria-colabs"), pessoasParaAuditoria());
     });
     $("#nova-auditoria-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -1984,8 +2036,10 @@
       "</form>" +
       '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="auditoria-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
     openDrawer(html);
+    wirePessoaCombo($("#auditoria-form-colabs"), pessoasParaAuditoria());
     $("#auditoria-form-numcolab").addEventListener("change", function () {
       $("#auditoria-form-colabs").innerHTML = colabInputsHtml(Number(this.value), a.colaboradores);
+      wirePessoaCombo($("#auditoria-form-colabs"), pessoasParaAuditoria());
     });
     $("#auditoria-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -3951,6 +4005,24 @@
   document.addEventListener("click", function (e) {
     if (e.target.id === "drawer-overlay") closeDrawer();
     if (e.target.id === "modal-overlay") closeModal();
+    // Fecha qualquer combo de pessoa (busca de colaborador) aberto quando o
+    // clique acontece fora dele — e, se o usuário digitou algo sem escolher
+    // um item da lista, desfaz o texto (o campo é só de seleção, nunca de
+    // texto livre) voltando pro último valor realmente selecionado.
+    $all(".pessoa-combo").forEach(function (wrap) {
+      if (wrap.contains(e.target)) return;
+      var list = wrap.querySelector("[data-combo-list]");
+      if (list) list.hidden = true;
+      var hidden = wrap.querySelector('input[type="hidden"]');
+      var input = wrap.querySelector("[data-combo-input]");
+      if (!hidden || !input) return;
+      if (hidden.value) {
+        var p = STATE.pessoas.filter(function (x) { return x.nome === hidden.value; })[0];
+        input.value = p ? hidden.value + " — " + (p.cargo || "").trim().toUpperCase() : hidden.value;
+      } else {
+        input.value = "";
+      }
+    });
   });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") { closeDrawer(); closeModal(); }
