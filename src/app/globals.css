@@ -576,18 +576,14 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .foto-slot-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-faint); text-align: center; }
 .foto-slot-preview {
   position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface);
-  display: flex; align-items: center; justify-content: center; height: 190px;
 }
-/* Botão real em volta da foto (em vez de um <img> solto) — clique/toque
-   confiável em qualquer navegador/celular. "all: unset" tira a aparência
-   padrão de botão, sobrando só a foto dentro. */
-.foto-slot-view {
-  all: unset; -webkit-appearance: none; appearance: none; box-sizing: border-box;
-  display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: zoom-in;
-}
-/* object-fit: contain (não cover) pra foto aparecer inteira, sem cortar — o
-   auditor precisa ver a foto toda pra decidir se repete ou não. */
-.foto-slot-img { display: block; max-width: 100%; width: auto; height: 100%; object-fit: contain; pointer-events: none; }
+/* width:100% + height:auto (sem object-fit/flex) é a forma mais simples e
+   confiável de mostrar a foto inteira, sem cortar nenhum pedaço — a altura
+   é sempre a proporção real da foto, nunca forçada. max-height só existe
+   pra uma foto muito vertical não dominar a página inteira; como o
+   navegador ainda respeita a proporção (height:auto), isso nunca corta a
+   imagem, só limita o tanto que ela cresce. */
+.foto-slot-img { display: block; width: 100%; height: auto; max-height: 260px; object-fit: contain; cursor: zoom-in; }
 .foto-slot-remove {
   position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.55); color: #fff;
   border: none; padding: 4px; border-radius: 999px;
@@ -637,8 +633,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
     break-inside: avoid; page-break-inside: avoid;
   }
   .foto-slot-label { margin-bottom: 2px; }
-  .foto-slot-preview { border-radius: 0; overflow: visible; background: transparent; display: flex; justify-content: center; height: auto; }
-  .foto-slot-view { height: auto; cursor: default; }
-  .foto-slot-img { width: auto; max-width: 100%; height: 260px; object-fit: contain; }
+  .foto-slot-preview { border-radius: 0; overflow: visible; background: transparent; }
+  .foto-slot-img { width: 100%; height: auto; max-height: 320px; object-fit: contain; cursor: default; }
   .foto-slot-empty { display: none; }
 }

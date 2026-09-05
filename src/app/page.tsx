@@ -4,6 +4,17 @@ import Script from "next/script";
 // (same ids/classes as the original shell.html) and hands off to the plain
 // script in /public/app.js. All real rendering happens client-side inside
 // app.js — this file intentionally contains no logic of its own.
+
+// /app.js vive em public/ (sem hash no nome de arquivo, ao contrário do CSS
+// e dos chunks do Next, que já são versionados automaticamente). Sem um jeito
+// de "quebrar o cache", o celular do usuário pode continuar usando uma cópia
+// antiga do app.js por dias depois de um novo deploy — o site parece não ter
+// recebido a correção mesmo já publicada. O SHA do commit (Vercel expõe isso
+// em build) muda a cada deploy, então usá-lo na query string força o
+// navegador a buscar o arquivo novo sempre que o código mudar de verdade.
+const APP_JS_VERSION =
+  process.env.VERCEL_GIT_COMMIT_SHA || process.env.VERCEL_DEPLOYMENT_ID || String(Date.now());
+
 export default function Page() {
   return (
     <>
@@ -52,7 +63,7 @@ export default function Page() {
       <div className="toast-stack" id="toast-stack" />
       <div className="viz-tooltip" id="viz-tooltip" role="status" aria-hidden="true" />
 
-      <Script src="/app.js" strategy="afterInteractive" />
+      <Script src={`/app.js?v=${APP_JS_VERSION}`} strategy="afterInteractive" />
     </>
   );
 }
