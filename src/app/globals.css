@@ -614,6 +614,13 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; }
   body { background: #fff; }
 
+  /* Cada item do checklist (pergunta+resposta OU pergunta+fotos) não pode
+     ser partido entre páginas — senão a resposta ou a foto ficam separadas
+     do enunciado. O título de seção/subseção também não pode ficar sozinho
+     no fim da página, separado do primeiro item que vem depois dele. */
+  .checklist-item { break-inside: avoid; page-break-inside: avoid; }
+  .form-section-title { break-after: avoid; page-break-after: avoid; }
+
   /* Fotos da auditoria: inteiras (sem cortar). Item com 1 foto ocupa a
      largura toda; item com várias (2 ou 3 colaboradores) mostra lado a
      lado, em tamanho moderado — nunca esticadas/gigantes. */
