@@ -568,14 +568,19 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .resposta-btn.active.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger-ink); }
 .resposta-btn.active.neutral { background: var(--neutral-soft); border-color: transparent; color: var(--neutral-ink); }
 
-.foto-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.foto-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .foto-slot {
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
   display: flex; flex-direction: column; gap: 8px; background: var(--surface-alt);
 }
-.foto-slot-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-faint); }
-.foto-slot-preview { position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
-.foto-slot-preview img { display: block; width: 100%; height: 110px; object-fit: cover; cursor: zoom-in; }
+.foto-slot-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--ink-faint); text-align: center; }
+.foto-slot-preview {
+  position: relative; border-radius: var(--radius-sm); overflow: hidden; background: var(--surface);
+  display: flex; align-items: center; justify-content: center; height: 190px;
+}
+/* object-fit: contain (não cover) pra foto aparecer inteira, sem cortar — o
+   auditor precisa ver a foto toda pra decidir se repete ou não. */
+.foto-slot-preview img { display: block; max-width: 100%; width: auto; height: 100%; object-fit: contain; cursor: zoom-in; }
 .foto-slot-remove {
   position: absolute; top: 4px; right: 4px; background: rgba(0,0,0,0.55); color: #fff;
   border: none; padding: 4px; border-radius: 999px;
@@ -583,7 +588,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .foto-slot-remove .ic { width: 13px; height: 13px; }
 .foto-slot-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  height: 110px; border-radius: var(--radius-sm); border: 1.5px dashed var(--border-strong); color: var(--ink-faint); font-size: 11.5px;
+  height: 190px; border-radius: var(--radius-sm); border: 1.5px dashed var(--border-strong); color: var(--ink-faint); font-size: 11.5px;
 }
 .foto-slot-empty .ic { width: 22px; height: 22px; }
 .foto-slot-actions { display: flex; flex-direction: column; gap: 6px; }
@@ -609,14 +614,16 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; }
   body { background: #fff; }
 
-  /* Fotos da auditoria: inteiras (sem cortar) e uma por linha, ocupando a largura. */
-  .foto-slot-grid { display: block; }
+  /* Fotos da auditoria: inteiras (sem cortar). Item com 1 foto ocupa a
+     largura toda; item com várias (2 ou 3 colaboradores) mostra lado a
+     lado, em tamanho moderado — nunca esticadas/gigantes. */
+  .foto-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; align-items: start; }
   .foto-slot {
-    display: block; border: none; padding: 0; margin: 0 0 18px; background: transparent;
+    display: flex; flex-direction: column; gap: 6px; border: none; padding: 0; margin: 0 0 12px; background: transparent;
     break-inside: avoid; page-break-inside: avoid;
   }
-  .foto-slot-label { margin-bottom: 6px; }
-  .foto-slot-preview { border-radius: 0; overflow: visible; background: transparent; }
-  .foto-slot-preview img { width: 100%; height: auto; max-width: 100%; object-fit: contain; cursor: default; }
+  .foto-slot-label { margin-bottom: 2px; }
+  .foto-slot-preview { border-radius: 0; overflow: visible; background: transparent; display: flex; justify-content: center; height: auto; }
+  .foto-slot-preview img { width: auto; max-width: 100%; height: 260px; object-fit: contain; cursor: default; }
   .foto-slot-empty { display: none; }
 }
