@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 
 const STANDARDS = ["NOKIA", "ERICSSON"];
+const MODALIDADES = ["PRESENCIAL", "REMOTA"];
 
 function up(v: any): string | null {
   const s = (v ?? "").toString().trim();
@@ -52,6 +53,13 @@ export async function POST(req: Request) {
   const colaboradores = Array.isArray(body?.colaboradores)
     ? body.colaboradores.map((c: any) => up(c)).filter(Boolean)
     : [];
+  let modalidade: string | null = null;
+  if (body?.modalidade !== undefined && body?.modalidade !== null && body?.modalidade !== "") {
+    modalidade = up(body.modalidade);
+    if (!MODALIDADES.includes(modalidade || "")) {
+      return NextResponse.json({ error: "Modalidade inválida." }, { status: 400 });
+    }
+  }
 
   const admin = supabaseAdmin();
   const payload = {
@@ -64,6 +72,7 @@ export async function POST(req: Request) {
     inspetor_nome: up(body?.inspetorNome) || gate.user?.nome || null,
     num_colaboradores: numColaboradores,
     colaboradores,
+    modalidade,
     respostas: {},
     observacao_final: null,
     criado_por_id: gate.user?.id ?? null,
@@ -79,7 +88,7 @@ export async function POST(req: Request) {
     entidadeLabel: data.site_id,
     before: null,
     after: data,
-    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores"],
+    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade"],
     usuario: gate.user,
   });
 

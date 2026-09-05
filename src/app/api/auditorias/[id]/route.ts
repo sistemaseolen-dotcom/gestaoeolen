@@ -6,8 +6,9 @@ import { auditDiffFields, auditDelete } from "@/lib/audit";
 const BUCKET = "auditorias-anexos";
 const CAMPOS_AUDITORIA = [
   "site_id", "empresa", "data", "standard", "status", "inspetor_nome",
-  "num_colaboradores", "observacao_final",
+  "num_colaboradores", "observacao_final", "modalidade",
 ];
+const MODALIDADES = ["PRESENCIAL", "REMOTA"];
 
 function up(v: any): string | null {
   const s = (v ?? "").toString().trim();
@@ -80,6 +81,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
   if (Object.prototype.hasOwnProperty.call(body, "colaboradores")) {
     patch.colaboradores = Array.isArray(body.colaboradores) ? body.colaboradores.map((c: any) => up(c)).filter(Boolean) : [];
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "modalidade")) {
+    const m = body.modalidade ? up(body.modalidade) : null;
+    if (m && !MODALIDADES.includes(m)) {
+      return NextResponse.json({ error: "Modalidade inválida." }, { status: 400 });
+    }
+    patch.modalidade = m;
   }
   if (Object.prototype.hasOwnProperty.call(body, "respostas")) {
     // Mescla com o que já existe — o formulário manda só as respostas que

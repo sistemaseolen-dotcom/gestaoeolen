@@ -95,7 +95,7 @@
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
-    auditorias: { q: "", status: "", page: 1 }
+    auditorias: { q: "", status: "", page: 1, painelMes: "" }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -559,7 +559,7 @@
     return {
       id: row.id, legacyId: row.legacy_id, standard: row.standard, siteId: row.site_id, empresa: row.empresa,
       data: row.data, status: row.status, inspetorNome: row.inspetor_nome, numColaboradores: row.num_colaboradores,
-      colaboradores: row.colaboradores || [], respostas: row.respostas || {}, observacaoFinal: row.observacao_final,
+      colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null, observacaoFinal: row.observacao_final,
       criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
       criadoEm: row.criado_em, atualizadoEm: row.atualizado_em, finalizadoEm: row.finalizado_em,
       fotos: (row.fotos || []).map(mapAuditoriaFotoFromApi)
@@ -1839,6 +1839,20 @@
   }
 
   /* ---------------- Lista ---------------- */
+  function auditoriasTabsHtml(active) {
+    return '<div class="section-tabs no-print" style="margin-bottom:16px;">' +
+      '<button type="button" class="section-tab' + (active === "lista" ? " active" : "") + '" data-auditoriatab="lista">Lista</button>' +
+      '<button type="button" class="section-tab' + (active === "painel" ? " active" : "") + '" data-auditoriatab="painel">Painel</button>' +
+      "</div>";
+  }
+  function bindAuditoriasTabs(main) {
+    $all("[data-auditoriatab]", main).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        navigate(btn.getAttribute("data-auditoriatab") === "painel" ? "#/auditorias/painel" : "#/auditorias");
+      });
+    });
+  }
+
   function renderAuditoriasList(main) {
     var ui = uiState.auditorias;
     function computeFiltered() {
@@ -1874,6 +1888,7 @@
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Checklist de segurança do trabalho realizado em campo, com fotos e assinatura do inspetor</div></div>' +
         (canDo("auditorias", "criar") ? '<button class="btn primary" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
+        auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
           headHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
@@ -1881,11 +1896,269 @@
           empty: "Nenhuma auditoria encontrada."
         });
 
+      bindAuditoriasTabs(main);
       if ($("#btn-new-auditoria")) $("#btn-new-auditoria").addEventListener("click", openNovaAuditoriaForm);
       $("#auditoria-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#auditoria-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/auditorias/" + row.getAttribute("data-id")); }); });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+    }
+    draw();
+  }
+
+  /* ================================================================
+     AUDITORIAS — Painel (dashboard): quem foi auditado x quem não foi,
+     quantas auditorias por semana/mês, presencial x remota, taxa de não
+     conformidade. Tudo calculado no cliente a partir de STATE.auditorias
+     (mesmo padrão do Painel de Treinamentos) — sem endpoint novo.
+     ================================================================ */
+  function mesLabelCurto(mesStr) {
+    var meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+    var p = (mesStr || "").split("-");
+    if (p.length !== 2) return mesStr || "";
+    return meses[Number(p[1]) - 1] + " de " + p[0];
+  }
+  function auditoriasMesesDisponiveis() {
+    var set = {};
+    STATE.auditorias.forEach(function (a) { if (a.data) set[a.data.slice(0, 7)] = true; });
+    return Object.keys(set).sort().reverse();
+  }
+  function auditoriasFiltradasPorMes(mes) {
+    return STATE.auditorias.filter(function (a) { return !mes || (a.data && a.data.slice(0, 7) === mes); });
+  }
+  function inicioSemanaISO(dataStr) {
+    var d = new Date(dataStr + "T00:00:00");
+    var dow = d.getDay();
+    var diff = (dow === 0 ? -6 : 1) - dow;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+  function fimSemanaISO(inicioIso) {
+    var d = new Date(inicioIso + "T00:00:00");
+    d.setDate(d.getDate() + 6);
+    return d.toISOString().slice(0, 10);
+  }
+  function auditoriasPorSemana(mes, lista) {
+    var porSemana = {};
+    var limiteStr = null;
+    if (!mes) {
+      var limite = new Date();
+      limite.setDate(limite.getDate() - 7 * 8);
+      limiteStr = limite.toISOString().slice(0, 10);
+    }
+    lista.forEach(function (a) {
+      if (!a.data) return;
+      if (limiteStr && a.data < limiteStr) return;
+      var k = inicioSemanaISO(a.data);
+      if (!porSemana[k]) porSemana[k] = { semana: k, total: 0 };
+      porSemana[k].total++;
+    });
+    return Object.keys(porSemana).sort().map(function (k) { return porSemana[k]; });
+  }
+  function auditoriasPorModalidade(lista) {
+    var counts = { PRESENCIAL: 0, REMOTA: 0, NAO_INFORMADO: 0 };
+    lista.forEach(function (a) {
+      if (a.modalidade === "PRESENCIAL") counts.PRESENCIAL++;
+      else if (a.modalidade === "REMOTA") counts.REMOTA++;
+      else counts.NAO_INFORMADO++;
+    });
+    return counts;
+  }
+  // Cruza a lista de pessoas elegíveis (ativas, cargo de campo) com os nomes
+  // que aparecem em `colaboradores` das auditorias do período — quem não
+  // aparece em nenhuma é "não auditado". Só considera pessoas elegíveis
+  // HOJE (se alguém foi desativado depois de auditado, não conta como
+  // "não auditado" simplesmente por ter saído da lista atual).
+  function pessoasAuditadasInfo(lista) {
+    var elegiveis = pessoasParaAuditoria();
+    var porNome = {};
+    elegiveis.forEach(function (p) { porNome[p.nome] = { nome: p.nome, cargo: p.cargo, qtd: 0, ultimaData: null }; });
+    lista.forEach(function (a) {
+      (a.colaboradores || []).forEach(function (nomeRaw) {
+        var nome = (nomeRaw || "").toString().trim();
+        var info = porNome[nome];
+        if (!info) return;
+        info.qtd++;
+        if (!info.ultimaData || (a.data || "") > info.ultimaData) info.ultimaData = a.data;
+      });
+    });
+    var auditadas = [], naoAuditadas = [];
+    Object.keys(porNome).forEach(function (nome) {
+      var info = porNome[nome];
+      if (info.qtd > 0) auditadas.push(info); else naoAuditadas.push(info);
+    });
+    auditadas.sort(function (a, b) { return b.qtd - a.qtd || a.nome.localeCompare(b.nome, "pt-BR"); });
+    naoAuditadas.sort(function (a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
+    return { auditadas: auditadas, naoAuditadas: naoAuditadas, totalElegiveis: elegiveis.length };
+  }
+  function auditadosPorCargo(auditadas) {
+    var counts = {};
+    CARGOS_COLAB_AUDITORIA.forEach(function (c) { counts[c] = 0; });
+    auditadas.forEach(function (p) {
+      var c = (p.cargo || "").trim().toUpperCase();
+      if (counts[c] !== undefined) counts[c]++;
+    });
+    return counts;
+  }
+  // % de respostas "Não" entre Sim/Não do checklist (N/A fica de fora do
+  // cálculo — não representa conformidade nem não conformidade).
+  function taxaNaoConformidade(lista) {
+    var sim = 0, nao = 0;
+    lista.forEach(function (a) {
+      var r = a.respostas || {};
+      Object.keys(r).forEach(function (k) {
+        if (r[k] === "Sim") sim++; else if (r[k] === "Não") nao++;
+      });
+    });
+    var total = sim + nao;
+    return { pct: total ? Math.round((nao / total) * 100) : 0, nao: nao, total: total };
+  }
+  function openPessoasAuditadasDrawer(list, mes, auditado, cargoLabel) {
+    var titulo = cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas";
+    var rowsHtml = list.map(function (p) {
+      return '<tr><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + "</td>" +
+        (auditado ? "<td>" + (p.qtd || 0) + "</td><td>" + fmtDateBR(p.ultimaData) + "</td>" : "") + "</tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: titulo,
+      subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : "") + " — " + (mes ? mesLabelCurto(mes) : "geral (todos os períodos)"),
+      theadHtml: "<th>Nome</th><th>Cargo</th>" + (auditado ? "<th>Auditorias</th><th>Última auditoria</th>" : ""),
+      rowsHtml: rowsHtml,
+      exportHeaders: auditado ? ["Nome", "Cargo", "Auditorias", "Última auditoria"] : ["Nome", "Cargo"],
+      exportRows: list.map(function (p) {
+        return auditado ? [p.nome, p.cargo || "", p.qtd || 0, fmtDateBR(p.ultimaData)] : [p.nome, p.cargo || ""];
+      })
+    });
+  }
+  function openSemanaAuditoriasDrawer(semanaInicio, listaCompleta) {
+    var fim = fimSemanaISO(semanaInicio);
+    var list = listaCompleta.filter(function (a) { return a.data && inicioSemanaISO(a.data) === semanaInicio; })
+      .sort(function (a, b) { return (a.data || "").localeCompare(b.data || "") || a.id - b.id; });
+    var rowsHtml = list.map(function (a) {
+      return '<tr data-id="' + a.id + '"><td class="mono">' + esc(a.siteId || "—") + '</td><td>' + esc(a.empresa || "—") + "</td><td>" + fmtDateBR(a.data) + "</td><td>" + esc(a.inspetorNome || "—") + "</td><td>" + statusPillAuditoria(a.status) + "</td></tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: "Semana de " + fmtDateBR(semanaInicio) + " a " + fmtDateBR(fim),
+      subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : ""),
+      theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Site ID", "Empresa", "Data", "Inspetor", "Status"],
+      exportRows: list.map(function (a) { return [a.siteId || "", a.empresa || "", fmtDateBR(a.data), a.inspetorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"]; }),
+      onRowBind: function (root) {
+        $all("[data-id]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
+        });
+      }
+    });
+  }
+
+  function renderAuditoriasPainel(main) {
+    var ui = uiState.auditorias;
+    function draw() {
+      var mes = ui.painelMes;
+      var lista = auditoriasFiltradasPorMes(mes);
+      var concluidas = lista.filter(function (a) { return a.status === "CONCLUIDO"; }).length;
+      var rascunhos = lista.length - concluidas;
+      var semanas = auditoriasPorSemana(mes, lista);
+      var modalidade = auditoriasPorModalidade(lista);
+      var pessoasInfo = pessoasAuditadasInfo(lista);
+      var porCargo = auditadosPorCargo(pessoasInfo.auditadas);
+      var naoConf = taxaNaoConformidade(lista);
+      var meses = auditoriasMesesDisponiveis();
+
+      var filtroHtml =
+        '<div class="no-print" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">' +
+        '<select class="filter" id="painel-mes-filter"><option value="">Geral (todos os períodos)</option>' +
+        meses.map(function (m) { return '<option value="' + m + '"' + (m === mes ? " selected" : "") + '>' + esc(mesLabelCurto(m)) + "</option>"; }).join("") +
+        "</select>" +
+        '<button type="button" class="btn ghost sm" id="btn-baixar-painel">' + ICONS.download + "Baixar PDF</button>" +
+        "</div>";
+
+      var kpis = [
+        ["Auditorias no período", lista.length, "", null],
+        ["Concluídas", concluidas, "ok", null],
+        ["Em rascunho", rascunhos, rascunhos > 0 ? "warn" : "", null],
+        ["Pessoas auditadas", pessoasInfo.auditadas.length + " de " + pessoasInfo.totalElegiveis, "ok", "auditadas"],
+        ["Pessoas não auditadas", pessoasInfo.naoAuditadas.length, pessoasInfo.naoAuditadas.length > 0 ? "danger" : "ok", "naoAuditadas"],
+        ["Não conformidade", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null]
+      ];
+      var kpiHtml = kpis.map(function (k) {
+        var clickAttrs = k[3] ? ' tabindex="0" data-painel-kpi="' + k[3] + '" style="cursor:pointer;"' : "";
+        return '<div class="kpi ' + k[2] + '"' + clickAttrs + '><span class="label">' + esc(k[0]) + '</span><span class="value tabular">' + k[1] + "</span></div>";
+      }).join("");
+
+      var semanaMax = semanas.reduce(function (m, s) { return Math.max(m, s.total); }, 0) || 1;
+      var semanaHtml = semanas.length
+        ? '<div class="rankbar-list">' + semanas.map(function (s) {
+            var pct = Math.max(6, Math.round((s.total / semanaMax) * 100));
+            var label = "Semana de " + fmtDateBR(s.semana) + " a " + fmtDateBR(fimSemanaISO(s.semana));
+            return '<div class="rankbar-row" tabindex="0" data-semana-bar="' + s.semana + '" data-tip-title="' + esc(label) + '" data-tip-sub="' + s.total + " auditoria" + (s.total !== 1 ? "s" : "") + '">' +
+              '<div class="rankbar-label">' + esc(label) + '</div>' +
+              '<div class="rankbar-track"><div class="rankbar-fill" style="width:max(' + pct + '%, 26px);"><div class="rankbar-seg accent" style="flex-grow:1;"><span>' + s.total + "</span></div></div></div>" +
+              '<div class="rankbar-total">' + s.total + "</div></div>";
+          }).join("") + "</div>"
+        : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período' + (mes ? "" : " (últimas 8 semanas)") + ".</div>";
+
+      var modalidadeDefs = [["PRESENCIAL", "ok", "Presencial"], ["REMOTA", "info", "Remota"], ["NAO_INFORMADO", "neutral", "Não informado"]];
+      var modalidadeTotalBruto = modalidade.PRESENCIAL + modalidade.REMOTA + modalidade.NAO_INFORMADO;
+      var modalidadeTotal = modalidadeTotalBruto || 1;
+      var modalidadeSegs = modalidadeDefs.map(function (d) {
+        var n = modalidade[d[0]] || 0;
+        if (!n) return "";
+        var pct = (n / modalidadeTotal * 100);
+        return '<div class="seg ' + d[1] + '" style="flex-grow:' + pct.toFixed(3) + ';" data-tip-title="' + esc(d[2]) + '" data-tip-sub="' + n + " registros (" + pct.toFixed(1) + '%)"><span>' + n + "</span></div>";
+      }).join("");
+      var modalidadeLegend = modalidadeDefs.map(function (d) {
+        return '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ' + d[1] + '"></span>' + d[2] + " — " + (modalidade[d[0]] || 0) + "</span>";
+      }).join("");
+      var modalidadeHtml = modalidadeTotalBruto > 0
+        ? '<div class="status-bar-lg">' + modalidadeSegs + '</div><div class="legend-row">' + modalidadeLegend + "</div>"
+        : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
+
+      var cargoCounts = {};
+      CARGOS_COLAB_AUDITORIA.forEach(function (c) { cargoCounts[c] = porCargo[c] || 0; });
+      var cargoHtml = simpleBarsHtml(cargoCounts, "auditoria-cargo");
+
+      main.innerHTML =
+        '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + (mes ? " em " + esc(mesLabelCurto(mes)) : "") + '</div></div>' +
+        (canDo("auditorias", "criar") ? '<button class="btn primary no-print" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
+        auditoriasTabsHtml("painel") +
+        filtroHtml +
+        '<div class="kpi-row">' + kpiHtml + "</div>" +
+        '<div class="viz-grid">' +
+        '<div class="panel"><div class="panel-head"><h3>Auditorias por semana</h3><span class="hint">' + (mes ? "clique numa barra pra ver as auditorias" : "últimas 8 semanas — clique numa barra") + '</span></div><div class="panel-body pad">' + semanaHtml + "</div></div>" +
+        '<div class="panel"><div class="panel-head"><h3>Presencial x remota</h3></div><div class="panel-body pad">' + modalidadeHtml + "</div></div>" +
+        "</div>" +
+        '<div class="panel"><div class="panel-head"><h3>Pessoas auditadas por cargo</h3><span class="hint">clique numa barra pra ver quem</span></div><div class="panel-body pad">' + cargoHtml + "</div></div>";
+
+      bindAuditoriasTabs(main);
+      bindTooltips(main);
+      if ($("#btn-new-auditoria")) $("#btn-new-auditoria").addEventListener("click", openNovaAuditoriaForm);
+      $("#painel-mes-filter").addEventListener("change", function () { ui.painelMes = this.value; draw(); });
+      $("#btn-baixar-painel").addEventListener("click", function () { window.print(); });
+      $all("[data-painel-kpi]", main).forEach(function (el) {
+        el.addEventListener("click", function () {
+          var kind = el.getAttribute("data-painel-kpi");
+          if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, mes, true);
+          else openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, mes, false);
+        });
+        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+      });
+      $all("[data-semana-bar]", main).forEach(function (el) {
+        el.addEventListener("click", function () { openSemanaAuditoriasDrawer(el.getAttribute("data-semana-bar"), lista); });
+        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+      });
+      $all("[data-simple-bar]", main).forEach(function (el) {
+        if (el.getAttribute("data-simple-bar") !== "auditoria-cargo") return;
+        el.addEventListener("click", function () {
+          var cargoVal = el.getAttribute("data-simple-bar-value");
+          openPessoasAuditadasDrawer(
+            pessoasInfo.auditadas.filter(function (p) { return (p.cargo || "").trim().toUpperCase() === cargoVal; }),
+            mes, true, cargoVal
+          );
+        });
+        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+      });
     }
     draw();
   }
@@ -1979,6 +2252,7 @@
       field("Empresa", "empresa", "text", null) +
       field("Data", "data", "date", { data: todayISO() }) +
       field("Inspetor", "inspetorNome", "text", { inspetorNome: CURRENT_USER ? CURRENT_USER.nome : "" }) +
+      '<div class="field"><label>Modalidade</label><select name="modalidade"><option value="PRESENCIAL" selected>Presencial</option><option value="REMOTA">Remota</option></select></div>' +
       '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="nova-auditoria-numcolab"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></div>' +
       '</div><div class="field-grid" id="nova-auditoria-colabs">' + colabInputsHtml(2) + "</div>" +
       "</form>" +
@@ -2003,6 +2277,7 @@
         empresa: (fd.get("empresa") || "").toString().trim(),
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
+        modalidade: (fd.get("modalidade") || "").toString().trim() || null,
         numColaboradores: qtd,
         colaboradores: colabs
       };
@@ -2029,6 +2304,7 @@
       field("Empresa", "empresa", "text", { empresa: a.empresa }) +
       field("Data", "data", "date", { data: a.data }) +
       field("Inspetor", "inspetorNome", "text", { inspetorNome: a.inspetorNome }) +
+      '<div class="field"><label>Modalidade</label><select name="modalidade"><option value=""' + (!a.modalidade ? " selected" : "") + '>Não informado</option><option value="PRESENCIAL"' + (a.modalidade === "PRESENCIAL" ? " selected" : "") + '>Presencial</option><option value="REMOTA"' + (a.modalidade === "REMOTA" ? " selected" : "") + '>Remota</option></select></div>' +
       '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="auditoria-form-numcolab">' +
       [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (a.numColaboradores === n ? " selected" : "") + ">" + n + "</option>"; }).join("") +
       "</select></div>" +
@@ -2055,6 +2331,7 @@
         empresa: (fd.get("empresa") || "").toString().trim(),
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
+        modalidade: (fd.get("modalidade") || "").toString().trim() || null,
         numColaboradores: qtd,
         colaboradores: colabs
       };
@@ -2086,7 +2363,8 @@
       var idx = STATE.auditorias.findIndex(function (x) { return x.id === a.id; });
       var leve = {
         id: a.id, standard: a.standard, siteId: a.siteId, empresa: a.empresa, data: a.data, status: a.status,
-        inspetorNome: a.inspetorNome, numColaboradores: a.numColaboradores, criadoPorNome: a.criadoPorNome,
+        inspetorNome: a.inspetorNome, numColaboradores: a.numColaboradores, colaboradores: a.colaboradores,
+        respostas: a.respostas, modalidade: a.modalidade, criadoPorNome: a.criadoPorNome,
         criadoEm: a.criadoEm, atualizadoEm: a.atualizadoEm, finalizadoEm: a.finalizadoEm
       };
       if (idx !== -1) STATE.auditorias[idx] = leve; else STATE.auditorias.push(leve);
@@ -2112,6 +2390,7 @@
       detailItem("Site ID", a.siteId, "site_id") + detailItem("Empresa", a.empresa, "empresa") +
       detailItem("Data", fmtDateBR(a.data), "data") +
       detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
+      detailItem("Modalidade", a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "Não informado", "modalidade") +
       detailItem("Criado por", a.criadoPorNome) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Checklist</h3></div><div class="panel-body pad" id="auditoria-checklist">' + checklistHtml(a) + "</div></div>" +
@@ -2142,6 +2421,7 @@
       openAuditoriaHeaderForm(a, function (patched) {
         a.siteId = patched.siteId; a.empresa = patched.empresa; a.data = patched.data; a.inspetorNome = patched.inspetorNome;
         a.standard = patched.standard; a.numColaboradores = patched.numColaboradores; a.colaboradores = patched.colaboradores;
+        a.modalidade = patched.modalidade;
         syncListaLeve();
         drawAuditoriaDetail(main, a);
         renderShellCounts();
@@ -4073,9 +4353,9 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
-    else if (route.view === "auditorias") route.id ? renderAuditoriaDetail(main, route.id) : renderAuditoriasList(main);
+    else if (route.view === "auditorias") route.id === "painel" ? renderAuditoriasPainel(main) : route.id ? renderAuditoriaDetail(main, route.id) : renderAuditoriasList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
-    if (!route.id) closeDrawer();
+    if (!route.id || route.id === "painel") closeDrawer();
   }
 
   /* ---------------- Init ----------------
