@@ -561,6 +561,7 @@
     if (!row) return row;
     return {
       id: row.id, legacyId: row.legacy_id, standard: row.standard, siteId: row.site_id, empresa: row.empresa,
+      regional: row.regional || null,
       data: row.data, status: row.status, inspetorNome: row.inspetor_nome, numColaboradores: row.num_colaboradores,
       colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null,
       observacaoFinal: row.observacao_final,
@@ -1478,6 +1479,16 @@
     return AUDITORIA_CLIENTES.indexOf(v) !== -1 ? v : "NOKIA";
   }
 
+  // Regional da auditoria — pedido do Diego pra aparecer no relatório e nos
+  // KPIs do Painel. Em ordem alfabética (pedido explícito). Diferente de
+  // Cliente, não tem um valor padrão: auditoria antiga sem regional
+  // preenchida fica "sem regional" mesmo (não assumimos nenhuma).
+  var AUDITORIA_REGIONAIS = ["CO", "ES", "MG", "NE", "NO", "RJ", "SP", "SUL"];
+  function regionalAuditoria(a) {
+    var v = (a && a.regional) || "";
+    return AUDITORIA_REGIONAIS.indexOf(v) !== -1 ? v : "";
+  }
+
   var AUDITORIA_ITEMS_NOKIA = [
     { n: 1, secao: "FOTOS INICIAIS", tipo: "foto", label: "Selfie do inspetor no site", slot: "foto_selfie_inspetor" },
     { n: 2, tipo: "foto", label: "Foto da torre", slot: "foto_torre" },
@@ -2214,6 +2225,20 @@
     lista.forEach(function (a) { counts[clienteAuditoria(a)]++; });
     return counts;
   }
+  // Quantas auditorias por regional (SP/MG/RJ/CO/ES/NO/SUL/NE) — pedido do
+  // Diego pra aparecer no Painel. Auditoria sem regional preenchida (dados
+  // antigos, de antes desse campo existir) entra como "Não informado".
+  function auditoriasPorRegional(lista) {
+    var counts = {};
+    AUDITORIA_REGIONAIS.forEach(function (r) { counts[r] = 0; });
+    var semRegional = 0;
+    lista.forEach(function (a) {
+      var r = regionalAuditoria(a);
+      if (r) counts[r]++; else semRegional++;
+    });
+    if (semRegional) counts["Não informado"] = semRegional;
+    return counts;
+  }
   function openPessoasAuditadasDrawer(list, periodoTxt, auditado, cargoLabel) {
     var titulo = cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas";
     var rowsHtml = list.map(function (p) {
@@ -2272,6 +2297,28 @@
       }
     });
   }
+  function openAuditoriasRegionalDrawer(regionalVal, listaCompleta, periodoTxt) {
+    var list = listaCompleta.filter(function (a) {
+      var r = regionalAuditoria(a);
+      return regionalVal === "Não informado" ? !r : r === regionalVal;
+    }).sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.id - a.id; });
+    var rowsHtml = list.map(function (a) {
+      return '<tr data-id="' + a.id + '"><td class="mono">' + esc(a.siteId || "—") + '</td><td>' + esc(a.empresa || "—") + "</td><td>" + fmtDateBR(a.data) + "</td><td>" + esc(a.inspetorNome || "—") + "</td><td>" + statusPillAuditoria(a.status) + "</td></tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: "Auditorias — " + regionalVal,
+      subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
+      theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Site ID", "Empresa", "Data", "Inspetor", "Status"],
+      exportRows: list.map(function (a) { return [a.siteId || "", a.empresa || "", fmtDateBR(a.data), a.inspetorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"]; }),
+      onRowBind: function (root) {
+        $all("[data-id]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
+        });
+      }
+    });
+  }
 
   function renderAuditoriasPainel(main) {
     var ui = uiState.auditorias;
@@ -2287,6 +2334,7 @@
       var porCargo = auditadosPorCargo(pessoasInfo.auditadas);
       var naoConf = taxaNaoConformidade(lista);
       var clienteCounts = auditoriasPorCliente(lista);
+      var regionalCounts = auditoriasPorRegional(lista);
       var meses = auditoriasMesesDisponiveis();
 
       // Filtro do Painel: Geral, Mês, Dia exato ou Período (intervalo) —
@@ -2380,6 +2428,8 @@
       CARGOS_COLAB_AUDITORIA.forEach(function (c) { cargoCounts[c] = porCargo[c] || 0; });
       var cargoHtml = simpleBarsHtml(cargoCounts, "auditoria-cargo");
 
+      var regionalHtml = simpleBarsHtml(regionalCounts, "auditoria-regional");
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + esc(periodoLabelLongo(periodo)) + '</div></div>' +
         (canDo("auditorias", "criar") ? '<button class="btn primary no-print" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
@@ -2390,8 +2440,9 @@
         '<div class="panel"><div class="panel-head"><h3>Auditorias por semana</h3><span class="hint">' + (periodo.tipo === "geral" ? "últimas 8 semanas — clique numa barra" : "clique numa barra pra ver as auditorias") + '</span></div><div class="panel-body pad">' + semanaHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Presencial x remota</h3></div><div class="panel-body pad">' + modalidadeHtml + "</div></div>" +
         "</div>" +
-        '<div class="viz-grid">' +
+        '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por cliente</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + clienteHtml + "</div></div>" +
+        '<div class="panel"><div class="panel-head"><h3>Auditorias por regional</h3><span class="hint">clique numa barra pra ver as auditorias</span></div><div class="panel-body pad">' + regionalHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Pessoas auditadas por cargo</h3><span class="hint">clique numa barra pra ver quem</span></div><div class="panel-body pad">' + cargoHtml + "</div></div>" +
         "</div>";
 
@@ -2438,6 +2489,13 @@
             pessoasInfo.auditadas.filter(function (p) { return (p.cargo || "").trim().toUpperCase() === cargoVal; }),
             periodoTxt, true, cargoVal
           );
+        });
+        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+      });
+      $all("[data-simple-bar]", main).forEach(function (el) {
+        if (el.getAttribute("data-simple-bar") !== "auditoria-regional") return;
+        el.addEventListener("click", function () {
+          openAuditoriasRegionalDrawer(el.getAttribute("data-simple-bar-value"), lista, periodoTxt);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -2533,12 +2591,22 @@
       AUDITORIA_CLIENTES.map(function (c) { return '<option value="' + c + '"' + (c === (current || "NOKIA") ? " selected" : "") + '>' + c + "</option>"; }).join("") +
       "</select>";
   }
+  // Select de "Regional" — sem valor padrão (diferente de Cliente), pra não
+  // assumir uma regional errada quando o usuário esquecer de escolher.
+  function regionalSelectHtml(name, current, opts) {
+    opts = opts || {};
+    return '<select name="' + name + '"' + (opts.required ? " required" : "") + '>' +
+      '<option value=""' + (!current ? " selected" : "") + '>' + esc(opts.emptyLabel || "Selecione…") + "</option>" +
+      AUDITORIA_REGIONAIS.map(function (r) { return '<option value="' + r + '"' + (r === current ? " selected" : "") + '>' + r + "</option>"; }).join("") +
+      "</select>";
+  }
   function openNovaAuditoriaForm() {
     var html =
       '<div class="drawer-head"><div><h2>Nova auditoria</h2><div class="sub">Checklist de segurança do trabalho — preencha os dados e depois complete o checklist</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="nova-auditoria-form"><div class="field-grid">' +
-      '<div class="field span2"><label>Cliente *</label>' + clienteSelectHtml("standard", "NOKIA") + "</div>" +
+      '<div class="field"><label>Cliente *</label>' + clienteSelectHtml("standard", "NOKIA") + "</div>" +
+      '<div class="field"><label>Regional *</label>' + regionalSelectHtml("regional", "", { required: true }) + "</div>" +
       field("Site ID *", "siteId", "text", null, { required: true }) +
       field("Empresa", "empresa", "text", null) +
       field("Data", "data", "date", { data: todayISO() }) +
@@ -2563,10 +2631,13 @@
       for (var i = 1; i <= qtd; i++) { var v = (fd.get("colaborador_" + i) || "").toString().trim(); if (v) colabs.push(v); }
       var siteId = (fd.get("siteId") || "").toString().trim();
       if (!siteId) { toast("Informe o Site ID.", "error"); return; }
+      var regional = (fd.get("regional") || "").toString().trim();
+      if (!regional) { toast("Informe a Regional.", "error"); return; }
       var body = {
         siteId: siteId,
         standard: (fd.get("standard") || "NOKIA").toString().trim(),
         empresa: (fd.get("empresa") || "").toString().trim(),
+        regional: regional,
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
         modalidade: (fd.get("modalidade") || "").toString().trim() || null,
@@ -2592,7 +2663,8 @@
       '<div class="drawer-head"><div><h2>Editar dados da auditoria</h2><div class="sub">Site, empresa, inspetor e colaboradores</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="auditoria-form"><div class="field-grid">' +
-      '<div class="field span2"><label>Cliente</label>' + clienteSelectHtml("standard", a.standard) + "</div>" +
+      '<div class="field"><label>Cliente</label>' + clienteSelectHtml("standard", a.standard) + "</div>" +
+      '<div class="field"><label>Regional</label>' + regionalSelectHtml("regional", a.regional || "", { emptyLabel: "Não informado" }) + "</div>" +
       field("Site ID *", "siteId", "text", { siteId: a.siteId }, { required: true }) +
       field("Empresa", "empresa", "text", { empresa: a.empresa }) +
       field("Data", "data", "date", { data: a.data }) +
@@ -2623,6 +2695,7 @@
         siteId: siteId,
         standard: (fd.get("standard") || "NOKIA").toString().trim(),
         empresa: (fd.get("empresa") || "").toString().trim(),
+        regional: (fd.get("regional") || "").toString().trim() || null,
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
         modalidade: (fd.get("modalidade") || "").toString().trim() || null,
@@ -2657,7 +2730,7 @@
     function syncListaLeve() {
       var idx = STATE.auditorias.findIndex(function (x) { return x.id === a.id; });
       var leve = {
-        id: a.id, standard: a.standard, siteId: a.siteId, empresa: a.empresa, data: a.data, status: a.status,
+        id: a.id, standard: a.standard, siteId: a.siteId, empresa: a.empresa, regional: a.regional, data: a.data, status: a.status,
         inspetorNome: a.inspetorNome, numColaboradores: a.numColaboradores, colaboradores: a.colaboradores,
         respostas: a.respostas, modalidade: a.modalidade,
         criadoPorNome: a.criadoPorNome,
@@ -2689,6 +2762,7 @@
       "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados da auditoria</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Site ID", a.siteId, "site_id") + detailItem("Empresa", a.empresa, "empresa") +
+      detailItem("Regional", a.regional || "Não informado", "regional") +
       detailItem("Data", fmtDateBR(a.data), "data") +
       detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
       detailItem("Modalidade", a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "Não informado", "modalidade") +
@@ -2719,7 +2793,7 @@
     if ($("#btn-edit-auditoria")) $("#btn-edit-auditoria").addEventListener("click", function () {
       openAuditoriaHeaderForm(a, function (patched) {
         a.siteId = patched.siteId; a.empresa = patched.empresa; a.data = patched.data; a.inspetorNome = patched.inspetorNome;
-        a.standard = patched.standard; a.numColaboradores = patched.numColaboradores; a.colaboradores = patched.colaboradores;
+        a.standard = patched.standard; a.regional = patched.regional; a.numColaboradores = patched.numColaboradores; a.colaboradores = patched.colaboradores;
         a.modalidade = patched.modalidade;
         syncListaLeve();
         drawAuditoriaDetail(main, a);

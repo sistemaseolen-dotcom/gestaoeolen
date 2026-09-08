@@ -5,10 +5,11 @@ import { auditDiffFields, auditDelete } from "@/lib/audit";
 
 const BUCKET = "auditorias-anexos";
 const CAMPOS_AUDITORIA = [
-  "site_id", "empresa", "data", "standard", "status", "inspetor_nome",
+  "site_id", "empresa", "regional", "data", "standard", "status", "inspetor_nome",
   "num_colaboradores", "observacao_final", "modalidade",
 ];
 const MODALIDADES = ["PRESENCIAL", "REMOTA"];
+const REGIONAIS = ["CO", "ES", "MG", "NE", "NO", "RJ", "SP", "SUL"];
 
 function up(v: any): string | null {
   const s = (v ?? "").toString().trim();
@@ -73,6 +74,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (Object.prototype.hasOwnProperty.call(body, "empresa")) patch.empresa = up(body.empresa);
   if (Object.prototype.hasOwnProperty.call(body, "data")) patch.data = body.data || null;
   if (Object.prototype.hasOwnProperty.call(body, "standard")) patch.standard = up(body.standard);
+  if (Object.prototype.hasOwnProperty.call(body, "regional")) {
+    const r = body.regional ? up(body.regional) : null;
+    if (r && !REGIONAIS.includes(r)) {
+      return NextResponse.json({ error: "Regional inválida." }, { status: 400 });
+    }
+    patch.regional = r;
+  }
   if (Object.prototype.hasOwnProperty.call(body, "inspetorNome")) patch.inspetor_nome = up(body.inspetorNome);
   if (Object.prototype.hasOwnProperty.call(body, "numColaboradores")) {
     const n = Number(body.numColaboradores);

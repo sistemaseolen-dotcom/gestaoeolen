@@ -41,7 +41,7 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     status: "Status", responsavel_nome: "Responsável",
   },
   auditoria: {
-    site_id: "Site ID", empresa: "Empresa", data: "Data", standard: "Padrão", status: "Status",
+    site_id: "Site ID", empresa: "Empresa", regional: "Regional", data: "Data", standard: "Padrão", status: "Status",
     inspetor_nome: "Inspetor", num_colaboradores: "Quantos colaboradores", colaboradores: "Colaboradores",
     observacao_final: "Observações finais", modalidade: "Modalidade",
   },

@@ -5,6 +5,7 @@ import { auditDiffFields } from "@/lib/audit";
 
 const STANDARDS = ["NOKIA", "ERICSSON", "HUAWEI", "TELEFONICA"];
 const MODALIDADES = ["PRESENCIAL", "REMOTA"];
+const REGIONAIS = ["CO", "ES", "MG", "NE", "NO", "RJ", "SP", "SUL"];
 
 function up(v: any): string | null {
   const s = (v ?? "").toString().trim();
@@ -20,7 +21,7 @@ export async function GET() {
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from("auditorias")
-    .select("id, standard, site_id, empresa, data, status, inspetor_nome, num_colaboradores, criado_por_nome, criado_em, atualizado_em, finalizado_em")
+    .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, criado_por_nome, criado_em, atualizado_em, finalizado_em")
     .order("data", { ascending: false })
     .order("id", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -60,12 +61,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Modalidade inválida." }, { status: 400 });
     }
   }
+  let regional: string | null = null;
+  if (body?.regional !== undefined && body?.regional !== null && body?.regional !== "") {
+    regional = up(body.regional);
+    if (!REGIONAIS.includes(regional || "")) {
+      return NextResponse.json({ error: "Regional inválida." }, { status: 400 });
+    }
+  }
   const admin = supabaseAdmin();
   const payload = {
     legacy_id: null,
     standard,
     site_id: siteId,
     empresa: up(body?.empresa),
+    regional,
     data: body?.data || new Date().toISOString().slice(0, 10),
     status: "RASCUNHO",
     inspetor_nome: up(body?.inspetorNome) || gate.user?.nome || null,
@@ -87,7 +96,7 @@ export async function POST(req: Request) {
     entidadeLabel: data.site_id,
     before: null,
     after: data,
-    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade"],
+    campos: ["site_id", "empresa", "regional", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade"],
     usuario: gate.user,
   });
 
