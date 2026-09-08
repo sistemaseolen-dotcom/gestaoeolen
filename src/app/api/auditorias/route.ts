@@ -60,6 +60,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Modalidade inválida." }, { status: 400 });
     }
   }
+  // Tipo de auditoria só faz sentido pra lançamentos ERICSSON (auditoria
+  // feita no app do próprio cliente — aqui só registramos o resultado, sem
+  // o checklist NOKIA item a item).
+  let tipoAuditoria: string | null = null;
+  if (body?.tipoAuditoria !== undefined && body?.tipoAuditoria !== null && body?.tipoAuditoria !== "") {
+    tipoAuditoria = up(body.tipoAuditoria);
+  }
 
   const admin = supabaseAdmin();
   const payload = {
@@ -73,6 +80,8 @@ export async function POST(req: Request) {
     num_colaboradores: numColaboradores,
     colaboradores,
     modalidade,
+    tipo_auditoria: tipoAuditoria,
+    desvios: [],
     respostas: {},
     observacao_final: null,
     criado_por_id: gate.user?.id ?? null,
@@ -88,7 +97,7 @@ export async function POST(req: Request) {
     entidadeLabel: data.site_id,
     before: null,
     after: data,
-    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade"],
+    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade", "tipo_auditoria"],
     usuario: gate.user,
   });
 

@@ -43,7 +43,7 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
   auditoria: {
     site_id: "Site ID", empresa: "Empresa", data: "Data", standard: "Padrão", status: "Status",
     inspetor_nome: "Inspetor", num_colaboradores: "Quantos colaboradores", colaboradores: "Colaboradores",
-    observacao_final: "Observações finais",
+    observacao_final: "Observações finais", modalidade: "Modalidade", tipo_auditoria: "Tipo de auditoria",
   },
 };
 

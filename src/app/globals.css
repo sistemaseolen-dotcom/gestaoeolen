@@ -385,6 +385,19 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .repeat-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; }
 .list-toolbar-btn { align-self: flex-start; }
 
+/* ---------------- Auditoria ERICSSON: desvios e anexos ---------------- */
+.desvio-list, .anexo-list { display: flex; flex-direction: column; gap: 8px; }
+.desvio-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.desvio-row:last-child { border-bottom: none; }
+.desvio-num { flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%; background: var(--surface-alt); color: var(--ink-soft); font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+.desvio-desc { flex: 1; font-size: 13px; line-height: 1.45; }
+.anexo-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.anexo-row:last-child { border-bottom: none; }
+.anexo-link { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); text-decoration: none; overflow: hidden; }
+.anexo-link:hover { color: var(--accent); }
+.anexo-link .ic { flex-shrink: 0; width: 16px; height: 16px; }
+.anexo-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------------- Configurações (Administrador) ---------------- */
 .config-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-bottom: 1px solid var(--border); }
 .config-row:last-child { border-bottom: none; }

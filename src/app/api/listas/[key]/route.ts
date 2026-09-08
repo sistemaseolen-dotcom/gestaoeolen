@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdmin } from "@/lib/permissions";
 import type { UsuarioRow } from "@/lib/permissions";
 
-const LISTAS_VALIDAS = ["cargo", "tipoPessoa", "statusPessoa", "projeto"] as const;
+const LISTAS_VALIDAS = ["cargo", "tipoPessoa", "statusPessoa", "projeto", "tipoAuditoria"] as const;
 type ListaKey = (typeof LISTAS_VALIDAS)[number];
 
 // Rótulos amigáveis por lista, usados só no log de auditoria — espelha o
@@ -14,6 +14,7 @@ const LISTA_LABELS: Record<ListaKey, string> = {
   tipoPessoa: "Tipo de pessoa",
   statusPessoa: "Status (pessoas)",
   projeto: "Projeto",
+  tipoAuditoria: "Tipo de auditoria (Ericsson)",
 };
 
 function isListaKey(key: string): key is ListaKey {
