@@ -199,7 +199,10 @@
   }
   function historyPanelHtml(entidade, entidadeId) {
     var panelId = "history-panel-" + entidade + "-" + entidadeId;
-    return '<div class="panel" id="' + panelId + '"><div class="panel-head"><h3>Histórico de alterações</h3></div>' +
+    // no-print: histórico de edição é informação interna, não deve aparecer
+    // no PDF (impressão da tela) -- pedido do Diego, mesmo padrão já usado
+    // pras notas "Alterado por..." e o campo "Criado por".
+    return '<div class="panel no-print" id="' + panelId + '"><div class="panel-head"><h3>Histórico de alterações</h3></div>' +
       '<div class="panel-body pad"><div class="hint">Carregando…</div></div></div>';
   }
   // Busca o histórico do registro sob demanda e injeta no painel — chamado
@@ -1674,12 +1677,23 @@
         ev.preventDefault();
         if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
         var fotoId = Number(btn.getAttribute("data-remove-foto"));
-        apiFetch("/api/auditorias/" + a.id + "/fotos/" + fotoId, { method: "DELETE" })
-          .then(function () {
-            a.fotos = (a.fotos || []).filter(function (f) { return f.id !== fotoId; });
-            toast("Foto removida.", "success");
-            if (onAfterChange) onAfterChange();
-          }).catch(handleApiError);
+        var html =
+          '<div class="modal-box"><h3>Remover foto?</h3><p>Tem certeza que deseja remover esta foto? Esta ação não pode ser desfeita.</p>' +
+          '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="button" class="btn danger" id="modal-confirm">' + ICONS.trash + "Remover</button></div></div>";
+        openModal(html);
+        $("#modal-cancel").addEventListener("click", closeModal);
+        $("#modal-confirm").addEventListener("click", function () {
+          apiFetch("/api/auditorias/" + a.id + "/fotos/" + fotoId, { method: "DELETE" })
+            .then(function () {
+              a.fotos = (a.fotos || []).filter(function (f) { return f.id !== fotoId; });
+              closeModal();
+              toast("Foto removida.", "success");
+              if (onAfterChange) onAfterChange();
+            }).catch(function (err) {
+              closeModal();
+              handleApiError(err);
+            });
+        });
       });
     });
   }
