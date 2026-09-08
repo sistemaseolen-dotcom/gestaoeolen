@@ -126,7 +126,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
 
-  const nome = (body?.nome || "").toString().trim();
+  const nome = (body?.nome || "").toString().trim().toUpperCase();
   const cpf = (body?.cpf || "").toString().trim();
   const status = (body?.status || "").toString().trim();
   if (!nome) {

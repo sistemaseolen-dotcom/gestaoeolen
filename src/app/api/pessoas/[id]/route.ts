@@ -127,7 +127,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       if (!valor) {
         return NextResponse.json({ error: `O campo obrigatório "${campo}" não pode ficar em branco.` }, { status: 400 });
       }
-      patch[campo] = valor;
+      patch[campo] = campo === "nome" ? valor.toUpperCase() : valor;
     }
   }
 

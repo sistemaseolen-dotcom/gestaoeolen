@@ -27,7 +27,8 @@ async function resolveTeamLider(
     return { team_lider_id: null, team_lider: teamLiderFallback || null };
   }
   const { data } = await supabaseAdmin().from("pessoas").select("nome").eq("id", teamLiderId).maybeSingle();
-  return { team_lider_id: teamLiderId, team_lider: data?.nome ?? teamLiderFallback ?? null };
+  const nome = data?.nome ?? teamLiderFallback ?? null;
+  return { team_lider_id: teamLiderId, team_lider: nome ? nome.toString().trim().toUpperCase() : nome };
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
@@ -59,7 +60,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   const patch: Record<string, any> = {};
 
   if (Object.prototype.hasOwnProperty.call(body, "nome")) {
-    const nome = (body.nome || "").toString().trim();
+    const nome = (body.nome || "").toString().trim().toUpperCase();
     if (!nome) {
       return NextResponse.json({ error: "Informe o nome da equipe." }, { status: 400 });
     }
