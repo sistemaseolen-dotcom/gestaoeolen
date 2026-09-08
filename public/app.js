@@ -95,7 +95,7 @@
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
-    auditorias: { q: "", status: "", cliente: "", page: 1, painelMes: "" }
+    auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -2061,8 +2061,58 @@
     STATE.auditorias.forEach(function (a) { if (a.data) set[a.data.slice(0, 7)] = true; });
     return Object.keys(set).sort().reverse();
   }
-  function auditoriasFiltradasPorMes(mes) {
-    return STATE.auditorias.filter(function (a) { return !mes || (a.data && a.data.slice(0, 7) === mes); });
+  // Filtro do Painel de auditorias: Geral (tudo), Mês, Dia exato ou Período
+  // (intervalo de datas) — pedido do Diego pra poder olhar um dia específico
+  // ou um intervalo, além do mês inteiro que já existia.
+  function auditoriasFiltradasPorPeriodo(periodo) {
+    periodo = periodo || { tipo: "geral" };
+    if (periodo.tipo === "mes") {
+      if (!periodo.mes) return STATE.auditorias.slice();
+      return STATE.auditorias.filter(function (a) { return a.data && a.data.slice(0, 7) === periodo.mes; });
+    }
+    if (periodo.tipo === "dia") {
+      if (!periodo.dia) return STATE.auditorias.slice();
+      return STATE.auditorias.filter(function (a) { return a.data === periodo.dia; });
+    }
+    if (periodo.tipo === "periodo") {
+      var de = periodo.de || null;
+      var ate = periodo.ate || null;
+      if (de && ate && de > ate) { var tmp = de; de = ate; ate = tmp; }
+      if (!de && !ate) return STATE.auditorias.slice();
+      return STATE.auditorias.filter(function (a) {
+        if (!a.data) return false;
+        if (de && a.data < de) return false;
+        if (ate && a.data > ate) return false;
+        return true;
+      });
+    }
+    return STATE.auditorias.slice();
+  }
+  // Texto curto do período ativo, usado no subtítulo do Painel e nos
+  // drawers de detalhe abertos a partir dele.
+  function periodoLabelCurto(periodo) {
+    periodo = periodo || { tipo: "geral" };
+    if (periodo.tipo === "mes" && periodo.mes) return mesLabelCurto(periodo.mes);
+    if (periodo.tipo === "dia" && periodo.dia) return fmtDateBR(periodo.dia);
+    if (periodo.tipo === "periodo") {
+      if (periodo.de && periodo.ate) return fmtDateBR(periodo.de) + " a " + fmtDateBR(periodo.ate);
+      if (periodo.de) return "a partir de " + fmtDateBR(periodo.de);
+      if (periodo.ate) return "até " + fmtDateBR(periodo.ate);
+    }
+    return "geral (todos os períodos)";
+  }
+  // Idem, pro texto do subtítulo do topo do Painel ("Painel — ... em X").
+  function periodoLabelLongo(periodo) {
+    periodo = periodo || { tipo: "geral" };
+    if (periodo.tipo === "geral") return "";
+    if (periodo.tipo === "mes") return periodo.mes ? " em " + mesLabelCurto(periodo.mes) : "";
+    if (periodo.tipo === "dia") return periodo.dia ? " em " + fmtDateBR(periodo.dia) : "";
+    if (periodo.tipo === "periodo") {
+      if (periodo.de && periodo.ate) return " de " + fmtDateBR(periodo.de) + " a " + fmtDateBR(periodo.ate);
+      if (periodo.de) return " a partir de " + fmtDateBR(periodo.de);
+      if (periodo.ate) return " até " + fmtDateBR(periodo.ate);
+    }
+    return "";
   }
   function inicioSemanaISO(dataStr) {
     var d = new Date(dataStr + "T00:00:00");
@@ -2076,10 +2126,10 @@
     d.setDate(d.getDate() + 6);
     return d.toISOString().slice(0, 10);
   }
-  function auditoriasPorSemana(mes, lista) {
+  function auditoriasPorSemana(semFiltro, lista) {
     var porSemana = {};
     var limiteStr = null;
-    if (!mes) {
+    if (semFiltro) {
       var limite = new Date();
       limite.setDate(limite.getDate() - 7 * 8);
       limiteStr = limite.toISOString().slice(0, 10);
@@ -2164,7 +2214,7 @@
     lista.forEach(function (a) { counts[clienteAuditoria(a)]++; });
     return counts;
   }
-  function openPessoasAuditadasDrawer(list, mes, auditado, cargoLabel) {
+  function openPessoasAuditadasDrawer(list, periodoTxt, auditado, cargoLabel) {
     var titulo = cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas";
     var rowsHtml = list.map(function (p) {
       return '<tr><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + "</td>" +
@@ -2172,7 +2222,7 @@
     }).join("");
     openGenericTableDrawer({
       title: titulo,
-      subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : "") + " — " + (mes ? mesLabelCurto(mes) : "geral (todos os períodos)"),
+      subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
       theadHtml: "<th>Nome</th><th>Cargo</th>" + (auditado ? "<th>Auditorias</th><th>Última auditoria</th>" : ""),
       rowsHtml: rowsHtml,
       exportHeaders: auditado ? ["Nome", "Cargo", "Auditorias", "Última auditoria"] : ["Nome", "Cargo"],
@@ -2202,7 +2252,7 @@
       }
     });
   }
-  function openAuditoriasClienteDrawer(clienteVal, listaCompleta, mes) {
+  function openAuditoriasClienteDrawer(clienteVal, listaCompleta, periodoTxt) {
     var list = listaCompleta.filter(function (a) { return clienteAuditoria(a) === clienteVal; })
       .sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.id - a.id; });
     var rowsHtml = list.map(function (a) {
@@ -2210,7 +2260,7 @@
     }).join("");
     openGenericTableDrawer({
       title: "Auditorias — " + clienteVal,
-      subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : "") + " — " + (mes ? mesLabelCurto(mes) : "geral (todos os períodos)"),
+      subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
       theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
       rowsHtml: rowsHtml,
       exportHeaders: ["Site ID", "Empresa", "Data", "Inspetor", "Status"],
@@ -2226,11 +2276,12 @@
   function renderAuditoriasPainel(main) {
     var ui = uiState.auditorias;
     function draw() {
-      var mes = ui.painelMes;
-      var lista = auditoriasFiltradasPorMes(mes);
+      var periodo = ui.painelPeriodo || { tipo: "geral" };
+      var lista = auditoriasFiltradasPorPeriodo(periodo);
+      var periodoTxt = periodoLabelCurto(periodo);
       var concluidas = lista.filter(function (a) { return a.status === "CONCLUIDO"; }).length;
       var rascunhos = lista.length - concluidas;
-      var semanas = auditoriasPorSemana(mes, lista);
+      var semanas = auditoriasPorSemana(periodo.tipo === "geral", lista);
       var modalidade = auditoriasPorModalidade(lista);
       var pessoasInfo = pessoasAuditadasInfo(lista);
       var porCargo = auditadosPorCargo(pessoasInfo.auditadas);
@@ -2238,11 +2289,29 @@
       var clienteCounts = auditoriasPorCliente(lista);
       var meses = auditoriasMesesDisponiveis();
 
+      // Filtro do Painel: Geral, Mês, Dia exato ou Período (intervalo) —
+      // o segundo controle (mês/dia/de-até) só aparece depois de escolher o
+      // tipo, pra não poluir a tela com campos que não se aplicam.
       var filtroHtml =
         '<div class="no-print" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">' +
-        '<select class="filter" id="painel-mes-filter"><option value="">Geral (todos os períodos)</option>' +
-        meses.map(function (m) { return '<option value="' + m + '"' + (m === mes ? " selected" : "") + '>' + esc(mesLabelCurto(m)) + "</option>"; }).join("") +
+        '<select class="filter" id="painel-filtro-tipo">' +
+        '<option value="geral"' + (periodo.tipo === "geral" ? " selected" : "") + '>Geral (todos os períodos)</option>' +
+        '<option value="mes"' + (periodo.tipo === "mes" ? " selected" : "") + '>Mês</option>' +
+        '<option value="dia"' + (periodo.tipo === "dia" ? " selected" : "") + '>Dia exato</option>' +
+        '<option value="periodo"' + (periodo.tipo === "periodo" ? " selected" : "") + '>Período</option>' +
         "</select>" +
+        (periodo.tipo === "mes"
+          ? '<select class="filter" id="painel-filtro-mes">' +
+            meses.map(function (m) { return '<option value="' + m + '"' + (m === periodo.mes ? " selected" : "") + '>' + esc(mesLabelCurto(m)) + "</option>"; }).join("") +
+            "</select>"
+          : "") +
+        (periodo.tipo === "dia"
+          ? '<input type="date" class="filter" id="painel-filtro-dia" value="' + esc(periodo.dia || "") + '">'
+          : "") +
+        (periodo.tipo === "periodo"
+          ? '<span class="hint">de</span><input type="date" class="filter" id="painel-filtro-de" value="' + esc(periodo.de || "") + '">' +
+            '<span class="hint">até</span><input type="date" class="filter" id="painel-filtro-ate" value="' + esc(periodo.ate || "") + '">'
+          : "") +
         '<button type="button" class="btn ghost sm" id="btn-baixar-painel">' + ICONS.download + "Baixar PDF</button>" +
         "</div>";
 
@@ -2269,7 +2338,7 @@
               '<div class="rankbar-track"><div class="rankbar-fill" style="width:max(' + pct + '%, 26px);"><div class="rankbar-seg accent" style="flex-grow:1;"><span>' + s.total + "</span></div></div></div>" +
               '<div class="rankbar-total">' + s.total + "</div></div>";
           }).join("") + "</div>"
-        : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período' + (mes ? "" : " (últimas 8 semanas)") + ".</div>";
+        : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período' + (periodo.tipo === "geral" ? " (últimas 8 semanas)" : "") + ".</div>";
 
       var modalidadeDefs = [["PRESENCIAL", "ok", "Presencial"], ["REMOTA", "info", "Remota"], ["NAO_INFORMADO", "neutral", "Não informado"]];
       var modalidadeTotalBruto = modalidade.PRESENCIAL + modalidade.REMOTA + modalidade.NAO_INFORMADO;
@@ -2308,13 +2377,13 @@
       var cargoHtml = simpleBarsHtml(cargoCounts, "auditoria-cargo");
 
       main.innerHTML =
-        '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + (mes ? " em " + esc(mesLabelCurto(mes)) : "") + '</div></div>' +
+        '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + esc(periodoLabelLongo(periodo)) + '</div></div>' +
         (canDo("auditorias", "criar") ? '<button class="btn primary no-print" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
         auditoriasTabsHtml("painel") +
         filtroHtml +
         '<div class="kpi-row">' + kpiHtml + "</div>" +
         '<div class="viz-grid">' +
-        '<div class="panel"><div class="panel-head"><h3>Auditorias por semana</h3><span class="hint">' + (mes ? "clique numa barra pra ver as auditorias" : "últimas 8 semanas — clique numa barra") + '</span></div><div class="panel-body pad">' + semanaHtml + "</div></div>" +
+        '<div class="panel"><div class="panel-head"><h3>Auditorias por semana</h3><span class="hint">' + (periodo.tipo === "geral" ? "últimas 8 semanas — clique numa barra" : "clique numa barra pra ver as auditorias") + '</span></div><div class="panel-body pad">' + semanaHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Presencial x remota</h3></div><div class="panel-body pad">' + modalidadeHtml + "</div></div>" +
         "</div>" +
         '<div class="viz-grid">' +
@@ -2325,13 +2394,27 @@
       bindAuditoriasTabs(main);
       bindTooltips(main);
       if ($("#btn-new-auditoria")) $("#btn-new-auditoria").addEventListener("click", openNovaAuditoriaForm);
-      $("#painel-mes-filter").addEventListener("change", function () { ui.painelMes = this.value; draw(); });
+      $("#painel-filtro-tipo").addEventListener("change", function () {
+        var novoTipo = this.value;
+        ui.painelPeriodo = {
+          tipo: novoTipo,
+          mes: novoTipo === "mes" ? (periodo.mes || meses[0] || "") : "",
+          dia: novoTipo === "dia" ? (periodo.dia || "") : "",
+          de: novoTipo === "periodo" ? (periodo.de || "") : "",
+          ate: novoTipo === "periodo" ? (periodo.ate || "") : ""
+        };
+        draw();
+      });
+      if ($("#painel-filtro-mes")) $("#painel-filtro-mes").addEventListener("change", function () { ui.painelPeriodo.mes = this.value; draw(); });
+      if ($("#painel-filtro-dia")) $("#painel-filtro-dia").addEventListener("change", function () { ui.painelPeriodo.dia = this.value; draw(); });
+      if ($("#painel-filtro-de")) $("#painel-filtro-de").addEventListener("change", function () { ui.painelPeriodo.de = this.value; draw(); });
+      if ($("#painel-filtro-ate")) $("#painel-filtro-ate").addEventListener("change", function () { ui.painelPeriodo.ate = this.value; draw(); });
       $("#btn-baixar-painel").addEventListener("click", function () { window.print(); });
       $all("[data-painel-kpi]", main).forEach(function (el) {
         el.addEventListener("click", function () {
           var kind = el.getAttribute("data-painel-kpi");
-          if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, mes, true);
-          else openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, mes, false);
+          if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, periodoTxt, true);
+          else openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, periodoTxt, false);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -2340,7 +2423,7 @@
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
       $all("[data-cliente-seg]", main).forEach(function (el) {
-        el.addEventListener("click", function () { openAuditoriasClienteDrawer(el.getAttribute("data-cliente-seg"), lista, mes); });
+        el.addEventListener("click", function () { openAuditoriasClienteDrawer(el.getAttribute("data-cliente-seg"), lista, periodoTxt); });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
       $all("[data-simple-bar]", main).forEach(function (el) {
@@ -2349,7 +2432,7 @@
           var cargoVal = el.getAttribute("data-simple-bar-value");
           openPessoasAuditadasDrawer(
             pessoasInfo.auditadas.filter(function (p) { return (p.cargo || "").trim().toUpperCase() === cargoVal; }),
-            mes, true, cargoVal
+            periodoTxt, true, cargoVal
           );
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
