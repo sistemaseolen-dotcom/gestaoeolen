@@ -644,7 +644,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .lightbox-close .ic { width: 16px; height: 16px; }
 
 @media print {
-  .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura { display: none !important; }
+  .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura, .field-note, .header-field-notes { display: none !important; }
   .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; }
   body { background: #fff; }
 

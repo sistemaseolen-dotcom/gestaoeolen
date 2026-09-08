@@ -1075,8 +1075,9 @@
   // `campo` gravado em audit_log — ver FIELD_LABELS em src/lib/audit.ts).
   // Quando informado, mostra "Alterado por X em Y" abaixo do valor assim que
   // loadHistoryPanel busca o histórico do registro.
-  function detailItem(label, value, campo) {
-    return '<div class="detail-item"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value || "—") + "</span>" + (campo ? fieldNoteHtml(campo) : "") + "</div>";
+  function detailItem(label, value, campo, opts) {
+    var noPrintCls = (opts && opts.noPrint) ? " no-print" : "";
+    return '<div class="detail-item' + noPrintCls + '"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value || "—") + "</span>" + (campo ? fieldNoteHtml(campo) : "") + "</div>";
   }
 
   // `opts.empresaId` pré-seleciona a empresa no formulário de uma pessoa
@@ -2540,7 +2541,7 @@
       detailItem("Data", fmtDateBR(a.data), "data") +
       detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
       detailItem("Modalidade", a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "Não informado", "modalidade") +
-      detailItem("Criado por", a.criadoPorNome) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
+      detailItem("Criado por", a.criadoPorNome, null, { noPrint: true }) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
       "</div></div></div>" +
       corpoHtml +
       '<div class="panel"><div class="panel-head"><h3>Observações finais</h3></div><div class="panel-body pad">' +
