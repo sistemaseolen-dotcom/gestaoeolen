@@ -1559,13 +1559,34 @@
     return '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="resposta-group">' + botoes + "</div></div>";
   }
 
+  // Contador de respostas do checklist (conforme/risco identificado/não
+  // aplicável) — pedido do Diego pra aparecer também no PDF (impressão da
+  // própria tela, via window.print()), por isso entra dentro do próprio
+  // #auditoria-checklist: assim ele já é recalculado a cada resposta
+  // (redrawChecklist chama checklistHtml de novo) e aparece impresso junto
+  // sem precisar de nenhuma lógica extra de impressão.
+  function checklistResumoHtml(a) {
+    var respostas = a.respostas || {};
+    var sim = 0, nao = 0, na = 0;
+    AUDITORIA_ITEMS_NOKIA.forEach(function (item) {
+      if (item.tipo !== "pergunta") return;
+      var v = respostas[item.key];
+      if (v === "Sim") sim++; else if (v === "Não") nao++; else if (v === "N/A") na++;
+    });
+    return '<div class="checklist-resumo">' +
+      '<span class="checklist-resumo-pill ok">' + sim + " conforme(s)</span>" +
+      '<span class="checklist-resumo-pill danger">' + nao + " risco(s) identificado(s)</span>" +
+      '<span class="checklist-resumo-pill neutral">' + na + " não aplicável(is)</span>" +
+      "</div>";
+  }
+
   function checklistHtml(a) {
     // Não existe mais distinção de padrão (NOKIA/ERICSSON) — hoje é um único
     // checklist unificado, usado em toda auditoria. A coluna `standard` no
     // banco continua existindo só por compatibilidade com os registros já
     // migrados (sempre "NOKIA"), mas não aparece mais em nenhuma tela.
     var items = AUDITORIA_ITEMS_NOKIA;
-    var html = "";
+    var html = checklistResumoHtml(a);
     items.forEach(function (item) {
       if (item.secao) html += '<div class="form-section-title" style="margin-top:20px;">' + esc(item.secao) + "</div>";
       if (item.subsecao) html += '<div class="form-section-title" style="opacity:.72;font-size:11px;margin-top:12px;">' + esc(item.subsecao) + "</div>";

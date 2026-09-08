@@ -588,6 +588,16 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .resposta-btn.active.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger-ink); }
 .resposta-btn.active.neutral { background: var(--neutral-soft); border-color: transparent; color: var(--neutral-ink); }
 
+/* Contador do checklist (conforme / risco identificado / não aplicável) —
+   aparece no topo do checklist, na tela e também no PDF (impressão). */
+.checklist-resumo { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.checklist-resumo-pill {
+  padding: 6px 14px; border-radius: 999px; font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.checklist-resumo-pill.ok { background: var(--success-soft); color: var(--success-ink); }
+.checklist-resumo-pill.danger { background: var(--danger-soft); color: var(--danger-ink); }
+.checklist-resumo-pill.neutral { background: var(--neutral-soft); color: var(--neutral-ink); }
+
 .foto-slot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .foto-slot {
   border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px;
@@ -657,6 +667,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
      no fim da página, separado do primeiro item que vem depois dele. */
   .checklist-item { break-inside: avoid; page-break-inside: avoid; }
   .form-section-title { break-after: avoid; page-break-after: avoid; }
+  .checklist-resumo { break-inside: avoid; page-break-inside: avoid; break-after: avoid; page-break-after: avoid; }
 
   /* Fotos da auditoria: inteiras (sem cortar). Item com 1 foto ocupa a
      largura toda; item com várias (2 ou 3 colaboradores) mostra lado a
