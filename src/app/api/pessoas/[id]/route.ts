@@ -13,6 +13,15 @@ const CAMPOS_PESSOA = [
   "validade_contrato", "observacao", "empresa_id", "valor_hora", "salario_bruto",
 ] as const;
 
+// Regional/coordenador são campos de preenchimento livre exibidos em várias
+// telas (Pendências, Painel, etc.) — normalizados em maiúsculas aqui pra não
+// depender de cada tela lembrar de fazer isso na exibição.
+function upperOrSame(v: any): any {
+  if (typeof v !== "string") return v;
+  const s = v.trim();
+  return s ? s.toUpperCase() : v;
+}
+
 // Mesmo mapeamento camelCase -> snake_case usado no POST de /api/pessoas,
 // mas só inclui a coluna se a chave correspondente veio no body (PATCH
 // parcial). empresaId é tratado à parte, pois também precisa re-resolver
@@ -60,7 +69,7 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [bodyKey, column] of Object.entries(map)) {
     if (Object.prototype.hasOwnProperty.call(body || {}, bodyKey)) {
-      out[column] = body[bodyKey];
+      out[column] = bodyKey === "regional" || bodyKey === "coordenador" ? upperOrSame(body[bodyKey]) : body[bodyKey];
     }
   }
   return out;

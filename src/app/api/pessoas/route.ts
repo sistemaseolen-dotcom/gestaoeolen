@@ -12,18 +12,27 @@ const CAMPOS_PESSOA = [
   "validade_contrato", "observacao", "empresa_id", "valor_hora", "salario_bruto",
 ] as const;
 
+// Regional/coordenador são campos de preenchimento livre exibidos em várias
+// telas (Pendências, Painel, etc.) — normalizados em maiúsculas aqui pra não
+// depender de cada tela lembrar de fazer isso na exibição.
+function upperOrSame(v: any): any {
+  if (typeof v !== "string") return v;
+  const s = v.trim();
+  return s ? s.toUpperCase() : v;
+}
+
 // Mapeia o corpo da requisição (chaves iguais ao formulário da versão
 // antiga) para as colunas snake_case da tabela `pessoas`.
 function pessoaFromBody(body: any): Record<string, any> {
   return {
     nome: body?.nome,
     tipo_pessoa: body?.tipoPessoa,
-    regional: body?.regional,
+    regional: upperOrSame(body?.regional),
     cadastro: body?.cadastro,
     data_admissao: body?.dataAdmissao,
     data_demissao: body?.dataDemissao,
     matricula_esocial: body?.matriculaESocial,
-    coordenador: body?.coordenador,
+    coordenador: upperOrSame(body?.coordenador),
     empresa_id: body?.empresaId,
     cargo: body?.cargo,
     email: body?.email,

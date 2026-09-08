@@ -367,9 +367,9 @@
   function liderName(e) {
     if (e.teamLiderId) {
       var p = byId(STATE.pessoas, e.teamLiderId);
-      if (p) return p.nome;
+      if (p) return (p.nome || "").toUpperCase();
     }
-    return e.teamLider || "";
+    return (e.teamLider || "").toUpperCase();
   }
   function empresaTitle(e) {
     return (e.fantasia && e.fantasia.trim()) || (e.nome && e.nome.trim()) || (e.cnpj && "CNPJ " + e.cnpj) || "Empresa sem nome";
@@ -834,7 +834,7 @@
   }
   function pessoaCoordenadorNome(pessoaId) {
     var p = pessoaId ? byId(STATE.pessoas, pessoaId) : null;
-    return p && p.coordenador ? p.coordenador : "";
+    return p && p.coordenador ? p.coordenador.trim().toUpperCase() : "";
   }
   function pessoaTreinamentos(pessoaId) {
     return STATE.treinamentos.filter(function (t) { return t.pessoaId === pessoaId; });
@@ -2813,7 +2813,7 @@
     var isNew = !e;
     var pessoasOpts = STATE.pessoas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome); })
       .map(function (p) { return '<option value="' + p.id + '"' + (e && e.teamLiderId === p.id ? " selected" : "") + '>' + esc(p.nome) + (p.cargo ? " — " + esc(p.cargo) : "") + "</option>"; }).join("");
-    var keepLabel = e && e.teamLider && !e.teamLiderId ? "Manter texto atual: " + e.teamLider : "— nenhum —";
+    var keepLabel = e && e.teamLider && !e.teamLiderId ? "Manter texto atual: " + e.teamLider.toUpperCase() : "— nenhum —";
     var html =
       '<div class="drawer-head"><div><h2>' + (isNew ? "Nova equipe" : "Editar equipe") + '</h2><div class="sub">Informações gerais do time</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
@@ -3165,7 +3165,7 @@
      ================================================================ */
   function pessoaRegional(pessoaId) {
     var p = pessoaId ? byId(STATE.pessoas, pessoaId) : null;
-    return p && p.regional ? p.regional.trim() : "";
+    return p && p.regional ? p.regional.trim().toUpperCase() : "";
   }
   function normReg(v) {
     v = (v || "").trim();
