@@ -84,7 +84,8 @@
     edit: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>',
     patrimonio: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
     auditorias: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V3"/><path d="m9 12 2 2 4-4"/><path d="M8 17h8"/></svg>',
-    camera: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>'
+    camera: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
+    sync: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.36"/><path d="M3 12a9 9 0 0 1 15.5-6.36"/><polyline points="21 3 21 9 15 9"/><polyline points="3 21 3 15 9 15"/></svg>'
   };
 
   /* ---------------- State ---------------- */
@@ -639,6 +640,10 @@
     if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
     if (canView("patrimonio")) navItems.push(["patrimonio", "Patrimônio", ICONS.patrimonio, STATE.patrimonios.length]);
     if (canView("auditorias")) navItems.push(["auditorias", "Auditorias", ICONS.auditorias, STATE.auditorias.length]);
+    // Sincronização com o GPO — pedido do Diego: antes só o admin tinha
+    // acesso (dentro de Administrador), agora todo usuário logado enxerga e
+    // pode disparar, sem depender de nenhuma permissão de página.
+    navItems.push(["sincronizacao", "Sincronização", ICONS.sync, null]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
@@ -4088,11 +4093,10 @@
       '<button type="button" class="section-tab' + (active === "usuarios" ? " active" : "") + '" data-admintab="usuarios">Usuários</button>' +
       '<button type="button" class="section-tab' + (active === "log" ? " active" : "") + '" data-admintab="log">Log de alterações</button>' +
       '<button type="button" class="section-tab' + (active === "listas" ? " active" : "") + '" data-admintab="listas">Listas</button>' +
-      '<button type="button" class="section-tab' + (active === "sync" ? " active" : "") + '" data-admintab="sync">Sincronização GPO</button>' +
       '<button type="button" class="section-tab' + (active === "config" ? " active" : "") + '" data-admintab="config">Configurações</button>' +
       "</div>";
   }
-  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas", sync: "#/admin/sync", config: "#/admin/config" };
+  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas", config: "#/admin/config" };
   function bindAdminTabs(main) {
     $all("[data-admintab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () { navigate(ADMIN_TAB_ROUTES[btn.getAttribute("data-admintab")] || "#/admin"); });
@@ -4325,8 +4329,13 @@
     draw();
   }
 
-  /* ---------------- Sincronização com o GPO ---------------- */
-  function renderAdminSync(main) {
+  /* ---------------- Sincronização com o GPO ----------------
+     Antes vivia só dentro de Administrador (só admin acessava). Pedido do
+     Diego: todo usuário logado precisa poder ver e disparar essa
+     sincronização quando quiser — por isso agora é uma página própria no
+     menu principal (ver navItems em renderShell), sem depender de
+     isAdmin() nem da matriz de permissões por página (canView). */
+  function renderSincronizacao(main) {
     var statusLabels = { sucesso: "Sucesso", erro: "Erro", em_andamento: "Em andamento" };
     var statusPill = { sucesso: "ok", erro: "danger", em_andamento: "neutral" };
 
@@ -4364,16 +4373,14 @@
     }
 
     main.innerHTML =
-      '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div></div>' +
-      adminTabsHtml("sync") +
+      '<div class="topbar"><div><h1>Sincronização</h1><div class="sub">Traz os dados mais recentes do GPO pro Controle Eolen</div></div></div>' +
       '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
       "<p>Traz os dados mais recentes do GPO (pessoas, empresas, equipes, treinamentos e patrimônio) direto pro Controle Eolen. " +
-      "Roda sozinho todo dia de madrugada — use o botão abaixo se quiser trazer uma atualização na hora.</p>" +
-      '<button class="btn primary" id="btn-sync-now" style="margin-top:10px;">Sincronizar agora</button>' +
+      "Roda sozinho todo dia de madrugada — qualquer pessoa pode usar o botão abaixo pra trazer uma atualização na hora, sempre que quiser.</p>" +
+      '<button class="btn primary" id="btn-sync-now" style="margin-top:10px;">' + ICONS.sync + "Sincronizar agora</button>" +
       '<span id="sync-now-status" class="hint" style="margin-left:12px;"></span>' +
       "</div>" +
       '<div id="admin-sync-body"></div>';
-    bindAdminTabs(main);
     draw();
 
     $("#btn-sync-now").addEventListener("click", function () {
@@ -4757,8 +4764,16 @@
 
     if (route.view === "admin") {
       if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
-      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "sync" ? renderAdminSync(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
+      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
       if (!route.id) closeDrawer();
+      return;
+    }
+
+    // Sincronização: qualquer usuário logado tem acesso (não é admin-only e
+    // não faz parte da matriz de permissões por página).
+    if (route.view === "sincronizacao") {
+      renderSincronizacao(main);
+      closeDrawer();
       return;
     }
 

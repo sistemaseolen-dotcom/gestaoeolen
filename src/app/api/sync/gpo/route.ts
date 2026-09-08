@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
-import { getCurrentUser, unauthorized, forbidden } from "@/lib/authGuard";
+import { getCurrentUser, unauthorized } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { syncFromGpo } from "@/lib/gpoSync";
 
 export const maxDuration = 60;
 
 // Autoriza de duas formas:
-//  1) Usuário admin logado (clicou em "Sincronizar agora" no painel).
+//  1) Qualquer usuário logado (clicou em "Sincronizar agora" na página de
+//     Sincronização) — pedido do Diego: não é mais restrito a admin, todo
+//     mundo pode disparar essa sincronização quando quiser.
 //  2) Header Authorization: Bearer <CRON_SECRET> — usado pelo Vercel Cron
 //     (ver vercel.json) pra rodar a sincronização diária sem sessão.
 async function checkAuth(req: Request): Promise<{ ok: true; origem: string } | { ok: false; response: NextResponse }> {
@@ -18,7 +20,6 @@ async function checkAuth(req: Request): Promise<{ ok: true; origem: string } | {
 
   const user = await getCurrentUser();
   if (!user) return { ok: false, response: unauthorized() };
-  if (user.role !== "admin") return { ok: false, response: forbidden() };
   return { ok: true, origem: `manual:${user.nome}` };
 }
 
@@ -51,7 +52,7 @@ async function runAndLog(origem: string) {
   }
 }
 
-// POST: botão "Sincronizar agora" (admin logado).
+// POST: botão "Sincronizar agora" (qualquer usuário logado).
 export async function POST(req: Request) {
   const auth = await checkAuth(req);
   if (!auth.ok) return auth.response;
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
 // GET: o Vercel Cron só faz requisições GET, então é aqui que a
 // sincronização diária automática entra (com o header do CRON_SECRET). Sem
 // esse header, GET vira uma consulta às últimas sincronizações (pra exibir
-// no painel de admin).
+// na página de Sincronização, acessível a qualquer usuário logado).
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
@@ -71,7 +72,6 @@ export async function GET(req: Request) {
 
   const user = await getCurrentUser();
   if (!user) return unauthorized();
-  if (user.role !== "admin") return forbidden();
 
   const admin = supabaseAdmin();
   const { data, error } = await admin
