@@ -149,8 +149,7 @@
     { key: "cargo", label: "Cargo (pessoas)", defaults: ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE"] },
     { key: "tipoPessoa", label: "Tipo de pessoa", defaults: ["CLT", "PJ", "JOVEM APRENDIZ", "ESTAGIÁRIO"] },
     { key: "statusPessoa", label: "Status (pessoas)", defaults: ["ATIVO", "INATIVO", "BLOQUEADO", "CRESCIMENTO", "FÉRIAS"] },
-    { key: "projeto", label: "Projeto", defaults: ["HUAWEI", "ERICSSON", "NOKIA", "TELEFONICA", "NG"] },
-    { key: "tipoAuditoria", label: "Tipo de auditoria (Ericsson)", defaults: ["SEGURANÇA DO TRABALHO", "QUALIDADE", "MEIO AMBIENTE", "OUTRO"] }
+    { key: "projeto", label: "Projeto", defaults: ["HUAWEI", "ERICSSON", "NOKIA", "TELEFONICA", "NG"] }
   ];
   function listaMeta(key) {
     for (var i = 0; i < LISTAS_META.length; i++) if (LISTAS_META[i].key === key) return LISTAS_META[i];
@@ -561,7 +560,7 @@
       id: row.id, legacyId: row.legacy_id, standard: row.standard, siteId: row.site_id, empresa: row.empresa,
       data: row.data, status: row.status, inspetorNome: row.inspetor_nome, numColaboradores: row.num_colaboradores,
       colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null,
-      tipoAuditoria: row.tipo_auditoria || null, desvios: row.desvios || [], observacaoFinal: row.observacao_final,
+      observacaoFinal: row.observacao_final,
       criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
       criadoEm: row.criado_em, atualizadoEm: row.atualizado_em, finalizadoEm: row.finalizado_em,
       fotos: (row.fotos || []).map(mapAuditoriaFotoFromApi)
@@ -1451,7 +1450,8 @@
   }
 
   /* ================================================================
-     AUDITORIAS — checklist de segurança do trabalho (NOKIA/ERICSSON)
+     AUDITORIAS — checklist de segurança do trabalho (mesmo checklist pra
+     qualquer cliente — NOKIA, ERICSSON, HUAWEI ou TELEFONICA)
      ================================================================
      Migrado do sistema antigo (Claude Artifact separado). Preserva a mesma
      funcionalidade: fotos com marca d'água (data/hora + geolocalização),
@@ -1464,6 +1464,15 @@
     return status === "CONCLUIDO" ? '<span class="pill ok">Concluído</span>' : '<span class="pill warn">Rascunho</span>';
   }
   function colaboradorLabel(i) { return i === 1 ? "Líder" : "Colaborador " + i; }
+
+  // Cliente da auditoria — não muda mais o formulário/checklist (o mesmo
+  // checklist padrão vale pra qualquer cliente), é só uma categorização
+  // pra filtro/relatório. "standard" é o nome da coluna no banco (legado).
+  var AUDITORIA_CLIENTES = ["NOKIA", "ERICSSON", "HUAWEI", "TELEFONICA"];
+  function clienteAuditoria(a) {
+    var v = (a && a.standard) || "NOKIA";
+    return AUDITORIA_CLIENTES.indexOf(v) !== -1 ? v : "NOKIA";
+  }
 
   var AUDITORIA_ITEMS_NOKIA = [
     { n: 1, secao: "FOTOS INICIAIS", tipo: "foto", label: "Selfie do inspetor no site", slot: "foto_selfie_inspetor" },
@@ -1601,10 +1610,9 @@
   }
 
   function checklistHtml(a) {
-    // Não existe mais distinção de padrão (NOKIA/ERICSSON) — hoje é um único
-    // checklist unificado, usado em toda auditoria. A coluna `standard` no
-    // banco continua existindo só por compatibilidade com os registros já
-    // migrados (sempre "NOKIA"), mas não aparece mais em nenhuma tela.
+    // Checklist único, usado em toda auditoria — o cliente (coluna
+    // `standard`, ver AUDITORIA_CLIENTES) não muda mais o formulário, é só
+    // categorização pra filtro/relatório.
     var items = AUDITORIA_ITEMS_NOKIA;
     var html = checklistResumoHtml(a);
     items.forEach(function (item) {
@@ -1918,7 +1926,7 @@
       var all = STATE.auditorias.slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || (b.id - a.id); });
       return all.filter(function (a) {
         if (ui.status && a.status !== ui.status) return false;
-        if (ui.cliente && (a.standard || "NOKIA") !== ui.cliente) return false;
+        if (ui.cliente && clienteAuditoria(a) !== ui.cliente) return false;
         if (!ui.q) return true;
         var hay = normalize([a.siteId, a.empresa, a.inspetorNome].join(" "));
         return hay.indexOf(normalize(ui.q)) !== -1;
@@ -1935,7 +1943,7 @@
         return '<tr data-id="' + a.id + '">' +
           '<td class="mono">' + esc(a.siteId || "—") + "</td>" +
           "<td>" + esc(a.empresa || "—") + "</td>" +
-          '<td><span class="tag">' + (a.standard === "ERICSSON" ? "ERICSSON" : "NOKIA") + "</span></td>" +
+          '<td><span class="tag">' + clienteAuditoria(a) + "</span></td>" +
           "<td>" + fmtDateBR(a.data) + "</td>" +
           "<td>" + esc(a.inspetorNome || "—") + "</td>" +
           "<td>" + statusPillAuditoria(a.status) + "</td></tr>";
@@ -1943,14 +1951,14 @@
       var toolbar =
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="auditoria-q" placeholder="Buscar por site, empresa ou inspetor…" value="' + esc(ui.q) + '"></div>' +
         '<select class="filter" id="auditoria-cliente"><option value="">Todos os clientes</option>' +
-        '<option value="NOKIA"' + (ui.cliente === "NOKIA" ? " selected" : "") + ">Nokia</option>" +
-        '<option value="ERICSSON"' + (ui.cliente === "ERICSSON" ? " selected" : "") + ">Ericsson</option></select>" +
+        AUDITORIA_CLIENTES.map(function (c) { return '<option value="' + c + '"' + (ui.cliente === c ? " selected" : "") + ">" + c + "</option>"; }).join("") +
+        "</select>" +
         '<select class="filter" id="auditoria-status"><option value="">Todos os status</option>' +
         '<option value="RASCUNHO"' + (ui.status === "RASCUNHO" ? " selected" : "") + '>Rascunho</option>' +
         '<option value="CONCLUIDO"' + (ui.status === "CONCLUIDO" ? " selected" : "") + ">Concluído</option></select>";
 
       main.innerHTML =
-        '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Checklist NOKIA feito em campo e lançamentos resumidos das auditorias ERICSSON</div></div>' +
+        '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Checklist de segurança do trabalho feito em campo</div></div>' +
         (canDo("auditorias", "criar") ? '<button class="btn primary" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
         auditoriasTabsHtml("lista") +
         tableShell({
@@ -2071,9 +2079,6 @@
   // `riscoSeSim` em AUDITORIA_ITEMS_NOKIA e respostaClasse()) — a maioria
   // é "Cinto em condições de uso?" (Sim=conforme), mas a seção RISCOS
   // pergunta pela existência do problema ("Existe risco...?", Sim=risco).
-  // Só existe pra auditorias NOKIA (checklist item a item) — auditorias
-  // ERICSSON não têm `respostas`, então entram sozinhas na contagem de
-  // "Desvios encontrados" abaixo.
   function taxaNaoConformidade(lista) {
     var conforme = 0, risco = 0;
     lista.forEach(function (a) {
@@ -2086,25 +2091,13 @@
     var total = conforme + risco;
     return { pct: total ? Math.round((risco / total) * 100) : 0, nao: risco, total: total };
   }
-  // Combinado NOKIA (checklist feito aqui) x ERICSSON (feito no app da
-  // Ericsson, só lançado aqui) — é o que faz o lançamento ERICSSON entrar
-  // nos números do Painel junto com o resto.
+  // Quantas auditorias por cliente (NOKIA/ERICSSON/HUAWEI/TELEFONICA) —
+  // todas usam o mesmo checklist, isso é só categorização pra relatório.
   function auditoriasPorCliente(lista) {
-    var counts = { NOKIA: 0, ERICSSON: 0 };
-    lista.forEach(function (a) { counts[a.standard === "ERICSSON" ? "ERICSSON" : "NOKIA"]++; });
+    var counts = {};
+    AUDITORIA_CLIENTES.forEach(function (c) { counts[c] = 0; });
+    lista.forEach(function (a) { counts[clienteAuditoria(a)]++; });
     return counts;
-  }
-  // Achata os desvios de todas as auditorias do período num só array, já
-  // com o contexto (site/empresa/data) — hoje só auditorias ERICSSON têm
-  // desvios (não existe checklist item a item nesse lançamento resumido).
-  function desviosDoPeriodo(lista) {
-    var flat = [];
-    lista.forEach(function (a) {
-      (a.desvios || []).forEach(function (d) {
-        flat.push({ auditoriaId: a.id, siteId: a.siteId, empresa: a.empresa, data: a.data, descricao: d.descricao });
-      });
-    });
-    return flat;
   }
   function openPessoasAuditadasDrawer(list, mes, auditado, cargoLabel) {
     var titulo = cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas";
@@ -2145,36 +2138,18 @@
     });
   }
   function openAuditoriasClienteDrawer(clienteVal, listaCompleta, mes) {
-    var list = listaCompleta.filter(function (a) { return (a.standard === "ERICSSON") === (clienteVal === "ERICSSON"); })
+    var list = listaCompleta.filter(function (a) { return clienteAuditoria(a) === clienteVal; })
       .sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.id - a.id; });
     var rowsHtml = list.map(function (a) {
       return '<tr data-id="' + a.id + '"><td class="mono">' + esc(a.siteId || "—") + '</td><td>' + esc(a.empresa || "—") + "</td><td>" + fmtDateBR(a.data) + "</td><td>" + esc(a.inspetorNome || "—") + "</td><td>" + statusPillAuditoria(a.status) + "</td></tr>";
     }).join("");
     openGenericTableDrawer({
-      title: "Auditorias — " + (clienteVal === "ERICSSON" ? "Ericsson" : "Nokia"),
+      title: "Auditorias — " + clienteVal,
       subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : "") + " — " + (mes ? mesLabelCurto(mes) : "geral (todos os períodos)"),
       theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
       rowsHtml: rowsHtml,
       exportHeaders: ["Site ID", "Empresa", "Data", "Inspetor", "Status"],
       exportRows: list.map(function (a) { return [a.siteId || "", a.empresa || "", fmtDateBR(a.data), a.inspetorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"]; }),
-      onRowBind: function (root) {
-        $all("[data-id]", root).forEach(function (row) {
-          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
-        });
-      }
-    });
-  }
-  function openDesviosDrawer(desvios, mes) {
-    var rowsHtml = desvios.map(function (d) {
-      return '<tr data-id="' + d.auditoriaId + '"><td class="mono">' + esc(d.siteId || "—") + '</td><td>' + esc(d.empresa || "—") + "</td><td>" + fmtDateBR(d.data) + "</td><td>" + esc(d.descricao) + "</td></tr>";
-    }).join("");
-    openGenericTableDrawer({
-      title: "Desvios encontrados",
-      subtitle: desvios.length + " desvio" + (desvios.length !== 1 ? "s" : "") + " — " + (mes ? mesLabelCurto(mes) : "geral (todos os períodos)"),
-      theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Descrição</th>",
-      rowsHtml: rowsHtml,
-      exportHeaders: ["Site ID", "Empresa", "Data", "Descrição"],
-      exportRows: desvios.map(function (d) { return [d.siteId || "", d.empresa || "", fmtDateBR(d.data), d.descricao]; }),
       onRowBind: function (root) {
         $all("[data-id]", root).forEach(function (row) {
           row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
@@ -2196,7 +2171,6 @@
       var porCargo = auditadosPorCargo(pessoasInfo.auditadas);
       var naoConf = taxaNaoConformidade(lista);
       var clienteCounts = auditoriasPorCliente(lista);
-      var desvios = desviosDoPeriodo(lista);
       var meses = auditoriasMesesDisponiveis();
 
       var filtroHtml =
@@ -2213,8 +2187,7 @@
         ["Em rascunho", rascunhos, rascunhos > 0 ? "warn" : "", null],
         ["Pessoas auditadas", pessoasInfo.auditadas.length + " de " + pessoasInfo.totalElegiveis, "ok", "auditadas"],
         ["Pessoas não auditadas", pessoasInfo.naoAuditadas.length, pessoasInfo.naoAuditadas.length > 0 ? "danger" : "ok", "naoAuditadas"],
-        ["Não conformidade (Nokia)", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null],
-        ["Desvios encontrados (Ericsson)", desvios.length, desvios.length > 0 ? "warn" : "ok", "desvios"]
+        ["Não conformidade", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null]
       ];
       var kpiHtml = kpis.map(function (k) {
         var clickAttrs = k[3] ? ' tabindex="0" data-painel-kpi="' + k[3] + '" style="cursor:pointer;"' : "";
@@ -2249,8 +2222,8 @@
         ? '<div class="status-bar-lg">' + modalidadeSegs + '</div><div class="legend-row">' + modalidadeLegend + "</div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
 
-      var clienteDefs = [["NOKIA", "ok", "Nokia"], ["ERICSSON", "info", "Ericsson"]];
-      var clienteTotalBruto = clienteCounts.NOKIA + clienteCounts.ERICSSON;
+      var clienteDefs = [["NOKIA", "ok", "Nokia"], ["ERICSSON", "info", "Ericsson"], ["HUAWEI", "warn", "Huawei"], ["TELEFONICA", "neutral", "Telefônica"]];
+      var clienteTotalBruto = AUDITORIA_CLIENTES.reduce(function (sum, c) { return sum + (clienteCounts[c] || 0); }, 0);
       var clienteTotal = clienteTotalBruto || 1;
       var clienteSegs = clienteDefs.map(function (d) {
         var n = clienteCounts[d[0]] || 0;
@@ -2293,7 +2266,6 @@
         el.addEventListener("click", function () {
           var kind = el.getAttribute("data-painel-kpi");
           if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, mes, true);
-          else if (kind === "desvios") openDesviosDrawer(desvios, mes);
           else openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, mes, false);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
@@ -2401,31 +2373,25 @@
     });
   }
 
-  // Select de "Tipo de auditoria" (lista gerenciável em Admin > Listas) —
-  // só aparece/é obrigatório quando o cliente é ERICSSON: nesses casos não
-  // existe o checklist NOKIA, e o tipo ajuda a saber que auditoria foi essa
-  // (feita no app da própria Ericsson, só lançada aqui pra entrar nos
-  // números do Painel).
-  function tipoAuditoriaSelectHtml(current) {
-    var opts = listaOptions("tipoAuditoria");
-    return '<select name="tipoAuditoria"><option value="">— Selecione —</option>' +
-      opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === current ? " selected" : "") + '>' + esc(o) + "</option>"; }).join("") + "</select>";
+  // Select de "Cliente" — não muda mais o formulário/checklist (ver
+  // AUDITORIA_CLIENTES), é só a categorização de quem é o cliente daquela
+  // auditoria.
+  function clienteSelectHtml(name, current) {
+    return '<select name="' + name + '">' +
+      AUDITORIA_CLIENTES.map(function (c) { return '<option value="' + c + '"' + (c === (current || "NOKIA") ? " selected" : "") + '>' + c + "</option>"; }).join("") +
+      "</select>";
   }
   function openNovaAuditoriaForm() {
     var html =
-      '<div class="drawer-head"><div><h2>Nova auditoria</h2><div class="sub" id="nova-auditoria-sub">Checklist de segurança do trabalho — preencha os dados e depois complete o checklist</div></div>' +
+      '<div class="drawer-head"><div><h2>Nova auditoria</h2><div class="sub">Checklist de segurança do trabalho — preencha os dados e depois complete o checklist</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="nova-auditoria-form"><div class="field-grid">' +
-      '<div class="field span2"><label>Cliente *</label><select name="standard" id="nova-auditoria-standard">' +
-      '<option value="NOKIA" selected>NOKIA — checklist completo, feito aqui no app</option>' +
-      '<option value="ERICSSON">ERICSSON — auditoria feita no app da Ericsson, lançamento resumido aqui</option>' +
-      "</select></div>" +
+      '<div class="field span2"><label>Cliente *</label>' + clienteSelectHtml("standard", "NOKIA") + "</div>" +
       field("Site ID *", "siteId", "text", null, { required: true }) +
       field("Empresa", "empresa", "text", null) +
       field("Data", "data", "date", { data: todayISO() }) +
       field("Inspetor", "inspetorNome", "text", { inspetorNome: CURRENT_USER ? CURRENT_USER.nome : "" }) +
       '<div class="field"><label>Modalidade</label><select name="modalidade"><option value="PRESENCIAL" selected>Presencial</option><option value="REMOTA">Remota</option></select></div>' +
-      '<div class="field" id="nova-auditoria-tipo-wrap" hidden><label>Tipo de auditoria *</label>' + tipoAuditoriaSelectHtml() + "</div>" +
       '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="nova-auditoria-numcolab"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option></select></div>' +
       '</div><div class="field-grid" id="nova-auditoria-colabs">' + colabInputsHtml(2) + "</div>" +
       "</form>" +
@@ -2436,13 +2402,6 @@
       $("#nova-auditoria-colabs").innerHTML = colabInputsHtml(Number(this.value));
       wirePessoaCombo($("#nova-auditoria-colabs"), pessoasParaAuditoria());
     });
-    $("#nova-auditoria-standard").addEventListener("change", function () {
-      var ericsson = this.value === "ERICSSON";
-      $("#nova-auditoria-tipo-wrap").hidden = !ericsson;
-      $("#nova-auditoria-sub").textContent = ericsson
-        ? "Auditoria já realizada no app da Ericsson — lance aqui só o resumo (colaboradores, tipo e desvios) para entrar nos números"
-        : "Checklist de segurança do trabalho — preencha os dados e depois complete o checklist";
-    });
     $("#nova-auditoria-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       if (!canDo("auditorias", "criar")) { toast("Você não tem permissão para isso.", "error"); return; }
@@ -2452,17 +2411,13 @@
       for (var i = 1; i <= qtd; i++) { var v = (fd.get("colaborador_" + i) || "").toString().trim(); if (v) colabs.push(v); }
       var siteId = (fd.get("siteId") || "").toString().trim();
       if (!siteId) { toast("Informe o Site ID.", "error"); return; }
-      var standard = (fd.get("standard") || "NOKIA").toString().trim();
-      var tipoAuditoria = (fd.get("tipoAuditoria") || "").toString().trim();
-      if (standard === "ERICSSON" && !tipoAuditoria) { toast("Selecione o tipo de auditoria.", "error"); return; }
       var body = {
         siteId: siteId,
-        standard: standard,
+        standard: (fd.get("standard") || "NOKIA").toString().trim(),
         empresa: (fd.get("empresa") || "").toString().trim(),
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
         modalidade: (fd.get("modalidade") || "").toString().trim() || null,
-        tipoAuditoria: tipoAuditoria || null,
         numColaboradores: qtd,
         colaboradores: colabs
       };
@@ -2481,17 +2436,16 @@
   }
 
   function openAuditoriaHeaderForm(a, onSaved) {
-    var ericsson = a.standard === "ERICSSON";
     var html =
-      '<div class="drawer-head"><div><h2>Editar dados da auditoria</h2><div class="sub">Site, empresa, inspetor e colaboradores' + (ericsson ? " — cliente ERICSSON" : "") + '</div></div>' +
+      '<div class="drawer-head"><div><h2>Editar dados da auditoria</h2><div class="sub">Site, empresa, inspetor e colaboradores</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="auditoria-form"><div class="field-grid">' +
+      '<div class="field span2"><label>Cliente</label>' + clienteSelectHtml("standard", a.standard) + "</div>" +
       field("Site ID *", "siteId", "text", { siteId: a.siteId }, { required: true }) +
       field("Empresa", "empresa", "text", { empresa: a.empresa }) +
       field("Data", "data", "date", { data: a.data }) +
       field("Inspetor", "inspetorNome", "text", { inspetorNome: a.inspetorNome }) +
       '<div class="field"><label>Modalidade</label><select name="modalidade"><option value=""' + (!a.modalidade ? " selected" : "") + '>Não informado</option><option value="PRESENCIAL"' + (a.modalidade === "PRESENCIAL" ? " selected" : "") + '>Presencial</option><option value="REMOTA"' + (a.modalidade === "REMOTA" ? " selected" : "") + '>Remota</option></select></div>' +
-      (ericsson ? '<div class="field"><label>Tipo de auditoria *</label>' + tipoAuditoriaSelectHtml(a.tipoAuditoria) + "</div>" : "") +
       '<div class="field"><label>Quantos colaboradores?</label><select name="numColaboradores" id="auditoria-form-numcolab">' +
       [1, 2, 3].map(function (n) { return '<option value="' + n + '"' + (a.numColaboradores === n ? " selected" : "") + ">" + n + "</option>"; }).join("") +
       "</select></div>" +
@@ -2513,10 +2467,9 @@
       for (var i = 1; i <= qtd; i++) { var v = (fd.get("colaborador_" + i) || "").toString().trim(); if (v) colabs.push(v); }
       var siteId = (fd.get("siteId") || "").toString().trim();
       if (!siteId) { toast("Informe o Site ID.", "error"); return; }
-      var tipoAuditoria = (fd.get("tipoAuditoria") || "").toString().trim();
-      if (ericsson && !tipoAuditoria) { toast("Selecione o tipo de auditoria.", "error"); return; }
       var body = {
         siteId: siteId,
+        standard: (fd.get("standard") || "NOKIA").toString().trim(),
         empresa: (fd.get("empresa") || "").toString().trim(),
         data: emptyToNull((fd.get("data") || "").toString()),
         inspetorNome: (fd.get("inspetorNome") || "").toString().trim(),
@@ -2524,7 +2477,6 @@
         numColaboradores: qtd,
         colaboradores: colabs
       };
-      if (ericsson) body.tipoAuditoria = tipoAuditoria || null;
       apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: body })
         .then(function (data) {
           closeDrawer();
@@ -2548,131 +2500,14 @@
       });
   }
 
-  /* ---------------- Auditoria ERICSSON — desvios encontrados ----------------
-     Auditoria feita no app da própria Ericsson: aqui só lançamos o resumo
-     (sem o checklist item a item do NOKIA). Os desvios são uma lista livre
-     — cada um só com uma descrição — editável direto na tela de detalhe. */
-  function desviosListHtml(a) {
-    var itens = a.desvios || [];
-    var podeEditar = canDo("auditorias", "editar");
-    var rows = itens.length
-      ? itens.map(function (d, idx) {
-          return '<div class="desvio-row"><span class="desvio-num">' + (idx + 1) + '</span><span class="desvio-desc">' + esc(d.descricao) + "</span>" +
-            (podeEditar ? '<button type="button" class="btn ghost sm no-print" data-remove-desvio="' + idx + '" title="Remover desvio">' + ICONS.trash + "</button>" : "") +
-            "</div>";
-        }).join("")
-      : '<div class="empty-state" style="padding:14px 0;">Nenhum desvio registrado.</div>';
-    return '<div class="desvio-list">' + rows + "</div>" +
-      (podeEditar
-        ? '<form class="list-add-form no-print" id="desvio-add-form" style="margin-top:12px;"><input type="text" name="descricao" placeholder="Descreva o desvio encontrado…" maxlength="500" required><button type="submit" class="btn primary sm">' + ICONS.plus + "Adicionar</button></form>"
-        : "");
-  }
-  function wireDesviosEvents(container, a, onAfterChange) {
-    if (!container) return;
-    $all("[data-remove-desvio]", container).forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
-        var idx = Number(btn.getAttribute("data-remove-desvio"));
-        var novos = (a.desvios || []).slice();
-        novos.splice(idx, 1);
-        setSaveDot("saving");
-        apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { desvios: novos } })
-          .then(function (data) {
-            a.desvios = data.desvios || [];
-            setSaveDot(null);
-            if (onAfterChange) onAfterChange();
-          }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
-      });
-    });
-    var form = $("#desvio-add-form", container);
-    if (form) form.addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
-      var fd = new FormData(ev.target);
-      var desc = (fd.get("descricao") || "").toString().trim();
-      if (!desc) return;
-      var novos = (a.desvios || []).concat([{ descricao: desc }]);
-      setSaveDot("saving");
-      apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { desvios: novos } })
-        .then(function (data) {
-          a.desvios = data.desvios || [];
-          setSaveDot(null);
-          if (onAfterChange) onAfterChange();
-        }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
-    });
-  }
-
-  /* ---------------- Auditoria ERICSSON — anexos (evidência) ----------------
-     Upload simples (sem marca d'água/canvas — isso é só pra foto tirada na
-     hora do checklist NOKIA): aceita imagem ou PDF, reaproveitando a mesma
-     tabela/endpoint de fotos do checklist, cada anexo com seu slot_key
-     próprio (gerado aqui, não é um dos slots fixos do checklist). */
-  function anexoEhImagem(f) {
-    return /\.(jpe?g|png|gif|webp)$/i.test((f && (f.arquivoPath || f.label)) || "");
-  }
-  function anexosListHtml(a) {
-    var itens = (a.fotos || []).slice().sort(function (x, y) { return (x.sortOrder || 0) - (y.sortOrder || 0); });
-    var podeEditar = canDo("auditorias", "editar");
-    var rows = itens.length
-      ? itens.map(function (f) {
-          return '<div class="anexo-row"><a class="anexo-link" href="' + esc(f.url || "#") + '" target="_blank" rel="noopener">' + (anexoEhImagem(f) ? ICONS.camera : ICONS.file) + "<span>" + esc(f.label || "Anexo") + "</span></a>" +
-            (podeEditar ? '<button type="button" class="btn ghost sm no-print" data-remove-anexo="' + f.id + '" title="Remover anexo">' + ICONS.trash + "</button>" : "") +
-            "</div>";
-        }).join("")
-      : '<div class="empty-state" style="padding:14px 0;">Nenhum anexo enviado.</div>';
-    return '<div class="anexo-list">' + rows + "</div>" +
-      (podeEditar
-        ? '<label class="btn sm ghost no-print" style="margin-top:12px;">' + ICONS.upload + 'Anexar arquivo<input type="file" accept="image/*,application/pdf" id="anexo-input" style="display:none;"></label>'
-        : "");
-  }
-  function uploadAnexoAuditoria(a, file, onDone) {
-    if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
-    if (file.size > 8 * 1024 * 1024) { toast("Arquivo muito grande (máx. 8MB).", "error"); return; }
-    var slotKey = "anexo_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
-    var fd = new FormData();
-    fd.append("file", file, file.name || "anexo");
-    fd.append("slotKey", slotKey);
-    fd.append("label", file.name || "Anexo");
-    fd.append("sortOrder", String((a.fotos || []).length));
-    setSaveDot("saving");
-    apiFetch("/api/auditorias/" + a.id + "/fotos", { method: "POST", body: fd, isFormData: true })
-      .then(function (data) {
-        a.fotos = (a.fotos || []).concat([mapAuditoriaFotoFromApi(data)]);
-        setSaveDot(null);
-        toast("Anexo enviado.", "success");
-        if (onDone) onDone();
-      }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
-  }
-  function wireAnexosEvents(container, a, onAfterChange) {
-    if (!container) return;
-    var input = $("#anexo-input", container);
-    if (input) input.addEventListener("change", function () {
-      var file = this.files && this.files[0];
-      this.value = "";
-      if (file) uploadAnexoAuditoria(a, file, onAfterChange);
-    });
-    $all("[data-remove-anexo]", container).forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
-        var fotoId = Number(btn.getAttribute("data-remove-anexo"));
-        apiFetch("/api/auditorias/" + a.id + "/fotos/" + fotoId, { method: "DELETE" })
-          .then(function () {
-            a.fotos = (a.fotos || []).filter(function (f) { return f.id !== fotoId; });
-            toast("Anexo removido.", "success");
-            if (onAfterChange) onAfterChange();
-          }).catch(handleApiError);
-      });
-    });
-  }
 
   function drawAuditoriaDetail(main, a) {
-    var ericsson = a.standard === "ERICSSON";
     function syncListaLeve() {
       var idx = STATE.auditorias.findIndex(function (x) { return x.id === a.id; });
       var leve = {
         id: a.id, standard: a.standard, siteId: a.siteId, empresa: a.empresa, data: a.data, status: a.status,
         inspetorNome: a.inspetorNome, numColaboradores: a.numColaboradores, colaboradores: a.colaboradores,
-        respostas: a.respostas, modalidade: a.modalidade, tipoAuditoria: a.tipoAuditoria, desvios: a.desvios,
+        respostas: a.respostas, modalidade: a.modalidade,
         criadoPorNome: a.criadoPorNome,
         criadoEm: a.criadoEm, atualizadoEm: a.atualizadoEm, finalizadoEm: a.finalizadoEm
       };
@@ -2682,30 +2517,15 @@
       var el = document.getElementById("auditoria-checklist");
       if (el) { el.innerHTML = checklistHtml(a); wireChecklistEvents(el, a, redrawChecklist); }
     }
-    // Desvios entram direto na contagem do Painel (KPI "Desvios
-    // encontrados") — por isso, diferente do checklist, cada alteração já
-    // atualiza a lista leve (STATE.auditorias) na hora, sem esperar o
-    // usuário editar outro campo ou trocar o status.
-    function redrawDesvios() {
-      syncListaLeve();
-      var el = document.getElementById("auditoria-desvios");
-      if (el) { el.innerHTML = desviosListHtml(a); wireDesviosEvents(el, a, redrawDesvios); }
-    }
-    function redrawAnexos() {
-      var el = document.getElementById("auditoria-anexos");
-      if (el) { el.innerHTML = anexosListHtml(a); wireAnexosEvents(el, a, redrawAnexos); }
-    }
 
-    var corpoHtml = ericsson
-      ? '<div class="panel"><div class="panel-head"><h3>Desvios encontrados</h3></div><div class="panel-body pad" id="auditoria-desvios">' + desviosListHtml(a) + "</div></div>" +
-        '<div class="panel"><div class="panel-head"><h3>Anexos</h3><span class="hint">relatório, fotos ou outra evidência da auditoria feita no app da Ericsson</span></div><div class="panel-body pad" id="auditoria-anexos">' + anexosListHtml(a) + "</div></div>"
-      : '<div class="panel"><div class="panel-head"><h3>Checklist</h3></div><div class="panel-body pad" id="auditoria-checklist">' + checklistHtml(a) + "</div></div>" +
-        '<div class="panel no-print"><div class="panel-head"><h3>Assinatura do inspetor</h3><button type="button" class="btn sm ghost" id="btn-limpar-assinatura">Limpar</button></div>' +
-        '<div class="panel-body pad"><canvas id="auditoria-assinatura" class="assinatura-canvas" width="600" height="200"></canvas></div></div>';
+    var corpoHtml =
+      '<div class="panel"><div class="panel-head"><h3>Checklist</h3></div><div class="panel-body pad" id="auditoria-checklist">' + checklistHtml(a) + "</div></div>" +
+      '<div class="panel no-print"><div class="panel-head"><h3>Assinatura do inspetor</h3><button type="button" class="btn sm ghost" id="btn-limpar-assinatura">Limpar</button></div>' +
+      '<div class="panel-body pad"><canvas id="auditoria-assinatura" class="assinatura-canvas" width="600" height="200"></canvas></div></div>';
 
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditorias</button><h1 style="margin-top:6px;">' + esc(a.siteId || "Auditoria " + a.id) + "</h1>" +
-      '<div class="sub">' + esc(a.empresa || "—") + ' · <span class="tag">' + (ericsson ? "ERICSSON" : "NOKIA") + "</span> · " + statusPillAuditoria(a.status) + "</div>" +
+      '<div class="sub">' + esc(a.empresa || "—") + ' · <span class="tag">' + clienteAuditoria(a) + "</span> · " + statusPillAuditoria(a.status) + "</div>" +
       '<div class="header-field-notes">' + fieldNoteHtml("site_id", "Site ID") + fieldNoteHtml("status", "Status") + "</div>" +
       "</div>" +
       '<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;">' +
@@ -2720,7 +2540,6 @@
       detailItem("Data", fmtDateBR(a.data), "data") +
       detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
       detailItem("Modalidade", a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "Não informado", "modalidade") +
-      (ericsson ? detailItem("Tipo de auditoria", a.tipoAuditoria, "tipo_auditoria") : "") +
       detailItem("Criado por", a.criadoPorNome) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
       "</div></div></div>" +
       corpoHtml +
@@ -2729,30 +2548,27 @@
       historyPanelHtml("auditoria", a.id);
     loadHistoryPanel("auditoria", a.id);
 
-    var assinaturaFoto = null, canvas = null;
-    if (!ericsson) {
-      assinaturaFoto = (a.fotos || []).filter(function (f) { return f.slotKey === "assinatura_inspetor"; })[0] || null;
-      canvas = document.getElementById("auditoria-assinatura");
-      setupSignaturePad(canvas);
-      if (assinaturaFoto && assinaturaFoto.url) {
-        var img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = function () { canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height); };
-        img.src = assinaturaFoto.url;
-      }
-      var salvarAssinaturaDebounced = debounce(function () {
-        salvarAssinatura(a, canvas, function (foto) { assinaturaFoto = foto; });
-      }, 900);
-      canvas.addEventListener("pointerup", salvarAssinaturaDebounced);
-      canvas.addEventListener("touchend", salvarAssinaturaDebounced);
+    var assinaturaFoto = (a.fotos || []).filter(function (f) { return f.slotKey === "assinatura_inspetor"; })[0] || null;
+    var canvas = document.getElementById("auditoria-assinatura");
+    setupSignaturePad(canvas);
+    if (assinaturaFoto && assinaturaFoto.url) {
+      var img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = function () { canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height); };
+      img.src = assinaturaFoto.url;
     }
+    var salvarAssinaturaDebounced = debounce(function () {
+      salvarAssinatura(a, canvas, function (foto) { assinaturaFoto = foto; });
+    }, 900);
+    canvas.addEventListener("pointerup", salvarAssinaturaDebounced);
+    canvas.addEventListener("touchend", salvarAssinaturaDebounced);
 
     $("#back-btn").addEventListener("click", function () { navigate("#/auditorias"); });
     if ($("#btn-edit-auditoria")) $("#btn-edit-auditoria").addEventListener("click", function () {
       openAuditoriaHeaderForm(a, function (patched) {
         a.siteId = patched.siteId; a.empresa = patched.empresa; a.data = patched.data; a.inspetorNome = patched.inspetorNome;
         a.standard = patched.standard; a.numColaboradores = patched.numColaboradores; a.colaboradores = patched.colaboradores;
-        a.modalidade = patched.modalidade; a.tipoAuditoria = patched.tipoAuditoria;
+        a.modalidade = patched.modalidade;
         syncListaLeve();
         drawAuditoriaDetail(main, a);
         renderShellCounts();
@@ -2792,20 +2608,15 @@
         .catch(function (err) { setSaveDot("error"); handleApiError(err); });
     });
 
-    if (ericsson) {
-      wireDesviosEvents(document.getElementById("auditoria-desvios"), a, redrawDesvios);
-      wireAnexosEvents(document.getElementById("auditoria-anexos"), a, redrawAnexos);
-    } else {
-      $("#btn-limpar-assinatura").addEventListener("click", function () {
-        canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-        if (assinaturaFoto) {
-          apiFetch("/api/auditorias/" + a.id + "/fotos/" + assinaturaFoto.id, { method: "DELETE" })
-            .then(function () { a.fotos = a.fotos.filter(function (f) { return f.id !== assinaturaFoto.id; }); assinaturaFoto = null; })
-            .catch(handleApiError);
-        }
-      });
-      wireChecklistEvents(document.getElementById("auditoria-checklist"), a, redrawChecklist);
-    }
+    $("#btn-limpar-assinatura").addEventListener("click", function () {
+      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+      if (assinaturaFoto) {
+        apiFetch("/api/auditorias/" + a.id + "/fotos/" + assinaturaFoto.id, { method: "DELETE" })
+          .then(function () { a.fotos = a.fotos.filter(function (f) { return f.id !== assinaturaFoto.id; }); assinaturaFoto = null; })
+          .catch(handleApiError);
+      }
+    });
+    wireChecklistEvents(document.getElementById("auditoria-checklist"), a, redrawChecklist);
   }
 
 

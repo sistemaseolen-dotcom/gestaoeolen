@@ -3,7 +3,7 @@ import { requirePermission, requireView } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 
-const STANDARDS = ["NOKIA", "ERICSSON"];
+const STANDARDS = ["NOKIA", "ERICSSON", "HUAWEI", "TELEFONICA"];
 const MODALIDADES = ["PRESENCIAL", "REMOTA"];
 
 function up(v: any): string | null {
@@ -60,14 +60,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Modalidade inválida." }, { status: 400 });
     }
   }
-  // Tipo de auditoria só faz sentido pra lançamentos ERICSSON (auditoria
-  // feita no app do próprio cliente — aqui só registramos o resultado, sem
-  // o checklist NOKIA item a item).
-  let tipoAuditoria: string | null = null;
-  if (body?.tipoAuditoria !== undefined && body?.tipoAuditoria !== null && body?.tipoAuditoria !== "") {
-    tipoAuditoria = up(body.tipoAuditoria);
-  }
-
   const admin = supabaseAdmin();
   const payload = {
     legacy_id: null,
@@ -80,8 +72,6 @@ export async function POST(req: Request) {
     num_colaboradores: numColaboradores,
     colaboradores,
     modalidade,
-    tipo_auditoria: tipoAuditoria,
-    desvios: [],
     respostas: {},
     observacao_final: null,
     criado_por_id: gate.user?.id ?? null,
@@ -97,7 +87,7 @@ export async function POST(req: Request) {
     entidadeLabel: data.site_id,
     before: null,
     after: data,
-    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade", "tipo_auditoria"],
+    campos: ["site_id", "empresa", "data", "standard", "status", "inspetor_nome", "num_colaboradores", "modalidade"],
     usuario: gate.user,
   });
 

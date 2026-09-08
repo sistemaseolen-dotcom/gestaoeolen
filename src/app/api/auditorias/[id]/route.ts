@@ -6,9 +6,8 @@ import { auditDiffFields, auditDelete } from "@/lib/audit";
 const BUCKET = "auditorias-anexos";
 const CAMPOS_AUDITORIA = [
   "site_id", "empresa", "data", "standard", "status", "inspetor_nome",
-  "num_colaboradores", "observacao_final", "modalidade", "tipo_auditoria",
+  "num_colaboradores", "observacao_final", "modalidade",
 ];
-const MAX_DESVIOS = 100;
 const MODALIDADES = ["PRESENCIAL", "REMOTA"];
 
 function up(v: any): string | null {
@@ -89,20 +88,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       return NextResponse.json({ error: "Modalidade inválida." }, { status: 400 });
     }
     patch.modalidade = m;
-  }
-  if (Object.prototype.hasOwnProperty.call(body, "tipoAuditoria")) {
-    patch.tipo_auditoria = body.tipoAuditoria ? up(body.tipoAuditoria) : null;
-  }
-  // Desvios: lista simples (cada item só com uma descrição) — vem sempre
-  // completa do front (substitui a lista inteira), igual a `colaboradores`.
-  // Usado nos lançamentos ERICSSON, onde não existe o checklist item a item
-  // do NOKIA e os desvios encontrados são registrados manualmente aqui.
-  if (Object.prototype.hasOwnProperty.call(body, "desvios")) {
-    const arr = Array.isArray(body.desvios) ? body.desvios : [];
-    patch.desvios = arr
-      .map((d: any) => ({ descricao: ((d && d.descricao) ?? d ?? "").toString().trim() }))
-      .filter((d: { descricao: string }) => d.descricao)
-      .slice(0, MAX_DESVIOS);
   }
   if (Object.prototype.hasOwnProperty.call(body, "respostas")) {
     // Mescla com o que já existe — o formulário manda só as respostas que

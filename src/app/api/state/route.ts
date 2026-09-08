@@ -52,7 +52,7 @@ export async function GET() {
     podeAuditorias
       ? admin
           .from("auditorias")
-          .select("id, standard, site_id, empresa, data, status, inspetor_nome, num_colaboradores, colaboradores, respostas, modalidade, tipo_auditoria, desvios, criado_por_nome, criado_em, atualizado_em, finalizado_em")
+          .select("id, standard, site_id, empresa, data, status, inspetor_nome, num_colaboradores, colaboradores, respostas, modalidade, criado_por_nome, criado_em, atualizado_em, finalizado_em")
           .order("data", { ascending: false })
       : Promise.resolve({ data: [] as any[], error: null as any }),
     admin.from("configuracoes").select("chave, valor"),
