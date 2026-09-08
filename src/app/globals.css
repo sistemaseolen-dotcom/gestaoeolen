@@ -33,6 +33,15 @@
   --neutral-soft: #eceee9;
   --neutral-ink: #4d5850;
 
+  /* Cores fixas do gráfico "Auditorias por cliente" — pedido do Diego
+     (azul/cinza escuro/vermelho/roxo), independentes das cores semânticas
+     de status (ok/warn/danger/neutral) acima, que continuam usadas em
+     outros lugares (pills, checklist etc.) e não devem mudar junto. */
+  --cliente-nokia: #2f6fbf;
+  --cliente-ericsson: #4b5563;
+  --cliente-huawei: #c0332b;
+  --cliente-telefonica: #7c4fb0;
+
   --shadow-sm: 0 1px 2px rgba(20, 30, 25, 0.06);
   --shadow-md: 0 6px 20px rgba(20, 30, 25, 0.10);
   --shadow-lg: 0 20px 48px rgba(15, 25, 20, 0.22);
@@ -80,6 +89,11 @@
     --neutral-soft: #262e31;
     --neutral-ink: #b6c0ba;
 
+    --cliente-nokia: #6fa3e0;
+    --cliente-ericsson: #9aa5b1;
+    --cliente-huawei: #e2726b;
+    --cliente-telefonica: #b79ee0;
+
     color-scheme: dark;
   }
 }
@@ -114,6 +128,11 @@
 
   --neutral-soft: #262e31;
   --neutral-ink: #b6c0ba;
+
+  --cliente-nokia: #6fa3e0;
+  --cliente-ericsson: #9aa5b1;
+  --cliente-huawei: #e2726b;
+  --cliente-telefonica: #b79ee0;
 
   color-scheme: dark;
 }
@@ -453,6 +472,10 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .status-bar-lg .seg.danger { background: var(--danger); }
 .status-bar-lg .seg.neutral { background: var(--border-strong); }
 .status-bar-lg .seg.info { background: var(--accent); }
+.status-bar-lg .seg.cliente-nokia { background: var(--cliente-nokia); }
+.status-bar-lg .seg.cliente-ericsson { background: var(--cliente-ericsson); }
+.status-bar-lg .seg.cliente-huawei { background: var(--cliente-huawei); }
+.status-bar-lg .seg.cliente-telefonica { background: var(--cliente-telefonica); }
 
 .legend-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; }
 .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); cursor: pointer; border: none; background: none; padding: 2px 4px; border-radius: 4px; }
@@ -463,6 +486,10 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .legend-swatch.danger { background: var(--danger); }
 .legend-swatch.neutral { background: var(--border-strong); }
 .legend-swatch.info { background: var(--accent); }
+.legend-swatch.cliente-nokia { background: var(--cliente-nokia); }
+.legend-swatch.cliente-ericsson { background: var(--cliente-ericsson); }
+.legend-swatch.cliente-huawei { background: var(--cliente-huawei); }
+.legend-swatch.cliente-telefonica { background: var(--cliente-telefonica); }
 
 .month-chart { display: flex; align-items: flex-end; gap: 10px; height: 150px; padding-top: 8px; }
 .month-col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 6px; cursor: pointer; border-radius: var(--radius-sm); }

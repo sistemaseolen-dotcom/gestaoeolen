@@ -2356,7 +2356,11 @@
         ? '<div class="status-bar-lg">' + modalidadeSegs + '</div><div class="legend-row">' + modalidadeLegend + "</div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
 
-      var clienteDefs = [["NOKIA", "ok", "Nokia"], ["ERICSSON", "info", "Ericsson"], ["HUAWEI", "warn", "Huawei"], ["TELEFONICA", "neutral", "Telefônica"]];
+      // Cores fixas pedidas pelo Diego (Nokia azul, Ericsson cinza escuro,
+      // Huawei vermelho, Telefônica roxo) — classes próprias (cliente-*),
+      // não as semânticas de status (ok/warn/danger/neutral) usadas em
+      // outros gráficos, pra não misturar as duas coisas.
+      var clienteDefs = [["NOKIA", "cliente-nokia", "Nokia"], ["ERICSSON", "cliente-ericsson", "Ericsson"], ["HUAWEI", "cliente-huawei", "Huawei"], ["TELEFONICA", "cliente-telefonica", "Telefônica"]];
       var clienteTotalBruto = AUDITORIA_CLIENTES.reduce(function (sum, c) { return sum + (clienteCounts[c] || 0); }, 0);
       var clienteTotal = clienteTotalBruto || 1;
       var clienteSegs = clienteDefs.map(function (d) {
