@@ -1743,18 +1743,50 @@
     ctx.arcTo(x, y, x + w, y, r);
     ctx.closePath();
   }
+  // Fotos escolhidas da galeria (modalidade REMOTA) vêm no tamanho original
+  // da câmera do celular — muitas vezes 4000px+ de largura, vários MB. Sem
+  // redimensionar antes, dois problemas apareciam no celular: (1) o
+  // navegador falha ao decodificar/desenhar a imagem no canvas (limite de
+  // memória/tamanho de canvas em navegadores mobile) e cai no onerror
+  // abaixo, mesmo sendo um arquivo de imagem válido; (2) o upload demora
+  // muito, já que sobe a foto inteira em resolução de câmera. `FOTO_MAX_DIM`
+  // limita o lado maior da foto final (watermark já incluído) — resolve os
+  // dois. `createImageBitmap` com `resizeWidth` deixa o próprio navegador
+  // decodificar já em tamanho reduzido (mais leve que decodificar o
+  // original inteiro pra depois desenhar menor), com fallback pra
+  // `Image()` em navegadores mais antigos que não suportam a API.
+  var FOTO_MAX_DIM = 1600;
+  function carregarImagemEscalada(file) {
+    function viaImageElement() {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error("Não foi possível carregar essa imagem. Tente escolher outra foto (ou tirar uma nova) — o formato ou o tamanho do arquivo pode não ser suportado neste navegador."));
+        };
+        img.src = url;
+      });
+    }
+    if (typeof createImageBitmap !== "function") return viaImageElement();
+    return createImageBitmap(file, { resizeWidth: FOTO_MAX_DIM, resizeQuality: "medium" })
+      .catch(function () { return createImageBitmap(file); })
+      .catch(viaImageElement);
+  }
   // info: { siteId, endereco (string|null), lat (number|null), lon (number|null) }
   function watermarkedBlob(file, info) {
-    return new Promise(function (resolve, reject) {
-      var url = URL.createObjectURL(file);
-      var img = new Image();
-      img.onload = function () {
-        URL.revokeObjectURL(url);
+    return carregarImagemEscalada(file).then(function (source) {
+      return new Promise(function (resolve, reject) {
+        var largura = source.naturalWidth || source.width || 1200;
+        var altura = source.naturalHeight || source.height || 900;
+        var escala = Math.min(1, FOTO_MAX_DIM / Math.max(largura, altura));
         var canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || 1200;
-        canvas.height = img.naturalHeight || 900;
+        canvas.width = Math.max(1, Math.round(largura * escala));
+        canvas.height = Math.max(1, Math.round(altura * escala));
         var ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        if (typeof source.close === "function") source.close();
 
         var scale = canvas.width / 1080;
         var padBox = Math.max(10, Math.round(16 * scale));
@@ -1819,15 +1851,17 @@
         // Lat/Long
         if (latlongTexto) ctx.fillText(latlongTexto, textX, cursorY);
 
-        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("Falha ao gerar a imagem.")); }, "image/jpeg", 0.9);
-      };
-      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Não foi possível carregar a imagem.")); };
-      img.src = url;
+        canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("Falha ao gerar a imagem.")); }, "image/jpeg", 0.85);
+      });
     });
   }
   function capturarEUpload(a, slotKey, onDone, file) {
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) { toast("Imagem muito grande (máx. 8MB).", "error"); return; }
+    // Limite alto de propósito: o arquivo original (galeria pode vir com
+    // 10-20MB numa foto de câmera moderna) é só o ponto de partida —
+    // `watermarkedBlob`/`carregarImagemEscalada` redimensiona pra no máximo
+    // 1600px antes de gerar o JPEG final que de fato sobe pro servidor.
+    if (file.size > 30 * 1024 * 1024) { toast("Imagem muito grande (máx. 30MB).", "error"); return; }
     setSaveDot("saving");
     getGeolocation().then(function (geo) {
       var enderecoPromise = geo ? buscarEndereco(geo.lat, geo.lon) : Promise.resolve(null);
