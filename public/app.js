@@ -1569,7 +1569,7 @@
       ? '<label class="btn sm">' + ICONS.camera + (f ? "Tirar outra foto" : "Tirar foto") + '<input type="file" accept="image/*" capture="environment" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>'
       : "";
     var botaoGaleria = (remota || permiteGaleriaPresencial())
-      ? '<label class="btn sm ghost">Escolher da galeria<input type="file" accept="image/*" data-foto-input="' + esc(slotKey) + '" style="display:none;"></label>'
+      ? '<label class="btn sm ghost">Escolher da galeria<input type="file" accept="image/*" data-foto-input="' + esc(slotKey) + '" data-via-galeria="1" style="display:none;"></label>'
       : "";
     return '<div class="foto-slot" data-slot="' + esc(slotKey) + '">' +
       (colabLabel ? '<div class="foto-slot-label">' + esc(colabLabel) + "</div>" : "") +
@@ -1659,7 +1659,8 @@
         if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
         var file = this.files && this.files[0];
         var slotKey = this.getAttribute("data-foto-input");
-        capturarEUpload(a, slotKey, function () { if (onAfterChange) onAfterChange(); }, file);
+        var viaGaleria = this.getAttribute("data-via-galeria") === "1";
+        capturarEUpload(a, slotKey, function () { if (onAfterChange) onAfterChange(); }, file, viaGaleria);
         this.value = "";
       });
     });
@@ -1775,6 +1776,9 @@
       .catch(viaImageElement);
   }
   // info: { siteId, endereco (string|null), lat (number|null), lon (number|null) }
+  // ou null/undefined -- nesse caso a foto só é redimensionada (sem marca
+  // d'água), usado nas fotos escolhidas da galeria (pedido do Diego: fotos
+  // da galeria não precisam do carimbo de site/hora/endereço, só a imagem).
   function watermarkedBlob(file, info) {
     return carregarImagemEscalada(file).then(function (source) {
       return new Promise(function (resolve, reject) {
@@ -1787,6 +1791,11 @@
         var ctx = canvas.getContext("2d");
         ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
         if (typeof source.close === "function") source.close();
+
+        if (!info) {
+          canvas.toBlob(function (blob) { blob ? resolve(blob) : reject(new Error("Falha ao gerar a imagem.")); }, "image/jpeg", 0.85);
+          return;
+        }
 
         var scale = canvas.width / 1080;
         var padBox = Math.max(10, Math.round(16 * scale));
@@ -1855,7 +1864,7 @@
       });
     });
   }
-  function capturarEUpload(a, slotKey, onDone, file) {
+  function capturarEUpload(a, slotKey, onDone, file, viaGaleria) {
     if (!file) return;
     // Limite alto de propósito: o arquivo original (galeria pode vir com
     // 10-20MB numa foto de câmera moderna) é só o ponto de partida —
@@ -1863,20 +1872,27 @@
     // 1600px antes de gerar o JPEG final que de fato sobe pro servidor.
     if (file.size > 30 * 1024 * 1024) { toast("Imagem muito grande (máx. 30MB).", "error"); return; }
     setSaveDot("saving");
-    getGeolocation().then(function (geo) {
-      var enderecoPromise = geo ? buscarEndereco(geo.lat, geo.lon) : Promise.resolve(null);
-      return enderecoPromise.then(function (endereco) {
-        var agora = new Date();
-        var dh = formatarDataHoraWatermark(agora);
-        return watermarkedBlob(file, {
-          siteId: a.siteId || "",
-          endereco: endereco,
-          lat: geo ? geo.lat : null,
-          lon: geo ? geo.lon : null,
-          hora: dh.hora, data: dh.data, dia: dh.dia
+    // Fotos escolhidas da galeria não recebem marca d'água (pedido do
+    // Diego: "só inserir a imagem") -- e por isso nem esperam a
+    // geolocalização/busca de endereço, que era boa parte da demora
+    // percebida no upload dessas fotos.
+    var preparo = viaGaleria
+      ? watermarkedBlob(file, null)
+      : getGeolocation().then(function (geo) {
+          var enderecoPromise = geo ? buscarEndereco(geo.lat, geo.lon) : Promise.resolve(null);
+          return enderecoPromise.then(function (endereco) {
+            var agora = new Date();
+            var dh = formatarDataHoraWatermark(agora);
+            return watermarkedBlob(file, {
+              siteId: a.siteId || "",
+              endereco: endereco,
+              lat: geo ? geo.lat : null,
+              lon: geo ? geo.lon : null,
+              hora: dh.hora, data: dh.data, dia: dh.dia
+            });
+          });
         });
-      });
-    }).then(function (blob) {
+    preparo.then(function (blob) {
       var fd = new FormData();
       fd.append("file", blob, slotKey + ".jpg");
       fd.append("slotKey", slotKey);
