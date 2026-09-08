@@ -1503,20 +1503,39 @@
     { n: 32, tipo: "pergunta", label: "Os pneus estão em boas condições de uso?", key: "q34", opcoes: ["Sim", "Não", "N/A"] },
     { n: 33, tipo: "pergunta", label: "O motorista está devidamente habilitado?", key: "q35", opcoes: ["Sim", "Não", "N/A"] },
 
-    { n: 34, secao: "RISCOS", tipo: "pergunta", label: "Existe risco relacionado a bordas desprotegidas, superfícies frágeis, telha de amianto, telha de fibra ou telha corrugada?", key: "q36", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 35, tipo: "pergunta", label: "Existe risco em estruturas verticais (corrosão, falta de linha de vida, parafusos soltos, escadas com corrosão, pontos de ancoragem inseguros)?", key: "q37", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 36, tipo: "pergunta", label: "Existem riscos potenciais por conta de construção em andamento no site?", key: "q38", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 37, tipo: "pergunta", label: "Existe risco identificado com dispositivos elétricos, cabos e conexões?", key: "q39", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 38, tipo: "pergunta", label: "Existe risco com materiais inflamáveis ou outros materiais perigosos no site?", key: "q40", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 39, tipo: "pergunta", label: "Existe risco com piso escorregadio ou similar identificado?", key: "q41", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 40, tipo: "pergunta", label: "Existe risco com escadas, elevadores, áreas de entrega de equipamentos?", key: "q42", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 34, secao: "RISCOS", tipo: "pergunta", label: "Existe risco relacionado a bordas desprotegidas, superfícies frágeis, telha de amianto, telha de fibra ou telha corrugada?", key: "q36", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 35, tipo: "pergunta", label: "Existe risco em estruturas verticais (corrosão, falta de linha de vida, parafusos soltos, escadas com corrosão, pontos de ancoragem inseguros)?", key: "q37", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 36, tipo: "pergunta", label: "Existem riscos potenciais por conta de construção em andamento no site?", key: "q38", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 37, tipo: "pergunta", label: "Existe risco identificado com dispositivos elétricos, cabos e conexões?", key: "q39", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 38, tipo: "pergunta", label: "Existe risco com materiais inflamáveis ou outros materiais perigosos no site?", key: "q40", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 39, tipo: "pergunta", label: "Existe risco com piso escorregadio ou similar identificado?", key: "q41", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 40, tipo: "pergunta", label: "Existe risco com escadas, elevadores, áreas de entrega de equipamentos?", key: "q42", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
     { n: 41, tipo: "pergunta", label: "Existe extintor adequado e bem conservado, equipe treinada para utilizá-lo, saída de emergência e via de evacuação livre de obstáculos? (aplicável apenas para sites indoor)", key: "q43", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 42, tipo: "pergunta", label: "Existe risco ou outro problema no site que possa colocar a equipe em perigo?", key: "q44", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 42, tipo: "pergunta", label: "Existe risco ou outro problema no site que possa colocar a equipe em perigo?", key: "q44", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
     { n: 43, tipo: "pergunta", label: "O espaço abaixo da estrutura (torre/telhado/poste) - zona de segurança - está devidamente identificado e cercado?", key: "q45", opcoes: ["Sim", "Não", "N/A"] },
     { n: 44, tipo: "pergunta", label: "As condições climáticas permitem iniciar as atividades?", key: "q46", opcoes: ["Sim", "Não", "N/A"] },
     { n: 45, tipo: "pergunta", label: "A equipe conhece e aplica as regras que salvam vidas da empresa?", key: "q47", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 46, tipo: "pergunta", label: "Existe mais algum risco observado?", key: "q48", opcoes: ["Sim", "Não", "N/A"] }
+    { n: 46, tipo: "pergunta", label: "Existe mais algum risco observado?", key: "q48", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true }
   ];
+
+  // Mapa key -> item, usado onde só se tem a chave da resposta em mãos
+  // (ex.: cálculo agregado do Painel sobre várias auditorias).
+  var AUDITORIA_ITEM_POR_KEY = {};
+  AUDITORIA_ITEMS_NOKIA.forEach(function (item) { if (item.key) AUDITORIA_ITEM_POR_KEY[item.key] = item; });
+
+  // A maioria das perguntas é redigida de forma que "Sim" é a resposta
+  // conforme (ex.: "Capacete em condições de uso?") — mas a seção RISCOS
+  // (e algumas outras) pergunta pela existência do problema ("Existe
+  // risco...?"), onde "Sim" é a resposta de risco e "Não" é a conforme.
+  // Cada item marca isso com `riscoSeSim: true`; esta função central decide
+  // a classe/rótulo de cada resposta e é usada tanto nos botões quanto nos
+  // contadores (checklist e Painel), pra nunca ficar dessincronizado.
+  function respostaClasse(item, valor) {
+    if (valor === "N/A") return "neutral";
+    if (valor !== "Sim" && valor !== "Não") return "";
+    var risco = item && item.riscoSeSim ? valor === "Sim" : valor === "Não";
+    return risco ? "danger" : "ok";
+  }
 
   function fotoPorSlot(a, slotKey) {
     var arr = a.fotos || [];
@@ -1553,7 +1572,7 @@
   function perguntaHtml(a, item) {
     var atual = (a.respostas || {})[item.key] || "";
     var botoes = item.opcoes.map(function (op) {
-      var cls = "resposta-btn" + (atual === op ? " active " + (op === "Sim" ? "ok" : op === "Não" ? "danger" : "neutral") : "");
+      var cls = "resposta-btn" + (atual === op ? " active " + respostaClasse(item, op) : "");
       return '<button type="button" class="' + cls + '" data-resposta-key="' + esc(item.key) + '" data-resposta-valor="' + esc(op) + '">' + esc(op) + "</button>";
     }).join("");
     return '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="resposta-group">' + botoes + "</div></div>";
@@ -1567,15 +1586,16 @@
   // sem precisar de nenhuma lógica extra de impressão.
   function checklistResumoHtml(a) {
     var respostas = a.respostas || {};
-    var sim = 0, nao = 0, na = 0;
+    var conforme = 0, risco = 0, na = 0;
     AUDITORIA_ITEMS_NOKIA.forEach(function (item) {
       if (item.tipo !== "pergunta") return;
       var v = respostas[item.key];
-      if (v === "Sim") sim++; else if (v === "Não") nao++; else if (v === "N/A") na++;
+      var cls = respostaClasse(item, v);
+      if (cls === "ok") conforme++; else if (cls === "danger") risco++; else if (cls === "neutral") na++;
     });
     return '<div class="checklist-resumo">' +
-      '<span class="checklist-resumo-pill ok">' + sim + " conforme(s)</span>" +
-      '<span class="checklist-resumo-pill danger">' + nao + " risco(s) identificado(s)</span>" +
+      '<span class="checklist-resumo-pill ok">' + conforme + " conforme(s)</span>" +
+      '<span class="checklist-resumo-pill danger">' + risco + " risco(s) identificado(s)</span>" +
       '<span class="checklist-resumo-pill neutral">' + na + " não aplicável(is)</span>" +
       "</div>";
   }
@@ -1612,10 +1632,11 @@
         var valor = btn.getAttribute("data-resposta-valor");
         a.respostas = a.respostas || {};
         a.respostas[key] = valor;
+        var item = AUDITORIA_ITEM_POR_KEY[key];
         $all('[data-resposta-key="' + key + '"]', container).forEach(function (b) {
           b.classList.remove("active", "ok", "danger", "neutral");
           var v = b.getAttribute("data-resposta-valor");
-          if (v === valor) b.classList.add("active", v === "Sim" ? "ok" : v === "Não" ? "danger" : "neutral");
+          if (v === valor) b.classList.add("active", respostaClasse(item, v));
         });
         var patch = {}; patch[key] = valor;
         setSaveDot("saving");
@@ -2044,21 +2065,26 @@
     });
     return counts;
   }
-  // % de respostas "Não" entre Sim/Não do checklist (N/A fica de fora do
-  // cálculo — não representa conformidade nem não conformidade). Só existe
-  // pra auditorias NOKIA (checklist item a item) — auditorias ERICSSON não
-  // têm `respostas`, então entram sozinhas na contagem de "Desvios
-  // encontrados" abaixo.
+  // % de respostas de risco entre conforme/risco do checklist (N/A fica de
+  // fora do cálculo — não representa conformidade nem não conformidade).
+  // "Risco" nem sempre é a resposta "Não": depende da pergunta (ver
+  // `riscoSeSim` em AUDITORIA_ITEMS_NOKIA e respostaClasse()) — a maioria
+  // é "Cinto em condições de uso?" (Sim=conforme), mas a seção RISCOS
+  // pergunta pela existência do problema ("Existe risco...?", Sim=risco).
+  // Só existe pra auditorias NOKIA (checklist item a item) — auditorias
+  // ERICSSON não têm `respostas`, então entram sozinhas na contagem de
+  // "Desvios encontrados" abaixo.
   function taxaNaoConformidade(lista) {
-    var sim = 0, nao = 0;
+    var conforme = 0, risco = 0;
     lista.forEach(function (a) {
       var r = a.respostas || {};
       Object.keys(r).forEach(function (k) {
-        if (r[k] === "Sim") sim++; else if (r[k] === "Não") nao++;
+        var cls = respostaClasse(AUDITORIA_ITEM_POR_KEY[k], r[k]);
+        if (cls === "ok") conforme++; else if (cls === "danger") risco++;
       });
     });
-    var total = sim + nao;
-    return { pct: total ? Math.round((nao / total) * 100) : 0, nao: nao, total: total };
+    var total = conforme + risco;
+    return { pct: total ? Math.round((risco / total) * 100) : 0, nao: risco, total: total };
   }
   // Combinado NOKIA (checklist feito aqui) x ERICSSON (feito no app da
   // Ericsson, só lançado aqui) — é o que faz o lançamento ERICSSON entrar
