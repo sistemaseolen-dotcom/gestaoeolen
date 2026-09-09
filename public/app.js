@@ -3551,7 +3551,12 @@
           if (val === (it.observacao || "")) return;
           setSaveDot("saving");
           apiFetch("/api/treinamentos/" + id, { method: "PATCH", body: { observacao: val } })
-            .then(function () { it.observacao = val; setSaveDot(null); })
+            .then(function () {
+              it.observacao = val;
+              var tGlobal = byId(STATE.treinamentos, id);
+              if (tGlobal) tGlobal.observacao = val;
+              setSaveDot(null);
+            })
             .catch(function (err) { setSaveDot("error"); handleApiError(err); });
         });
       });

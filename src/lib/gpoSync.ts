@@ -6,14 +6,17 @@
 // migração inicial foi feita a partir de uma exportação do próprio GPO), o
 // que permite um UPSERT direto por id, sem heurística de nome.
 //
-// `equipes`/`equipe_membros` e `treinamentos` não têm essa correspondência
-// de id (o GPO não expõe um id estável de "equipe", e o histórico de
-// treinamentos é uma lista achatada por pessoa+tipo) — para essas duas,
-// cada sincronização apaga e reconstrói o conjunto inteiro a partir do GPO,
-// igual ao processo validado na migração inicial. Isso significa que o id
-// interno de uma equipe pode mudar entre sincronizações (não há nada mais
-// no banco que referencie esse id além de equipe_membros, que é reconstruído
-// junto).
+// `equipes`/`equipe_membros` não têm essa correspondência de id (o GPO não
+// expõe um id estável de "equipe") — cada sincronização apaga e reconstrói
+// o conjunto inteiro a partir do GPO, igual ao processo validado na
+// migração inicial. Isso significa que o id interno de uma equipe pode
+// mudar entre sincronizações (não há nada mais no banco que referencie
+// esse id além de equipe_membros, que é reconstruído junto).
+//
+// `treinamentos` também não tem id estável no GPO (é uma lista achatada por
+// pessoa+tipo), mas aqui usamos UPSERT por (pessoa_id, tipo) em vez de
+// apagar tudo — isso preserva o `id` e os campos que só existem no Controle
+// Eolen (observação de tratativa, anexo) entre uma sincronização e outra.
 //
 // IMPORTANTE: a API do GPO (apigpoeollen.rbasolucoes.com.br:8148) não exige
 // nenhuma autenticação — está aberta. Isso é uma falha do sistema antigo,
@@ -471,11 +474,28 @@ async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
     data_emissao: r.data_emissao,
   }));
 
-  // Reconstrução completa (mesma lógica validada na migração inicial).
-  await admin.from("treinamentos").delete().gte("id", 0);
+  // UPSERT por (pessoa_id, tipo) — pedido do Diego: a coluna `observacao`
+  // (tratativas escritas aqui no Controle Eolen sobre um documento a vencer)
+  // e o anexo (`arquivo_path`/`arquivo_nome`) não existem no GPO, então não
+  // entram neste payload — o upsert só atualiza as colunas listadas acima,
+  // preservando o resto do registro (e o próprio `id`) quando já existia.
+  // Itens que o GPO não reporta mais (pessoa/documento removido de lá) ainda
+  // são removidos daqui, igual à reconstrução anterior — só que agora
+  // comparando por chave (pessoa_id, tipo) em vez de apagar tudo.
+  const { data: existentes, error: existentesError } = await admin.from("treinamentos").select("id, pessoa_id, tipo");
+  if (existentesError) throw new Error(`Falha ao ler treinamentos existentes: ${existentesError.message}`);
+  const finalKeys = new Set(final.map((r) => `${r.pessoa_id}::${r.tipo}`));
+  const idsParaRemover = (existentes || [])
+    .filter((e) => !finalKeys.has(`${e.pessoa_id}::${e.tipo}`))
+    .map((e) => e.id);
+
   for (const batch of chunk(payload, 1000)) {
-    const { error } = await admin.from("treinamentos").insert(batch);
-    if (error) throw new Error(`Falha ao inserir treinamentos: ${error.message}`);
+    const { error } = await admin.from("treinamentos").upsert(batch, { onConflict: "pessoa_id,tipo" });
+    if (error) throw new Error(`Falha ao sincronizar treinamentos: ${error.message}`);
+  }
+  for (const batch of chunk(idsParaRemover, 500)) {
+    const { error } = await admin.from("treinamentos").delete().in("id", batch);
+    if (error) throw new Error(`Falha ao remover treinamentos obsoletos: ${error.message}`);
   }
 
   return {
