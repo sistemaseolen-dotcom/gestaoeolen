@@ -2024,6 +2024,7 @@
         var modalidadeLabel = a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "—";
         return '<tr data-id="' + a.id + '">' +
           '<td class="mono">' + esc(a.siteId || "—") + "</td>" +
+          "<td>" + esc(regionalAuditoria(a) || "—") + "</td>" +
           "<td>" + esc(a.empresa || "—") + "</td>" +
           '<td><span class="tag">' + clienteAuditoria(a) + "</span></td>" +
           "<td>" + fmtDateBR(a.data) + "</td>" +
@@ -2047,7 +2048,7 @@
         auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Empresa</th><th>Cliente</th><th>Data</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th>",
+          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada."
         });
