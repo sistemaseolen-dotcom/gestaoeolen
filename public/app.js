@@ -2179,13 +2179,15 @@
   function pessoasAuditadasInfo(lista) {
     var elegiveis = pessoasParaAuditoria();
     var porNome = {};
-    elegiveis.forEach(function (p) { porNome[p.nome] = { nome: p.nome, cargo: p.cargo, qtd: 0, ultimaData: null }; });
+    elegiveis.forEach(function (p) { porNome[p.nome] = { nome: p.nome, cargo: p.cargo, qtd: 0, ultimaData: null, presencial: 0, remota: 0, naoInformada: 0 }; });
     lista.forEach(function (a) {
+      var modKey = a.modalidade === "PRESENCIAL" ? "presencial" : a.modalidade === "REMOTA" ? "remota" : "naoInformada";
       (a.colaboradores || []).forEach(function (nomeRaw) {
         var nome = (nomeRaw || "").toString().trim();
         var info = porNome[nome];
         if (!info) return;
         info.qtd++;
+        info[modKey]++;
         if (!info.ultimaData || (a.data || "") > info.ultimaData) info.ultimaData = a.data;
       });
     });
@@ -2197,6 +2199,25 @@
     auditadas.sort(function (a, b) { return b.qtd - a.qtd || a.nome.localeCompare(b.nome, "pt-BR"); });
     naoAuditadas.sort(function (a, b) { return a.nome.localeCompare(b.nome, "pt-BR"); });
     return { auditadas: auditadas, naoAuditadas: naoAuditadas, totalElegiveis: elegiveis.length };
+  }
+  // Modalidade de cada pessoa auditada, pra texto e pro gráfico "pessoas
+  // auditadas por modalidade": alguém pode ter sido auditado das duas
+  // formas no período (conta nos dois lados nesse caso, de propósito).
+  function modalidadeLabelPessoa(p) {
+    var partes = [];
+    if (p.presencial > 0) partes.push("Presencial (" + p.presencial + ")");
+    if (p.remota > 0) partes.push("Remota (" + p.remota + ")");
+    if (!partes.length && p.naoInformada > 0) partes.push("Não informada");
+    return partes.join(", ") || "—";
+  }
+  function pessoasAuditadasPorModalidade(auditadas) {
+    var counts = { PRESENCIAL: 0, REMOTA: 0, NAO_INFORMADO: 0 };
+    auditadas.forEach(function (p) {
+      if (p.presencial > 0) counts.PRESENCIAL++;
+      if (p.remota > 0) counts.REMOTA++;
+      if (p.presencial === 0 && p.remota === 0 && p.naoInformada > 0) counts.NAO_INFORMADO++;
+    });
+    return counts;
   }
   function auditadosPorCargo(auditadas) {
     var counts = {};
@@ -2247,21 +2268,43 @@
     if (semRegional) counts["Não informado"] = semRegional;
     return counts;
   }
-  function openPessoasAuditadasDrawer(list, periodoTxt, auditado, cargoLabel) {
-    var titulo = cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas";
+  function openPessoasAuditadasDrawer(list, periodoTxt, auditado, cargoLabel, tituloOverride) {
+    var titulo = tituloOverride || (cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas");
     var rowsHtml = list.map(function (p) {
       return '<tr><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + "</td>" +
-        (auditado ? "<td>" + (p.qtd || 0) + "</td><td>" + fmtDateBR(p.ultimaData) + "</td>" : "") + "</tr>";
+        (auditado ? "<td>" + (p.qtd || 0) + "</td><td>" + esc(modalidadeLabelPessoa(p)) + "</td><td>" + fmtDateBR(p.ultimaData) + "</td>" : "") + "</tr>";
     }).join("");
     openGenericTableDrawer({
       title: titulo,
       subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
-      theadHtml: "<th>Nome</th><th>Cargo</th>" + (auditado ? "<th>Auditorias</th><th>Última auditoria</th>" : ""),
+      theadHtml: "<th>Nome</th><th>Cargo</th>" + (auditado ? "<th>Auditorias</th><th>Modalidade</th><th>Última auditoria</th>" : ""),
       rowsHtml: rowsHtml,
-      exportHeaders: auditado ? ["Nome", "Cargo", "Auditorias", "Última auditoria"] : ["Nome", "Cargo"],
+      exportHeaders: auditado ? ["Nome", "Cargo", "Auditorias", "Modalidade", "Última auditoria"] : ["Nome", "Cargo"],
       exportRows: list.map(function (p) {
-        return auditado ? [p.nome, p.cargo || "", p.qtd || 0, fmtDateBR(p.ultimaData)] : [p.nome, p.cargo || ""];
+        return auditado ? [p.nome, p.cargo || "", p.qtd || 0, modalidadeLabelPessoa(p), fmtDateBR(p.ultimaData)] : [p.nome, p.cargo || ""];
       })
+    });
+  }
+  function openAuditoriasModalidadeDrawer(modalidadeVal, listaCompleta, periodoTxt) {
+    var list = listaCompleta.filter(function (a) {
+      return modalidadeVal === "NAO_INFORMADO" ? !a.modalidade : a.modalidade === modalidadeVal;
+    }).sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.id - a.id; });
+    var label = modalidadeVal === "PRESENCIAL" ? "Presencial" : modalidadeVal === "REMOTA" ? "Remota" : "Não informado";
+    var rowsHtml = list.map(function (a) {
+      return '<tr data-id="' + a.id + '"><td class="mono">' + esc(a.siteId || "—") + '</td><td>' + esc(a.empresa || "—") + "</td><td>" + fmtDateBR(a.data) + "</td><td>" + esc(a.inspetorNome || "—") + "</td><td>" + statusPillAuditoria(a.status) + "</td></tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: "Auditorias — " + label,
+      subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
+      theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Inspetor</th><th>Status</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Site ID", "Empresa", "Data", "Inspetor", "Status"],
+      exportRows: list.map(function (a) { return [a.siteId || "", a.empresa || "", fmtDateBR(a.data), a.inspetorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"]; }),
+      onRowBind: function (root) {
+        $all("[data-id]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
+        });
+      }
     });
   }
   function openSemanaAuditoriasDrawer(semanaInicio, listaCompleta) {
@@ -2403,7 +2446,7 @@
         var n = modalidade[d[0]] || 0;
         if (!n) return "";
         var pct = (n / modalidadeTotal * 100);
-        return '<div class="seg ' + d[1] + '" style="flex-grow:' + pct.toFixed(3) + ';" data-tip-title="' + esc(d[2]) + '" data-tip-sub="' + n + " registros (" + pct.toFixed(1) + '%)"><span>' + n + "</span></div>";
+        return '<div class="seg ' + d[1] + '" tabindex="0" data-modalidade-seg="' + d[0] + '" style="flex-grow:' + pct.toFixed(3) + ';" data-tip-title="' + esc(d[2]) + '" data-tip-sub="' + n + " registros (" + pct.toFixed(1) + '%)"><span>' + n + "</span></div>";
       }).join("");
       var modalidadeLegend = modalidadeDefs.map(function (d) {
         return '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ' + d[1] + '"></span>' + d[2] + " — " + (modalidade[d[0]] || 0) + "</span>";
@@ -2411,6 +2454,25 @@
       var modalidadeHtml = modalidadeTotalBruto > 0
         ? '<div class="status-bar-lg">' + modalidadeSegs + '</div><div class="legend-row">' + modalidadeLegend + "</div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
+
+      // Não é a mesma coisa que "Presencial x remota" acima (aquele conta
+      // auditorias) — este conta pessoas (alguém auditado das duas formas no
+      // período entra nos dois lados, de propósito).
+      var pessoasModalidade = pessoasAuditadasPorModalidade(pessoasInfo.auditadas);
+      var pessoasModalidadeTotalBruto = pessoasModalidade.PRESENCIAL + pessoasModalidade.REMOTA + pessoasModalidade.NAO_INFORMADO;
+      var pessoasModalidadeTotal = pessoasModalidadeTotalBruto || 1;
+      var pessoasModalidadeSegs = modalidadeDefs.map(function (d) {
+        var n = pessoasModalidade[d[0]] || 0;
+        if (!n) return "";
+        var pct = (n / pessoasModalidadeTotal * 100);
+        return '<div class="seg ' + d[1] + '" tabindex="0" data-pessoas-modalidade-seg="' + d[0] + '" style="flex-grow:' + pct.toFixed(3) + ';" data-tip-title="' + esc(d[2]) + '" data-tip-sub="' + n + " pessoa" + (n !== 1 ? "s" : "") + " (" + pct.toFixed(1) + '%)"><span>' + n + "</span></div>";
+      }).join("");
+      var pessoasModalidadeLegend = modalidadeDefs.map(function (d) {
+        return '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ' + d[1] + '"></span>' + d[2] + " — " + (pessoasModalidade[d[0]] || 0) + "</span>";
+      }).join("");
+      var pessoasModalidadeHtml = pessoasModalidadeTotalBruto > 0
+        ? '<div class="status-bar-lg">' + pessoasModalidadeSegs + '</div><div class="legend-row">' + pessoasModalidadeLegend + "</div>"
+        : '<div class="empty-state" style="padding:20px;">Nenhuma pessoa auditada no período.</div>';
 
       // Cores fixas pedidas pelo Diego (Nokia azul, Ericsson cinza escuro,
       // Huawei vermelho, Telefônica roxo) — classes próprias (cliente-*),
@@ -2444,9 +2506,10 @@
         auditoriasTabsHtml("painel") +
         filtroHtml +
         '<div class="kpi-row">' + kpiHtml + "</div>" +
-        '<div class="viz-grid">' +
+        '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por semana</h3><span class="hint">' + (periodo.tipo === "geral" ? "últimas 8 semanas — clique numa barra" : "clique numa barra pra ver as auditorias") + '</span></div><div class="panel-body pad">' + semanaHtml + "</div></div>" +
-        '<div class="panel"><div class="panel-head"><h3>Presencial x remota</h3></div><div class="panel-body pad">' + modalidadeHtml + "</div></div>" +
+        '<div class="panel"><div class="panel-head"><h3>Presencial x remota</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + modalidadeHtml + "</div></div>" +
+        '<div class="panel"><div class="panel-head"><h3>Pessoas auditadas por modalidade</h3><span class="hint">clique num segmento pra ver quem</span></div><div class="panel-body pad">' + pessoasModalidadeHtml + "</div></div>" +
         "</div>" +
         '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por cliente</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + clienteHtml + "</div></div>" +
@@ -2487,6 +2550,23 @@
       });
       $all("[data-cliente-seg]", main).forEach(function (el) {
         el.addEventListener("click", function () { openAuditoriasClienteDrawer(el.getAttribute("data-cliente-seg"), lista, periodoTxt); });
+        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+      });
+      $all("[data-modalidade-seg]", main).forEach(function (el) {
+        el.addEventListener("click", function () { openAuditoriasModalidadeDrawer(el.getAttribute("data-modalidade-seg"), lista, periodoTxt); });
+        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+      });
+      $all("[data-pessoas-modalidade-seg]", main).forEach(function (el) {
+        el.addEventListener("click", function () {
+          var val = el.getAttribute("data-pessoas-modalidade-seg");
+          var filtrado = pessoasInfo.auditadas.filter(function (p) {
+            if (val === "PRESENCIAL") return p.presencial > 0;
+            if (val === "REMOTA") return p.remota > 0;
+            return p.presencial === 0 && p.remota === 0 && p.naoInformada > 0;
+          });
+          var label = val === "PRESENCIAL" ? "Presencial" : val === "REMOTA" ? "Remota" : "Não informada";
+          openPessoasAuditadasDrawer(filtrado, periodoTxt, true, null, "Pessoas auditadas — " + label);
+        });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
       $all("[data-simple-bar]", main).forEach(function (el) {
