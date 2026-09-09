@@ -3503,7 +3503,7 @@
         '<td class="mono">' + esc(fmtDateBR(it.vencimento)) + '</td>' +
         (comObs
           ? '<td>' + (podeEditarObs
-              ? '<input type="text" class="obs-input" data-obs-input="' + it.id + '" value="' + esc(it.observacao || "") + '" placeholder="Tratativa já tomada…" style="width:100%;min-width:160px;">'
+              ? '<input type="text" class="obs-input" data-obs-input="' + it.id + '" value="' + esc(it.observacao || "") + '" placeholder="Tratativas já tomadas?" style="width:100%;min-width:160px;">'
               : esc(it.observacao || "—")) +
             '</td>'
           : "") +
