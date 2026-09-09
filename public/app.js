@@ -2021,12 +2021,15 @@
       var pg = paginate(filtered, ui.page, PAGE_SIZE);
       ui.page = pg.page;
       var body = pg.items.map(function (a) {
+        var modalidadeLabel = a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "—";
         return '<tr data-id="' + a.id + '">' +
           '<td class="mono">' + esc(a.siteId || "—") + "</td>" +
           "<td>" + esc(a.empresa || "—") + "</td>" +
           '<td><span class="tag">' + clienteAuditoria(a) + "</span></td>" +
           "<td>" + fmtDateBR(a.data) + "</td>" +
           "<td>" + esc(a.inspetorNome || "—") + "</td>" +
+          "<td>" + esc(modalidadeLabel) + "</td>" +
+          "<td>" + esc(a.criadoPorNome || "—") + "</td>" +
           "<td>" + statusPillAuditoria(a.status) + "</td></tr>";
       }).join("");
       var toolbar =
@@ -2044,7 +2047,7 @@
         auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Empresa</th><th>Cliente</th><th>Data</th><th>Inspetor</th><th>Status</th>",
+          headHtml: "<th>Site ID</th><th>Empresa</th><th>Cliente</th><th>Data</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada."
         });
