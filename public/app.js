@@ -39,7 +39,7 @@
   // independentes): cargos novos criados em Administrador → Listas (ex.:
   // "GERENTE") continuam aparecendo normalmente no cadastro de Pessoas, mas
   // não entram em nenhum gráfico/KPI do Painel.
-  var CARGOS_PAINEL = ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE"];
+  var CARGOS_PAINEL = ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE", "TEC. SEGURANÇA"];
   // Documentos/treinamentos obrigatórios: gerados automaticamente (como pendentes) toda vez
   // que uma pessoa é cadastrada com um dos cargos acima.
   var DOCS_OBRIGATORIOS_CARGO = [
