@@ -3446,8 +3446,9 @@
     }).map(function (t) {
       var key = treinoStatusKey(t);
       return {
-        pessoaId: t.pessoaId, pessoaNome: t.pessoaNome, regional: pessoaRegional(t.pessoaId), tipo: t.tipo,
-        vencimento: t.vencimento, dias: t.vencimento ? daysUntil(t.vencimento) : null, statusKey: key
+        id: t.id, pessoaId: t.pessoaId, pessoaNome: t.pessoaNome, regional: pessoaRegional(t.pessoaId), tipo: t.tipo,
+        vencimento: t.vencimento, dias: t.vencimento ? daysUntil(t.vencimento) : null, statusKey: key,
+        observacao: t.observacao || ""
       };
     }).sort(function (a, b) {
       var rank = { vencido: 0, renovar: 1, renovar60: 2, pendente: 3 };
@@ -3502,9 +3503,41 @@
   function statusKeyLabelDrawer(key) {
     return key === "renovar60" ? "A vencer" : statusKeyLabel(key);
   }
+  // Célula de observação (tratativa já tomada) reaproveitada nos drawers de
+  // pendência — tanto o de status geral quanto o de item/regional, já que os
+  // dois listam documentos pendentes de pessoas. Textarea (não input de uma
+  // linha só) porque o campo de uma linha ficava pequeno demais pro texto
+  // que o Diego escreve ali.
+  function obsCellHtml(id, observacao, podeEditar) {
+    return podeEditar
+      ? '<textarea class="obs-input" data-obs-input="' + id + '" placeholder="Tratativas já tomadas?" style="width:100%;min-width:220px;min-height:56px;resize:vertical;">' + esc(observacao || "") + "</textarea>"
+      : esc(observacao || "—");
+  }
+  function bindObsInputs(root, items) {
+    $all("[data-obs-input]", root).forEach(function (inp) {
+      inp.addEventListener("click", function (ev) { ev.stopPropagation(); });
+      inp.addEventListener("blur", function () {
+        var id = Number(inp.getAttribute("data-obs-input"));
+        var it = items.filter(function (x) { return x.id === id; })[0];
+        if (!it) return;
+        var val = inp.value;
+        if (val === (it.observacao || "")) return;
+        setSaveDot("saving");
+        apiFetch("/api/treinamentos/" + id, { method: "PATCH", body: { observacao: val } })
+          .then(function () {
+            it.observacao = val;
+            var tGlobal = byId(STATE.treinamentos, id);
+            if (tGlobal) tGlobal.observacao = val;
+            setSaveDot(null);
+          })
+          .catch(function (err) { setSaveDot("error"); handleApiError(err); });
+      });
+    });
+  }
   function openGroupPendenciaDrawer(kind, groupValue, statusKey) {
     var items = pendenciaItemsForGroup(kind, groupValue, statusKey);
     var extraColLabel = kind === "regional" ? "Item" : "Regional";
+    var podeEditarObs = canDo("documentos", "editar");
     var rows = items.map(function (it) {
       var extraVal = kind === "regional" ? it.tipo : (it.regional || "—");
       return '<tr data-pessoa="' + it.pessoaId + '">' +
@@ -3515,6 +3548,7 @@
         '<td><span class="pill ' + statusKeyCls(it.statusKey) + '">' + statusKeyLabelDrawer(it.statusKey) + '</span></td>' +
         '<td>' + esc(diasLabel(it)) + '</td>' +
         '<td class="mono">' + esc(fmtDateBR(it.vencimento)) + '</td>' +
+        '<td>' + obsCellHtml(it.id, it.observacao, podeEditarObs) + '</td>' +
         "</tr>";
     }).join("");
     var subtitle = items.length + " pendência" + (items.length !== 1 ? "s" : "") +
@@ -3528,24 +3562,28 @@
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div></div>" +
       '<div class="drawer-body">' +
       (items.length
-        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>' + extraColLabel + '</th><th>Líder</th><th>Coordenador</th><th>Status</th><th>Dias</th><th>Vencimento</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>' + extraColLabel + '</th><th>Líder</th><th>Coordenador</th><th>Status</th><th>Dias</th><th>Vencimento</th><th>Observações</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma pendência encontrada.</div>') +
       "</div>";
     openDrawer(html, { wide: true });
     $("#drawer-close").addEventListener("click", closeDrawer);
-    var exportHeaders = ["Pessoa", extraColLabel, "Líder", "Coordenador", "Status", "Dias", "Vencimento"];
+    var exportHeaders = ["Pessoa", extraColLabel, "Líder", "Coordenador", "Status", "Dias", "Vencimento", "Observações"];
     function exportRows() {
       return items.map(function (it) {
         var extraVal = kind === "regional" ? it.tipo : (it.regional || "");
-        return [it.pessoaNome || "", extraVal, pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", statusKeyLabelDrawer(it.statusKey), diasLabel(it), fmtDateBR(it.vencimento)];
+        return [it.pessoaNome || "", extraVal, pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", statusKeyLabelDrawer(it.statusKey), diasLabel(it), fmtDateBR(it.vencimento), it.observacao || ""];
       });
     }
     var filenameBase = groupValue + (statusKey ? " - " + statusKeyLabel(statusKey) : "");
     $("#drawer-download").addEventListener("click", function () { downloadRowsAsXls(filenameBase, exportHeaders, exportRows()); });
     $("#drawer-copy").addEventListener("click", function () { copyRowsToClipboard(exportHeaders, exportRows()); });
     $all("[data-pessoa]", $("#drawer-content")).forEach(function (row) {
-      row.addEventListener("click", function () { closeDrawer(); navigate("#/pessoas/" + row.getAttribute("data-pessoa")); });
+      row.addEventListener("click", function (ev) {
+        if (ev.target && ev.target.closest && ev.target.closest("[data-obs-input]")) return;
+        closeDrawer(); navigate("#/pessoas/" + row.getAttribute("data-pessoa"));
+      });
     });
+    if (podeEditarObs) bindObsInputs($("#drawer-content"), items);
   }
 
   /* -- Distribuição por status (KPIs + gráfico geral) — visão sem recorte por item/regional -- */
@@ -3585,12 +3623,7 @@
         '<td>' + esc(pessoaCoordenadorNome(it.pessoaId) || "—") + '</td>' +
         '<td>' + esc(diasLabelGeneric(it.dias)) + '</td>' +
         '<td class="mono">' + esc(fmtDateBR(it.vencimento)) + '</td>' +
-        (comObs
-          ? '<td>' + (podeEditarObs
-              ? '<input type="text" class="obs-input" data-obs-input="' + it.id + '" value="' + esc(it.observacao || "") + '" placeholder="Tratativas já tomadas?" style="width:100%;min-width:160px;">'
-              : esc(it.observacao || "—")) +
-            '</td>'
-          : "") +
+        (comObs ? '<td>' + obsCellHtml(it.id, it.observacao, podeEditarObs) + '</td>' : "") +
         "</tr>";
     }).join("");
     var titulo = STATUS_CODE_LABELS[code] || code;
@@ -3603,12 +3636,12 @@
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div></div>" +
       '<div class="drawer-body">' +
       (items.length
-        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>Item</th><th>Regional</th><th>Líder</th><th>Coordenador</th><th>Dias</th><th>Vencimento</th>' + (comObs ? "<th>Observação</th>" : "") + '</tr></thead><tbody>' + rows + "</tbody></table></div>"
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>Item</th><th>Regional</th><th>Líder</th><th>Coordenador</th><th>Dias</th><th>Vencimento</th>' + (comObs ? "<th>Observações</th>" : "") + '</tr></thead><tbody>' + rows + "</tbody></table></div>"
         : '<div class="empty-state" style="padding:20px;">Nenhum registro para este status.</div>') +
       "</div>";
     openDrawer(html, { wide: true });
     $("#drawer-close").addEventListener("click", closeDrawer);
-    var exportHeaders = ["Pessoa", "Item", "Regional", "Líder", "Coordenador", "Dias", "Vencimento"].concat(comObs ? ["Observação"] : []);
+    var exportHeaders = ["Pessoa", "Item", "Regional", "Líder", "Coordenador", "Dias", "Vencimento"].concat(comObs ? ["Observações"] : []);
     function exportRows() {
       return items.map(function (it) {
         var base = [it.pessoaNome || "", it.tipo || "", it.regional || "", pessoaLiderNome(it.pessoaId) || "", pessoaCoordenadorNome(it.pessoaId) || "", diasLabelGeneric(it.dias), fmtDateBR(it.vencimento)];
@@ -3624,27 +3657,7 @@
         closeDrawer(); navigate("#/pessoas/" + row.getAttribute("data-pessoa"));
       });
     });
-    if (comObs && podeEditarObs) {
-      $all("[data-obs-input]", $("#drawer-content")).forEach(function (inp) {
-        inp.addEventListener("click", function (ev) { ev.stopPropagation(); });
-        inp.addEventListener("blur", function () {
-          var id = Number(inp.getAttribute("data-obs-input"));
-          var it = items.filter(function (x) { return x.id === id; })[0];
-          if (!it) return;
-          var val = inp.value;
-          if (val === (it.observacao || "")) return;
-          setSaveDot("saving");
-          apiFetch("/api/treinamentos/" + id, { method: "PATCH", body: { observacao: val } })
-            .then(function () {
-              it.observacao = val;
-              var tGlobal = byId(STATE.treinamentos, id);
-              if (tGlobal) tGlobal.observacao = val;
-              setSaveDot(null);
-            })
-            .catch(function (err) { setSaveDot("error"); handleApiError(err); });
-        });
-      });
-    }
+    if (comObs && podeEditarObs) bindObsInputs($("#drawer-content"), items);
   }
 
   /* -- Cabeçalho de pessoas/equipes (contagens + por regional) -- */
