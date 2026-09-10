@@ -3565,7 +3565,7 @@
         ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>' + extraColLabel + '</th><th>Líder</th><th>Coordenador</th><th>Status</th><th>Dias</th><th>Vencimento</th><th>Observações</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma pendência encontrada.</div>') +
       "</div>";
-    openDrawer(html, { wide: true });
+    openDrawer(html, { xwide: true });
     $("#drawer-close").addEventListener("click", closeDrawer);
     var exportHeaders = ["Pessoa", extraColLabel, "Líder", "Coordenador", "Status", "Dias", "Vencimento", "Observações"];
     function exportRows() {
@@ -3639,7 +3639,7 @@
         ? '<div class="table-scroll"><table class="data"><thead><tr><th>Pessoa</th><th>Item</th><th>Regional</th><th>Líder</th><th>Coordenador</th><th>Dias</th><th>Vencimento</th>' + (comObs ? "<th>Observações</th>" : "") + '</tr></thead><tbody>' + rows + "</tbody></table></div>"
         : '<div class="empty-state" style="padding:20px;">Nenhum registro para este status.</div>') +
       "</div>";
-    openDrawer(html, { wide: true });
+    openDrawer(html, comObs ? { xwide: true } : { wide: true });
     $("#drawer-close").addEventListener("click", closeDrawer);
     var exportHeaders = ["Pessoa", "Item", "Regional", "Líder", "Coordenador", "Dias", "Vencimento"].concat(comObs ? ["Observações"] : []);
     function exportRows() {
@@ -4695,6 +4695,7 @@
     var content = $("#drawer-content");
     content.innerHTML = html;
     content.classList.toggle("wide", !!(opts && opts.wide));
+    content.classList.toggle("xwide", !!(opts && opts.xwide));
     overlay.classList.add("open");
     overlay.setAttribute("aria-hidden", "false");
   }

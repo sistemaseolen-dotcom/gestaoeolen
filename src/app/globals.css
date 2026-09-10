@@ -338,6 +338,9 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   display: flex; flex-direction: column;
 }
 .drawer.wide { width: min(920px, 96vw); }
+/* Drawers com a coluna de Observações (textarea larga) precisam de mais
+   espaço que o .wide normal pra caber sem barra de rolagem horizontal. */
+.drawer.xwide { width: min(1300px, 97vw); }
 .overlay.open .drawer { transform: translateX(0); }
 .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--border); gap: 10px; position: sticky; top: 0; background: var(--surface); z-index: 2; }
 .drawer-head h2 { font-size: 19px; }
