@@ -1494,6 +1494,14 @@
     return AUDITORIA_REGIONAIS.indexOf(v) !== -1 ? v : "";
   }
 
+  // Pedido do Diego: as fotos novas do checklist (EPI's completos e os 4
+  // Prints da auditoria remota) e a regra de ocultar a selfie do inspetor
+  // em auditoria remota só valem pra auditorias criadas a partir desta
+  // data — auditorias já realizadas antes disso não têm mais como voltar
+  // ao site pra tirar essas fotos, então elas continuam com o checklist no
+  // formato antigo (senão ficariam com "fotos pendentes" impossíveis de
+  // completar). Cada item novo é marcado com `novoV2: true`.
+  var CHECKLIST_V2_DESDE = "2026-09-10T00:00:00Z";
   var AUDITORIA_ITEMS_NOKIA = [
     // Selfie do inspetor só faz sentido em auditoria presencial (o inspetor
     // está fisicamente no site) — some quando a auditoria é REMOTA, por isso
@@ -1505,16 +1513,16 @@
     { n: 4, tipo: "foto", label: "Foto do terreno do site (2)", slot: "foto_terreno_2" },
     { n: 5, tipo: "foto", label: "Foto do terreno do site (3)", slot: "foto_terreno_3" },
     { n: 6, tipo: "foto", label: "Foto do kit de primeiros socorros", slot: "foto_kit_primeiros_socorros" },
-    { n: 7, tipo: "foto", label: "Foto dos EPI's completos", slot: "foto_epis_completos" },
+    { n: 7, tipo: "foto", label: "Foto dos EPI's completos", slot: "foto_epis_completos", novoV2: true },
 
     // Prints da auditoria — só existem em auditoria REMOTA (não há como
     // tirar "print da tela" numa auditoria presencial); ficam totalmente
     // ausentes do checklist quando a modalidade é PRESENCIAL (ou não
     // informada).
-    { n: 8, secao: "PRINTS DA AUDITORIA", tipo: "foto", label: "Print do início da auditoria", slot: "foto_print_inicio_auditoria", soRemota: true },
-    { n: 9, tipo: "foto", label: "Print do término da auditoria", slot: "foto_print_termino_auditoria", soRemota: true },
-    { n: 10, tipo: "foto", label: "Print dos EPI's", slot: "foto_print_epis", soRemota: true },
-    { n: 11, tipo: "foto", label: "Outro print da auditoria", slot: "foto_print_outro", soRemota: true },
+    { n: 8, secao: "PRINTS DA AUDITORIA", tipo: "foto", label: "Print do início da auditoria", slot: "foto_print_inicio_auditoria", soRemota: true, novoV2: true },
+    { n: 9, tipo: "foto", label: "Print do término da auditoria", slot: "foto_print_termino_auditoria", soRemota: true, novoV2: true },
+    { n: 10, tipo: "foto", label: "Print dos EPI's", slot: "foto_print_epis", soRemota: true, novoV2: true },
+    { n: 11, tipo: "foto", label: "Outro print da auditoria", slot: "foto_print_outro", soRemota: true, novoV2: true },
 
     { n: 12, secao: "VISÃO GERAL", tipo: "pergunta", label: "Todos os membros da equipe possuem treinamentos e documentação de segurança do trabalho registrados e atualizados?", key: "q1", opcoes: ["Sim", "Não"] },
     { n: 13, tipo: "foto", label: "Foto dos RG/Habilitação/Crachá (identificação) dos colaboradores trabalhando no site. Obrigatório mínimo de 2 (duas) pessoas.", slotBase: "foto_rg", porColaborador: true },
@@ -1649,12 +1657,21 @@
     // categorização pra filtro/relatório.
     var items = AUDITORIA_ITEMS_NOKIA;
     var remota = a.modalidade === "REMOTA";
+    // Itens novos (EPI's completos, Prints da auditoria) só valem pra
+    // auditorias criadas a partir de CHECKLIST_V2_DESDE — ver comentário
+    // acima da constante. Auditorias antigas (sem `criadoEm`, no caso raro
+    // de um registro sem data, tratamos como antiga também) mantêm o
+    // checklist no formato de antes, sem esses itens.
+    var v2 = !!(a.criadoEm && new Date(a.criadoEm) >= new Date(CHECKLIST_V2_DESDE));
     var html = checklistResumoHtml(a);
     items.forEach(function (item) {
       // Itens condicionais por modalidade: "Prints da auditoria" só existe
       // em auditoria remota (não há "print" numa vistoria presencial); a
       // selfie do inspetor no site só existe em auditoria presencial (não
-      // aplicável quando o inspetor não está fisicamente no local).
+      // aplicável quando o inspetor não está fisicamente no local) — essa
+      // regra vale pra qualquer auditoria, inclusive as já realizadas
+      // (pedido do Diego).
+      if (item.novoV2 && !v2) return;
       if (item.soRemota && !remota) return;
       if (item.ocultarSeRemota && remota) return;
       if (item.secao) html += '<div class="form-section-title" style="margin-top:20px;">' + esc(item.secao) + "</div>";
