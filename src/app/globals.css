@@ -289,7 +289,11 @@ select.filter, input.filter {
 }
 .table-count { font-size: 12px; color: var(--ink-faint); margin-left: auto; }
 
-.table-scroll { overflow-x: auto; }
+/* min-width: 0 é necessário pq table-scroll é filho de um flex column
+   (.drawer-body) — sem isso, o item flex não encolhe abaixo do conteúdo
+   (a tabela larga, com os textareas de observação) e a tabela vaza pra
+   fora do drawer em vez de rolar horizontalmente dentro dele. */
+.table-scroll { overflow-x: auto; min-width: 0; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
 table.data th {
   text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint);
@@ -338,7 +342,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .drawer-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px; border-bottom: 1px solid var(--border); gap: 10px; position: sticky; top: 0; background: var(--surface); z-index: 2; }
 .drawer-head h2 { font-size: 19px; }
 .drawer-head .sub { color: var(--ink-faint); font-size: 12.5px; margin-top: 3px; }
-.drawer-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 18px; flex: 1; }
+.drawer-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 18px; flex: 1; min-width: 0; }
 .drawer-foot { padding: 16px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; gap: 10px; position: sticky; bottom: 0; background: var(--surface); }
 
 .modal-center { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; background: rgba(10,16,13,0.45); opacity: 0; pointer-events: none; transition: opacity .14s ease; padding: 20px; }
