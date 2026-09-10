@@ -1495,56 +1495,70 @@
   }
 
   var AUDITORIA_ITEMS_NOKIA = [
-    { n: 1, secao: "FOTOS INICIAIS", tipo: "foto", label: "Selfie do inspetor no site", slot: "foto_selfie_inspetor" },
-    { n: 2, tipo: "foto", label: "Foto da torre", slot: "foto_torre" },
+    // Selfie do inspetor só faz sentido em auditoria presencial (o inspetor
+    // está fisicamente no site) — some quando a auditoria é REMOTA, por isso
+    // o cabeçalho de seção "FOTOS INICIAIS" fica no próximo item (Foto da
+    // torre), que é sempre exibido, pra seção nunca ficar sem título.
+    { n: 1, tipo: "foto", label: "Selfie do inspetor no site", slot: "foto_selfie_inspetor", ocultarSeRemota: true },
+    { n: 2, secao: "FOTOS INICIAIS", tipo: "foto", label: "Foto da torre", slot: "foto_torre" },
     { n: 3, tipo: "foto", label: "Foto do terreno do site (1)", slot: "foto_terreno_1" },
     { n: 4, tipo: "foto", label: "Foto do terreno do site (2)", slot: "foto_terreno_2" },
     { n: 5, tipo: "foto", label: "Foto do terreno do site (3)", slot: "foto_terreno_3" },
     { n: 6, tipo: "foto", label: "Foto do kit de primeiros socorros", slot: "foto_kit_primeiros_socorros" },
+    { n: 7, tipo: "foto", label: "Foto dos EPI's completos", slot: "foto_epis_completos" },
 
-    { n: 7, secao: "VISÃO GERAL", tipo: "pergunta", label: "Todos os membros da equipe possuem treinamentos e documentação de segurança do trabalho registrados e atualizados?", key: "q1", opcoes: ["Sim", "Não"] },
-    { n: 8, tipo: "foto", label: "Foto dos RG/Habilitação/Crachá (identificação) dos colaboradores trabalhando no site. Obrigatório mínimo de 2 (duas) pessoas.", slotBase: "foto_rg", porColaborador: true },
-    { n: 9, tipo: "foto", label: "Foto da Equipe utilizando o EPI completo", slotBase: "foto_supervisor", porColaborador: true },
+    // Prints da auditoria — só existem em auditoria REMOTA (não há como
+    // tirar "print da tela" numa auditoria presencial); ficam totalmente
+    // ausentes do checklist quando a modalidade é PRESENCIAL (ou não
+    // informada).
+    { n: 8, secao: "PRINTS DA AUDITORIA", tipo: "foto", label: "Print do início da auditoria", slot: "foto_print_inicio_auditoria", soRemota: true },
+    { n: 9, tipo: "foto", label: "Print do término da auditoria", slot: "foto_print_termino_auditoria", soRemota: true },
+    { n: 10, tipo: "foto", label: "Print dos EPI's", slot: "foto_print_epis", soRemota: true },
+    { n: 11, tipo: "foto", label: "Outro print da auditoria", slot: "foto_print_outro", soRemota: true },
 
-    { n: 10, secao: "EPI", subsecao: "Capacete", tipo: "pergunta", label: "Capacete em condições de uso e CA dentro da validade?", key: "q7", opcoes: ["Sim", "Não"] },
-    { n: 11, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true },
-    { n: 12, subsecao: "Óculos", tipo: "pergunta", label: "Óculos em condições de uso e CA dentro da validade?", key: "q10", opcoes: ["Sim", "Não"] },
-    { n: 13, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true },
-    { n: 14, subsecao: "Luvas", tipo: "pergunta", label: "Luva em condições de uso e CA dentro da validade?", key: "q13", opcoes: ["Sim", "Não"] },
-    { n: 15, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true },
-    { n: 16, subsecao: "Cinto", tipo: "pergunta", label: "Cinto em condições de uso e CA dentro da validade?", key: "q16", opcoes: ["Sim", "Não"] },
-    { n: 17, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true },
-    { n: 18, subsecao: "Trava-quedas", tipo: "pergunta", label: "Trava-quedas em condições de uso e CA dentro da validade?", key: "q18", opcoes: ["Sim", "Não"] },
-    { n: 19, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true },
-    { n: 20, subsecao: "Talabarte Simples", tipo: "pergunta", label: "Talabarte simples em condições de uso e CA dentro da validade?", key: "q21", opcoes: ["Sim", "Não"] },
-    { n: 21, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true },
-    { n: 22, subsecao: "Talabarte Y", tipo: "pergunta", label: "Talabarte Y em condições de uso e CA dentro da validade?", key: "q24", opcoes: ["Sim", "Não"] },
-    { n: 23, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true },
-    { n: 24, subsecao: "Botas", tipo: "pergunta", label: "Botas em condições de uso e CA dentro da validade?", key: "q27", opcoes: ["Sim", "Não"] },
-    { n: 25, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true },
+    { n: 12, secao: "VISÃO GERAL", tipo: "pergunta", label: "Todos os membros da equipe possuem treinamentos e documentação de segurança do trabalho registrados e atualizados?", key: "q1", opcoes: ["Sim", "Não"] },
+    { n: 13, tipo: "foto", label: "Foto dos RG/Habilitação/Crachá (identificação) dos colaboradores trabalhando no site. Obrigatório mínimo de 2 (duas) pessoas.", slotBase: "foto_rg", porColaborador: true },
+    { n: 14, tipo: "foto", label: "Foto da Equipe utilizando o EPI completo", slotBase: "foto_supervisor", porColaborador: true },
 
-    { n: 26, secao: "EPC", subsecao: "Içamento", tipo: "pergunta", label: "A quantidade de recursos para execução da tarefa é adequada? (acima de 20kg, mínimo 3 pessoas)", key: "q28", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 27, tipo: "pergunta", label: "A corda está em boas condições de uso?", key: "q29", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 28, tipo: "pergunta", label: "A roldana está em boas condições de uso?", key: "q30", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 29, tipo: "pergunta", label: "A cinta de amarração está em boas condições de uso?", key: "q31", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 30, tipo: "pergunta", label: "O guincho está em boas condições de uso?", key: "q32", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 31, subsecao: "Veículo", tipo: "pergunta", label: "O veículo é adequado para a atividade?", key: "q33", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 32, tipo: "pergunta", label: "Os pneus estão em boas condições de uso?", key: "q34", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 33, tipo: "pergunta", label: "O motorista está devidamente habilitado?", key: "q35", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 15, secao: "EPI", subsecao: "Capacete", tipo: "pergunta", label: "Capacete em condições de uso e CA dentro da validade?", key: "q7", opcoes: ["Sim", "Não"] },
+    { n: 16, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true },
+    { n: 17, subsecao: "Óculos", tipo: "pergunta", label: "Óculos em condições de uso e CA dentro da validade?", key: "q10", opcoes: ["Sim", "Não"] },
+    { n: 18, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true },
+    { n: 19, subsecao: "Luvas", tipo: "pergunta", label: "Luva em condições de uso e CA dentro da validade?", key: "q13", opcoes: ["Sim", "Não"] },
+    { n: 20, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true },
+    { n: 21, subsecao: "Cinto", tipo: "pergunta", label: "Cinto em condições de uso e CA dentro da validade?", key: "q16", opcoes: ["Sim", "Não"] },
+    { n: 22, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true },
+    { n: 23, subsecao: "Trava-quedas", tipo: "pergunta", label: "Trava-quedas em condições de uso e CA dentro da validade?", key: "q18", opcoes: ["Sim", "Não"] },
+    { n: 24, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true },
+    { n: 25, subsecao: "Talabarte Simples", tipo: "pergunta", label: "Talabarte simples em condições de uso e CA dentro da validade?", key: "q21", opcoes: ["Sim", "Não"] },
+    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true },
+    { n: 27, subsecao: "Talabarte Y", tipo: "pergunta", label: "Talabarte Y em condições de uso e CA dentro da validade?", key: "q24", opcoes: ["Sim", "Não"] },
+    { n: 28, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true },
+    { n: 29, subsecao: "Botas", tipo: "pergunta", label: "Botas em condições de uso e CA dentro da validade?", key: "q27", opcoes: ["Sim", "Não"] },
+    { n: 30, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true },
 
-    { n: 34, secao: "RISCOS", tipo: "pergunta", label: "Existe risco relacionado a bordas desprotegidas, superfícies frágeis, telha de amianto, telha de fibra ou telha corrugada?", key: "q36", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 35, tipo: "pergunta", label: "Existe risco em estruturas verticais (corrosão, falta de linha de vida, parafusos soltos, escadas com corrosão, pontos de ancoragem inseguros)?", key: "q37", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 36, tipo: "pergunta", label: "Existem riscos potenciais por conta de construção em andamento no site?", key: "q38", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 37, tipo: "pergunta", label: "Existe risco identificado com dispositivos elétricos, cabos e conexões?", key: "q39", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 38, tipo: "pergunta", label: "Existe risco com materiais inflamáveis ou outros materiais perigosos no site?", key: "q40", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 39, tipo: "pergunta", label: "Existe risco com piso escorregadio ou similar identificado?", key: "q41", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 40, tipo: "pergunta", label: "Existe risco com escadas, elevadores, áreas de entrega de equipamentos?", key: "q42", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 41, tipo: "pergunta", label: "Existe extintor adequado e bem conservado, equipe treinada para utilizá-lo, saída de emergência e via de evacuação livre de obstáculos? (aplicável apenas para sites indoor)", key: "q43", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 42, tipo: "pergunta", label: "Existe risco ou outro problema no site que possa colocar a equipe em perigo?", key: "q44", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
-    { n: 43, tipo: "pergunta", label: "O espaço abaixo da estrutura (torre/telhado/poste) - zona de segurança - está devidamente identificado e cercado?", key: "q45", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 44, tipo: "pergunta", label: "As condições climáticas permitem iniciar as atividades?", key: "q46", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 45, tipo: "pergunta", label: "A equipe conhece e aplica as regras que salvam vidas da empresa?", key: "q47", opcoes: ["Sim", "Não", "N/A"] },
-    { n: 46, tipo: "pergunta", label: "Existe mais algum risco observado?", key: "q48", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true }
+    { n: 31, secao: "EPC", subsecao: "Içamento", tipo: "pergunta", label: "A quantidade de recursos para execução da tarefa é adequada? (acima de 20kg, mínimo 3 pessoas)", key: "q28", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 32, tipo: "pergunta", label: "A corda está em boas condições de uso?", key: "q29", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 33, tipo: "pergunta", label: "A roldana está em boas condições de uso?", key: "q30", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 34, tipo: "pergunta", label: "A cinta de amarração está em boas condições de uso?", key: "q31", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 35, tipo: "pergunta", label: "O guincho está em boas condições de uso?", key: "q32", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 36, subsecao: "Veículo", tipo: "pergunta", label: "O veículo é adequado para a atividade?", key: "q33", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 37, tipo: "pergunta", label: "Os pneus estão em boas condições de uso?", key: "q34", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 38, tipo: "pergunta", label: "O motorista está devidamente habilitado?", key: "q35", opcoes: ["Sim", "Não", "N/A"] },
+
+    { n: 39, secao: "RISCOS", tipo: "pergunta", label: "Existe risco relacionado a bordas desprotegidas, superfícies frágeis, telha de amianto, telha de fibra ou telha corrugada?", key: "q36", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 40, tipo: "pergunta", label: "Existe risco em estruturas verticais (corrosão, falta de linha de vida, parafusos soltos, escadas com corrosão, pontos de ancoragem inseguros)?", key: "q37", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 41, tipo: "pergunta", label: "Existem riscos potenciais por conta de construção em andamento no site?", key: "q38", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 42, tipo: "pergunta", label: "Existe risco identificado com dispositivos elétricos, cabos e conexões?", key: "q39", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 43, tipo: "pergunta", label: "Existe risco com materiais inflamáveis ou outros materiais perigosos no site?", key: "q40", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 44, tipo: "pergunta", label: "Existe risco com piso escorregadio ou similar identificado?", key: "q41", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 45, tipo: "pergunta", label: "Existe risco com escadas, elevadores, áreas de entrega de equipamentos?", key: "q42", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 46, tipo: "pergunta", label: "Existe extintor adequado e bem conservado, equipe treinada para utilizá-lo, saída de emergência e via de evacuação livre de obstáculos? (aplicável apenas para sites indoor)", key: "q43", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 47, tipo: "pergunta", label: "Existe risco ou outro problema no site que possa colocar a equipe em perigo?", key: "q44", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true },
+    { n: 48, tipo: "pergunta", label: "O espaço abaixo da estrutura (torre/telhado/poste) - zona de segurança - está devidamente identificado e cercado?", key: "q45", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 49, tipo: "pergunta", label: "As condições climáticas permitem iniciar as atividades?", key: "q46", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 50, tipo: "pergunta", label: "A equipe conhece e aplica as regras que salvam vidas da empresa?", key: "q47", opcoes: ["Sim", "Não", "N/A"] },
+    { n: 51, tipo: "pergunta", label: "Existe mais algum risco observado?", key: "q48", opcoes: ["Sim", "Não", "N/A"], riscoSeSim: true }
   ];
 
   // Mapa key -> item, usado onde só se tem a chave da resposta em mãos
@@ -1634,8 +1648,15 @@
     // `standard`, ver AUDITORIA_CLIENTES) não muda mais o formulário, é só
     // categorização pra filtro/relatório.
     var items = AUDITORIA_ITEMS_NOKIA;
+    var remota = a.modalidade === "REMOTA";
     var html = checklistResumoHtml(a);
     items.forEach(function (item) {
+      // Itens condicionais por modalidade: "Prints da auditoria" só existe
+      // em auditoria remota (não há "print" numa vistoria presencial); a
+      // selfie do inspetor no site só existe em auditoria presencial (não
+      // aplicável quando o inspetor não está fisicamente no local).
+      if (item.soRemota && !remota) return;
+      if (item.ocultarSeRemota && remota) return;
       if (item.secao) html += '<div class="form-section-title" style="margin-top:20px;">' + esc(item.secao) + "</div>";
       if (item.subsecao) html += '<div class="form-section-title" style="opacity:.72;font-size:11px;margin-top:12px;">' + esc(item.subsecao) + "</div>";
       if (item.tipo === "pergunta") {
