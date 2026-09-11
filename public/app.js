@@ -66,6 +66,7 @@
     treinamentos: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>',
     search: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
     plus: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
+    minus: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>',
     close: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
     trash: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6"/></svg>',
     paperclip: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05 12.25 20.24a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95L9.64 18.36a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>',
@@ -4754,11 +4755,145 @@
     openModal(
       '<div class="lightbox-box">' +
       '<button type="button" class="lightbox-close" id="lightbox-close" title="Fechar" aria-label="Fechar">' + ICONS.close + "</button>" +
-      '<img src="' + esc(url) + '" alt="" class="lightbox-img">' +
+      '<div class="lightbox-viewport" id="lightbox-viewport">' +
+      '<img src="' + esc(url) + '" alt="" class="lightbox-img" id="lightbox-img" draggable="false">' +
+      "</div>" +
+      '<div class="lightbox-zoom-bar" id="lightbox-zoom-bar">' +
+      '<button type="button" class="lightbox-zoom-btn" id="lightbox-zoom-out" title="Diminuir zoom" aria-label="Diminuir zoom">' + ICONS.minus + "</button>" +
+      '<span class="lightbox-zoom-pct" id="lightbox-zoom-pct">100%</span>' +
+      '<button type="button" class="lightbox-zoom-btn" id="lightbox-zoom-in" title="Aumentar zoom" aria-label="Aumentar zoom">' + ICONS.plus + "</button>" +
+      "</div>" +
       "</div>"
     );
     var btn = $("#lightbox-close");
     if (btn) btn.addEventListener("click", closeModal);
+    setupLightboxZoom();
+  }
+
+  /* Zoom da foto no lightbox: roda do mouse, pinça (dois dedos) no
+     celular, duplo clique/duplo toque pra alternar zoom, e arrastar pra
+     navegar dentro da foto quando ampliada. Tudo fica em variáveis locais
+     desta chamada (não no módulo) — assim cada foto aberta sempre começa
+     do zero, sem herdar zoom/posição da foto anterior. Também dá pra usar
+     os botões +/- pra quem prefere não usar roda/pinça. */
+  function setupLightboxZoom() {
+    var viewport = $("#lightbox-viewport");
+    var img = $("#lightbox-img");
+    var pctEl = $("#lightbox-zoom-pct");
+    var btnIn = $("#lightbox-zoom-in");
+    var btnOut = $("#lightbox-zoom-out");
+    if (!viewport || !img) return;
+
+    var MIN_SCALE = 1, MAX_SCALE = 4, DBLCLICK_SCALE = 2.5;
+    var scale = 1, tx = 0, ty = 0;
+    var pointers = {}; // pointerId -> {x,y}
+    var pinchStartDist = 0, pinchStartScale = 1;
+    var dragId = null, dragStartX = 0, dragStartY = 0, dragStartTx = 0, dragStartTy = 0;
+
+    function clampTranslate() {
+      var vw = viewport.clientWidth, vh = viewport.clientHeight;
+      var w0 = img.offsetWidth, h0 = img.offsetHeight; // tamanho "sem zoom" (transform não afeta o layout)
+      var maxTx = Math.max(0, (w0 * scale - vw) / 2);
+      var maxTy = Math.max(0, (h0 * scale - vh) / 2);
+      tx = Math.max(-maxTx, Math.min(maxTx, tx));
+      ty = Math.max(-maxTy, Math.min(maxTy, ty));
+    }
+    function apply() {
+      if (scale <= MIN_SCALE + 0.001) { scale = 1; tx = 0; ty = 0; }
+      clampTranslate();
+      img.style.transform = "translate(" + tx + "px, " + ty + "px) scale(" + scale + ")";
+      viewport.classList.toggle("zoomed", scale > MIN_SCALE + 0.001);
+      if (pctEl) pctEl.textContent = Math.round(scale * 100) + "%";
+      if (btnOut) btnOut.disabled = scale <= MIN_SCALE + 0.001;
+      if (btnIn) btnIn.disabled = scale >= MAX_SCALE - 0.001;
+    }
+    // Zoom mantendo o ponto (clientX,clientY) fixo na tela — é o que faz o
+    // zoom "seguir" o cursor/dedo em vez de sempre crescer a partir do centro.
+    function zoomTo(newScale, clientX, clientY) {
+      newScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
+      var rect = img.getBoundingClientRect();
+      var cx = clientX === undefined ? rect.left + rect.width / 2 : clientX;
+      var cy = clientY === undefined ? rect.top + rect.height / 2 : clientY;
+      var dx = cx - (rect.left + rect.width / 2);
+      var dy = cy - (rect.top + rect.height / 2);
+      var ratio = newScale / scale;
+      tx = tx + dx * (1 - ratio);
+      ty = ty + dy * (1 - ratio);
+      scale = newScale;
+      apply();
+    }
+    function stepZoom(dir, clientX, clientY) {
+      zoomTo(scale * (dir > 0 ? 1.4 : 1 / 1.4), clientX, clientY);
+    }
+
+    if (btnIn) btnIn.addEventListener("click", function () { stepZoom(1); });
+    if (btnOut) btnOut.addEventListener("click", function () { stepZoom(-1); });
+
+    viewport.addEventListener("wheel", function (e) {
+      e.preventDefault();
+      stepZoom(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
+    }, { passive: false });
+
+    function toggleDblClick(clientX, clientY) {
+      if (scale > MIN_SCALE + 0.001) { scale = 1; tx = 0; ty = 0; apply(); }
+      else zoomTo(DBLCLICK_SCALE, clientX, clientY);
+    }
+    img.addEventListener("dblclick", function (e) { e.preventDefault(); toggleDblClick(e.clientX, e.clientY); });
+
+    // Duplo toque no celular (dblclick não dispara em touch em todo navegador).
+    var lastTapT = 0, lastTapX = 0, lastTapY = 0;
+    function maybeDoubleTap(x, y) {
+      var now = Date.now();
+      var close = Math.abs(x - lastTapX) < 30 && Math.abs(y - lastTapY) < 30;
+      if (now - lastTapT < 320 && close) { toggleDblClick(x, y); lastTapT = 0; return true; }
+      lastTapT = now; lastTapX = x; lastTapY = y;
+      return false;
+    }
+
+    function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+    function midpoint(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+
+    img.addEventListener("pointerdown", function (e) {
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(pointers);
+      if (ids.length === 2) {
+        dragId = null;
+        var p0 = pointers[ids[0]], p1 = pointers[ids[1]];
+        pinchStartDist = dist(p0, p1) || 1;
+        pinchStartScale = scale;
+      } else if (ids.length === 1) {
+        if (e.pointerType === "touch" && maybeDoubleTap(e.clientX, e.clientY)) return;
+        dragId = e.pointerId;
+        dragStartX = e.clientX; dragStartY = e.clientY;
+        dragStartTx = tx; dragStartTy = ty;
+        try { img.setPointerCapture(e.pointerId); } catch (err) { /* ignora */ }
+      }
+    });
+    img.addEventListener("pointermove", function (e) {
+      if (!pointers[e.pointerId]) return;
+      pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(pointers);
+      if (ids.length === 2) {
+        var p0 = pointers[ids[0]], p1 = pointers[ids[1]];
+        var d = dist(p0, p1) || 1;
+        var mid = midpoint(p0, p1);
+        zoomTo(pinchStartScale * (d / pinchStartDist), mid.x, mid.y);
+      } else if (dragId === e.pointerId && scale > MIN_SCALE + 0.001) {
+        tx = dragStartTx + (e.clientX - dragStartX);
+        ty = dragStartTy + (e.clientY - dragStartY);
+        apply();
+      }
+    });
+    function endPointer(e) {
+      delete pointers[e.pointerId];
+      if (dragId === e.pointerId) dragId = null;
+      if (Object.keys(pointers).length < 2) { pinchStartDist = 0; }
+    }
+    img.addEventListener("pointerup", endPointer);
+    img.addEventListener("pointercancel", endPointer);
+    img.addEventListener("pointerleave", function (e) { if (dragId === e.pointerId) endPointer(e); });
+
+    apply();
   }
 
   /* ---------------- Exportar para Excel ----------------

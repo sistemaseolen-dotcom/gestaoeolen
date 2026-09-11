@@ -667,15 +667,43 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .pessoa-combo-cargo { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: var(--ink-faint); }
 .pessoa-combo-empty { padding: 10px; font-size: 12.5px; color: var(--ink-faint); }
 
-/* Lightbox de foto (clique pra ampliar) */
-.lightbox-box { position: relative; width: auto; max-width: min(920px, 94vw); max-height: 92vh; padding: 0; background: transparent; box-shadow: none; }
-.lightbox-img { display: block; max-width: min(920px, 94vw); max-height: 92vh; width: auto; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-lg); background: #fff; }
+/* Lightbox de foto (clique pra ampliar). .lightbox-viewport é a "moldura"
+   com overflow escondido: a foto pode crescer além dela quando dá zoom,
+   mas fica sempre recortada dentro do mesmo espaço, sem invadir o resto
+   da tela. O zoom em si (roda do mouse, pinça, duplo clique/toque,
+   arrastar, botões +/-) é feito em JS (setupLightboxZoom), aplicando
+   transform na .lightbox-img. */
+.lightbox-box { position: relative; width: auto; max-width: min(920px, 94vw); max-height: 92vh; padding: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.lightbox-viewport {
+  position: relative; max-width: min(920px, 94vw); max-height: 80vh; overflow: hidden;
+  border-radius: var(--radius-md); box-shadow: var(--shadow-lg); background: #fff;
+  touch-action: none; line-height: 0;
+}
+.lightbox-img {
+  display: block; max-width: min(920px, 94vw); max-height: 80vh; width: auto; height: auto;
+  background: #fff; cursor: zoom-in; touch-action: none; user-select: none;
+  transform-origin: center center; will-change: transform;
+}
+.lightbox-viewport.zoomed .lightbox-img { cursor: grab; }
+.lightbox-viewport.zoomed .lightbox-img:active { cursor: grabbing; }
 .lightbox-close {
   position: absolute; top: -14px; right: -14px; width: 32px; height: 32px; border-radius: 999px;
   background: #fff; border: 1px solid var(--border-strong); color: var(--ink); display: flex; align-items: center; justify-content: center;
-  cursor: pointer; box-shadow: var(--shadow-lg);
+  cursor: pointer; box-shadow: var(--shadow-lg); z-index: 2;
 }
 .lightbox-close .ic { width: 16px; height: 16px; }
+.lightbox-zoom-bar {
+  display: flex; align-items: center; gap: 10px; background: rgba(10,16,13,0.55); color: #fff;
+  border-radius: 999px; padding: 6px 8px; backdrop-filter: blur(2px);
+}
+.lightbox-zoom-btn {
+  width: 30px; height: 30px; border-radius: 999px; border: none; background: rgba(255,255,255,0.14); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+}
+.lightbox-zoom-btn:hover { background: rgba(255,255,255,0.26); }
+.lightbox-zoom-btn:disabled { opacity: .4; cursor: default; }
+.lightbox-zoom-btn .ic { width: 15px; height: 15px; }
+.lightbox-zoom-pct { font-size: 12px; font-weight: 700; min-width: 42px; text-align: center; }
 
 @media print {
   .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura, .field-note, .header-field-notes { display: none !important; }
