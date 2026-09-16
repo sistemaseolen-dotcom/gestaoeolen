@@ -2250,6 +2250,9 @@
     if (!partes.length && p.naoInformada > 0) partes.push("Não informada");
     return partes.join(", ") || "—";
   }
+  function modalidadeLabelAuditoria(modalidade) {
+    return modalidade === "PRESENCIAL" ? "Presencial" : modalidade === "REMOTA" ? "Remota" : "Não informada";
+  }
   function pessoasAuditadasPorModalidade(auditadas) {
     var counts = { PRESENCIAL: 0, REMOTA: 0, NAO_INFORMADO: 0 };
     auditadas.forEach(function (p) {
@@ -2308,21 +2311,53 @@
     if (semRegional) counts["Não informado"] = semRegional;
     return counts;
   }
-  function openPessoasAuditadasDrawer(list, periodoTxt, auditado, cargoLabel, tituloOverride) {
+  function openPessoasAuditadasDrawer(list, periodoTxt, auditado, cargoLabel, tituloOverride, listaCompleta) {
     var titulo = tituloOverride || (cargoLabel ? "Auditados — " + cargoLabel : auditado ? "Pessoas auditadas" : "Pessoas não auditadas");
     var rowsHtml = list.map(function (p) {
-      return '<tr><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + "</td>" +
+      return '<tr' + (auditado ? ' data-nome="' + esc(p.nome) + '"' : "") + '><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + "</td>" +
         (auditado ? "<td>" + (p.qtd || 0) + "</td><td>" + esc(modalidadeLabelPessoa(p)) + "</td><td>" + fmtDateBR(p.ultimaData) + "</td>" : "") + "</tr>";
     }).join("");
     openGenericTableDrawer({
       title: titulo,
-      subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
+      subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt + (auditado ? " — clique numa pessoa pra ver as datas" : ""),
       theadHtml: "<th>Nome</th><th>Cargo</th>" + (auditado ? "<th>Auditorias</th><th>Modalidade</th><th>Última auditoria</th>" : ""),
       rowsHtml: rowsHtml,
       exportHeaders: auditado ? ["Nome", "Cargo", "Auditorias", "Modalidade", "Última auditoria"] : ["Nome", "Cargo"],
       exportRows: list.map(function (p) {
         return auditado ? [p.nome, p.cargo || "", p.qtd || 0, modalidadeLabelPessoa(p), fmtDateBR(p.ultimaData)] : [p.nome, p.cargo || ""];
-      })
+      }),
+      onRowBind: auditado && listaCompleta ? function (root) {
+        $all("[data-nome]", root).forEach(function (row) {
+          row.addEventListener("click", function () {
+            openHistoricoAuditoriasPessoaDrawer(row.getAttribute("data-nome"), listaCompleta, periodoTxt);
+          });
+        });
+      } : null
+    });
+  }
+  // Drawer com as datas de todas as auditorias de UMA pessoa no período —
+  // aberto ao clicar numa linha do drawer "Pessoas auditadas" (pedido do
+  // Diego: antes só dava pra ver a ÚLTIMA data quando alguém tinha mais de
+  // uma auditoria no período).
+  function openHistoricoAuditoriasPessoaDrawer(nome, listaCompleta, periodoTxt) {
+    var list = listaCompleta.filter(function (a) {
+      return (a.colaboradores || []).some(function (nomeRaw) { return (nomeRaw || "").toString().trim() === nome; });
+    }).sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.id - a.id; });
+    var rowsHtml = list.map(function (a) {
+      return '<tr data-id="' + a.id + '"><td class="mono">' + esc(a.siteId || "—") + '</td><td>' + esc(a.empresa || "—") + "</td><td>" + fmtDateBR(a.data) + "</td><td>" + esc(modalidadeLabelAuditoria(a.modalidade)) + "</td><td>" + esc(a.inspetorNome || "—") + "</td><td>" + statusPillAuditoria(a.status) + "</td></tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: nome,
+      subtitle: list.length + " auditoria" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt,
+      theadHtml: "<th>Site ID</th><th>Empresa</th><th>Data</th><th>Modalidade</th><th>Inspetor</th><th>Status</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Site ID", "Empresa", "Data", "Modalidade", "Inspetor", "Status"],
+      exportRows: list.map(function (a) { return [a.siteId || "", a.empresa || "", fmtDateBR(a.data), modalidadeLabelAuditoria(a.modalidade), a.inspetorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"]; }),
+      onRowBind: function (root) {
+        $all("[data-id]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
+        });
+      }
     });
   }
   function openAuditoriasModalidadeDrawer(modalidadeVal, listaCompleta, periodoTxt) {
@@ -2579,7 +2614,7 @@
       $all("[data-painel-kpi]", main).forEach(function (el) {
         el.addEventListener("click", function () {
           var kind = el.getAttribute("data-painel-kpi");
-          if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, periodoTxt, true);
+          if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, periodoTxt, true, null, null, lista);
           else openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, periodoTxt, false);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
@@ -2605,7 +2640,7 @@
             return p.presencial === 0 && p.remota === 0 && p.naoInformada > 0;
           });
           var label = val === "PRESENCIAL" ? "Presencial" : val === "REMOTA" ? "Remota" : "Não informada";
-          openPessoasAuditadasDrawer(filtrado, periodoTxt, true, null, "Pessoas auditadas — " + label);
+          openPessoasAuditadasDrawer(filtrado, periodoTxt, true, null, "Pessoas auditadas — " + label, lista);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -2615,7 +2650,7 @@
           var cargoVal = el.getAttribute("data-simple-bar-value");
           openPessoasAuditadasDrawer(
             pessoasInfo.auditadas.filter(function (p) { return (p.cargo || "").trim().toUpperCase() === cargoVal; }),
-            periodoTxt, true, cargoVal
+            periodoTxt, true, cargoVal, null, lista
           );
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
