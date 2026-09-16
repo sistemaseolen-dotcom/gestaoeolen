@@ -2035,7 +2035,7 @@
   function bindAuditoriasTabs(main) {
     $all("[data-auditoriatab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () {
-        navigate(btn.getAttribute("data-auditoriatab") === "painel" ? "#/auditorias/painel" : "#/auditorias");
+        navigate(btn.getAttribute("data-auditoriatab") === "lista" ? "#/auditorias/lista" : "#/auditorias");
       });
     });
   }
@@ -2457,7 +2457,6 @@
       var semanas = auditoriasPorSemana(periodo.tipo === "geral", lista);
       var modalidade = auditoriasPorModalidade(lista);
       var pessoasInfo = pessoasAuditadasInfo(lista);
-      var porCargo = auditadosPorCargo(pessoasInfo.auditadas);
       var naoConf = taxaNaoConformidade(lista);
       var clienteCounts = auditoriasPorCliente(lista);
       var regionalCounts = auditoriasPorRegional(lista);
@@ -2569,11 +2568,7 @@
         ? '<div class="status-bar-lg">' + clienteSegs + '</div><div class="legend-row">' + clienteLegend + "</div>"
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
 
-      var cargoCounts = {};
-      CARGOS_COLAB_AUDITORIA.forEach(function (c) { cargoCounts[c] = porCargo[c] || 0; });
-      var cargoHtml = simpleBarsHtml(cargoCounts, "auditoria-cargo");
-
-      var regionalHtml = simpleBarsHtml(regionalCounts, "auditoria-regional");
+      var regionalHtml = simpleBarsHtml(regionalCounts, "auditoria-regional", { showZero: true });
 
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + esc(periodoLabelLongo(periodo)) + '</div></div>' +
@@ -2589,7 +2584,6 @@
         '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por cliente</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + clienteHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por regional</h3><span class="hint">clique numa barra pra ver as auditorias</span></div><div class="panel-body pad">' + regionalHtml + "</div></div>" +
-        '<div class="panel"><div class="panel-head"><h3>Pessoas auditadas por cargo</h3><span class="hint">clique numa barra pra ver quem</span></div><div class="panel-body pad">' + cargoHtml + "</div></div>" +
         "</div>";
 
       bindAuditoriasTabs(main);
@@ -2641,17 +2635,6 @@
           });
           var label = val === "PRESENCIAL" ? "Presencial" : val === "REMOTA" ? "Remota" : "Não informada";
           openPessoasAuditadasDrawer(filtrado, periodoTxt, true, null, "Pessoas auditadas — " + label, lista);
-        });
-        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
-      });
-      $all("[data-simple-bar]", main).forEach(function (el) {
-        if (el.getAttribute("data-simple-bar") !== "auditoria-cargo") return;
-        el.addEventListener("click", function () {
-          var cargoVal = el.getAttribute("data-simple-bar-value");
-          openPessoasAuditadasDrawer(
-            pessoasInfo.auditadas.filter(function (p) { return (p.cargo || "").trim().toUpperCase() === cargoVal; }),
-            periodoTxt, true, cargoVal, null, lista
-          );
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -3766,8 +3749,10 @@
       return true;
     }), function (p) { return p.regional; });
   }
-  function simpleBarsHtml(counts, barKind) {
-    var rows = Object.keys(counts).map(function (k) { return { label: k, n: counts[k] }; }).filter(function (r) { return r.n > 0; });
+  function simpleBarsHtml(counts, barKind, opts) {
+    var showZero = opts && opts.showZero;
+    var rows = Object.keys(counts).map(function (k) { return { label: k, n: counts[k] }; });
+    if (!showZero) rows = rows.filter(function (r) { return r.n > 0; });
     rows.sort(function (a, b) { return b.n - a.n; });
     if (!rows.length) return '<div class="empty-state" style="padding:20px;">Nenhum dado encontrado.</div>';
     var max = rows[0].n || 1;
@@ -5136,9 +5121,9 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
-    else if (route.view === "auditorias") route.id === "painel" ? renderAuditoriasPainel(main) : route.id ? renderAuditoriaDetail(main, route.id) : renderAuditoriasList(main);
+    else if (route.view === "auditorias") route.id === "lista" ? renderAuditoriasList(main) : route.id ? renderAuditoriaDetail(main, route.id) : renderAuditoriasPainel(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
-    if (!route.id || route.id === "painel") closeDrawer();
+    if (!route.id || route.id === "lista") closeDrawer();
   }
 
   /* ---------------- Init ----------------
