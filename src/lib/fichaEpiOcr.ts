@@ -100,6 +100,7 @@ export async function extrairItensFichaEpi(buffer: Buffer): Promise<ResultadoOcr
   try {
     pageBuf = await rasterizarPrimeiraPagina(buffer);
   } catch (err: any) {
+    console.error("[fichaEpiOcr] Falha ao abrir o PDF:", err?.stack || err);
     return { ok: false, motivo: `Falha ao abrir o PDF: ${err?.message || err}` };
   }
   if (!pageBuf) return { ok: false, motivo: "PDF sem páginas." };
