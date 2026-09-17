@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
+import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB — mesmo limite validado no cliente da versão antiga.
 const BUCKET = "treinamentos-anexos";
@@ -102,9 +103,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const path = `${id}/${Date.now()}-${sanitizeFilename(originalName)}`;
+  const contentType = file.type || "application/octet-stream";
 
   const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, buffer, {
-    contentType: file.type || "application/octet-stream",
+    contentType,
     upsert: false,
   });
   if (uploadError) {
@@ -131,7 +133,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     usuario: gate.user,
   });
 
-  return NextResponse.json(after);
+  // Se este anexo é a "Ficha de EPI" (formulário de controle de EPI's) de
+  // alguém em PDF, tenta ler automaticamente a tabela de CA/equipamento por
+  // OCR — é o que alimenta a verificação de CA na auditoria (pedido do
+  // Diego). Best-effort: qualquer falha aqui (OCR não reconheceu nada,
+  // coluna nova ainda não existe no banco, etc.) não pode derrubar o
+  // upload do anexo em si, que já foi concluído com sucesso acima.
+  let epiOcr: { itens?: unknown; erro?: string } | null = null;
+  if (after.tipo === "FICHA DE EPI" && contentType === "application/pdf") {
+    try {
+      const resultado = await extrairItensFichaEpi(buffer);
+      epiOcr = resultado.ok ? { itens: resultado.itens } : { erro: resultado.motivo };
+      const { error: epiUpdateError } = await admin
+        .from("treinamentos")
+        .update({
+          epi_itens: resultado.ok ? resultado.itens : null,
+          epi_ocr_erro: resultado.ok ? null : resultado.motivo,
+          epi_ocr_atualizado_em: new Date().toISOString(),
+        })
+        .eq("id", id);
+      if (epiUpdateError) {
+        console.error(`Falha ao gravar leitura da Ficha de EPI (treinamento ${id}):`, epiUpdateError.message);
+      }
+    } catch (err: any) {
+      console.error(`Falha ao processar OCR da Ficha de EPI (treinamento ${id}):`, err?.message || err);
+    }
+  }
+
+  return NextResponse.json({ ...after, ...(epiOcr ? { epiOcr } : {}) });
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
@@ -170,6 +199,21 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     .single();
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // Sem anexo, a leitura de CA/equipamento anterior (se houver) não vale
+  // mais — limpa junto, mas como um passo separado e best-effort: se a
+  // coluna ainda não existir no banco (migração da leitura de Ficha de EPI
+  // ainda não aplicada), isso não pode derrubar a exclusão do anexo, que já
+  // foi concluída com sucesso acima.
+  if (after.tipo === "FICHA DE EPI") {
+    const { error: epiClearError } = await admin
+      .from("treinamentos")
+      .update({ epi_itens: null, epi_ocr_erro: null, epi_ocr_atualizado_em: null })
+      .eq("id", id);
+    if (epiClearError) {
+      console.error(`Falha ao limpar leitura da Ficha de EPI (treinamento ${id}):`, epiClearError.message);
+    }
   }
 
   await auditDiffFields({

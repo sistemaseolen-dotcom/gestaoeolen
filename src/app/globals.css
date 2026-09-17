@@ -648,6 +648,19 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .foto-slot-actions { display: flex; flex-direction: column; gap: 6px; }
 .foto-slot-actions .btn { width: 100%; justify-content: center; cursor: pointer; }
 
+.foto-slot-wrap { display: flex; flex-direction: column; gap: 6px; }
+/* Verificação automática de CA (Ficha de EPI) — digitado pelo auditor junto
+   com a foto do equipamento; ver caCheckHtml/verificarCaItem em app.js. */
+.ca-check { display: flex; flex-direction: column; gap: 4px; }
+.ca-check-input {
+  width: 100%; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 12.5px; background: var(--surface);
+}
+.ca-check-status { font-size: 11px; font-weight: 600; text-align: center; padding: 3px 6px; border-radius: 999px; }
+.ca-check-status.ok { background: var(--success-soft); color: var(--success-ink); }
+.ca-check-status.danger { background: var(--danger-soft); color: var(--danger-ink); }
+.ca-check-status.neutral { background: var(--neutral-soft); color: var(--neutral-ink); }
+
 .assinatura-canvas {
   width: 100%; max-width: 600px; height: 200px; border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius-sm); background: #fff; touch-action: none; cursor: crosshair;

@@ -556,7 +556,14 @@
       id: row.id, pessoaId: row.pessoa_id, pessoaNome: row.pessoa_nome, tipo: row.tipo,
       categoria: row.categoria, situacaoOriginal: row.situacao_original, vencimento: row.vencimento,
       dataEmissao: row.data_emissao, observacao: row.observacao,
-      arquivoNome: row.arquivo_nome, arquivoPath: row.arquivo_path
+      arquivoNome: row.arquivo_nome, arquivoPath: row.arquivo_path,
+      // Leitura automática (OCR) da tabela de CA/equipamento da Ficha de EPI
+      // — só existe quando tipo === "FICHA DE EPI" e o anexo já foi
+      // processado (ver src/lib/fichaEpiOcr.ts). `epiItens` é uma lista de
+      // { especificacao, ca }; `epiOcrErro` explica por que não deu pra ler
+      // quando `epiItens` está vazio/nulo (nunca tratamos isso como "CA não
+      // confere" — só como "não deu pra verificar automaticamente").
+      epiItens: row.epi_itens || null, epiOcrErro: row.epi_ocr_erro || null
     };
   }
   function mapAuditoriaFromApi(row) {
@@ -1530,21 +1537,21 @@
     { n: 14, tipo: "foto", label: "Foto da Equipe utilizando o EPI completo", slotBase: "foto_supervisor", porColaborador: true },
 
     { n: 15, secao: "EPI", subsecao: "Capacete", tipo: "pergunta", label: "Capacete em condições de uso e CA dentro da validade?", key: "q7", opcoes: ["Sim", "Não"] },
-    { n: 16, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true },
+    { n: 16, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true, caCheck: { keyBase: "ca_capacete", especKeywords: ["CAPACETE"] } },
     { n: 17, subsecao: "Óculos", tipo: "pergunta", label: "Óculos em condições de uso e CA dentro da validade?", key: "q10", opcoes: ["Sim", "Não"] },
-    { n: 18, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true },
+    { n: 18, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true, caCheck: { keyBase: "ca_oculos", especKeywords: ["OCULOS"] } },
     { n: 19, subsecao: "Luvas", tipo: "pergunta", label: "Luva em condições de uso e CA dentro da validade?", key: "q13", opcoes: ["Sim", "Não"] },
-    { n: 20, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true },
+    { n: 20, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true, caCheck: { keyBase: "ca_luva", especKeywords: ["LUVA"] } },
     { n: 21, subsecao: "Cinto", tipo: "pergunta", label: "Cinto em condições de uso e CA dentro da validade?", key: "q16", opcoes: ["Sim", "Não"] },
-    { n: 22, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true },
+    { n: 22, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true, caCheck: { keyBase: "ca_cinto", especKeywords: ["CINTO"] } },
     { n: 23, subsecao: "Trava-quedas", tipo: "pergunta", label: "Trava-quedas em condições de uso e CA dentro da validade?", key: "q18", opcoes: ["Sim", "Não"] },
-    { n: 24, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true },
+    { n: 24, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true, caCheck: { keyBase: "ca_travaquedas", especKeywords: ["TRAVA QUEDAS", "TRAVAQUEDAS"] } },
     { n: 25, subsecao: "Talabarte Simples", tipo: "pergunta", label: "Talabarte simples em condições de uso e CA dentro da validade?", key: "q21", opcoes: ["Sim", "Não"] },
-    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true },
+    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true, caCheck: { keyBase: "ca_talabarte_simples", especKeywords: ["TALABARTE"], especKeywordsExcluir: ["TALABARTE Y"] } },
     { n: 27, subsecao: "Talabarte Y", tipo: "pergunta", label: "Talabarte Y em condições de uso e CA dentro da validade?", key: "q24", opcoes: ["Sim", "Não"] },
-    { n: 28, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true },
+    { n: 28, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true, caCheck: { keyBase: "ca_talabarte_y", especKeywords: ["TALABARTE Y"] } },
     { n: 29, subsecao: "Botas", tipo: "pergunta", label: "Botas em condições de uso e CA dentro da validade?", key: "q27", opcoes: ["Sim", "Não"] },
-    { n: 30, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true },
+    { n: 30, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true, caCheck: { keyBase: "ca_botas", especKeywords: ["BOTA"] } },
 
     { n: 31, secao: "EPC", subsecao: "Içamento", tipo: "pergunta", label: "A quantidade de recursos para execução da tarefa é adequada? (acima de 20kg, mínimo 3 pessoas)", key: "q28", opcoes: ["Sim", "Não", "N/A"] },
     { n: 32, tipo: "pergunta", label: "A corda está em boas condições de uso?", key: "q29", opcoes: ["Sim", "Não", "N/A"] },
@@ -1604,6 +1611,103 @@
   function permiteGaleriaPresencial() {
     return !!(STATE.config && STATE.config.auditoria_permitir_galeria_presencial);
   }
+
+  /* ---------------- Verificação automática de CA (Ficha de EPI) ----------------
+     Pedido do Diego: além da foto, o auditor digita o número do CA do
+     equipamento em campo, e o sistema confere na hora com a Ficha de EPI
+     daquela pessoa (hoje um PDF, lido automaticamente por OCR no servidor —
+     ver src/lib/fichaEpiOcr.ts — quando alguém sobe o anexo em
+     Pessoas > Treinamentos/Documentos). Qualquer situação em que a
+     comparação não pôde ser feita (sem ficha anexada, OCR não leu, item não
+     encontrado na ficha) é tratada como "não deu pra verificar" — nunca
+     como "não confere" — pra nunca acusar uma não conformidade que não é
+     real por causa de uma limitação da leitura automática. */
+
+  // Só dígitos, pra comparar CA "14.816-2" com "14816" sem diferença de
+  // formatação (o auditor pode digitar com ou sem pontuação).
+  function soDigitos(s) { return (s || "").toString().replace(/\D/g, ""); }
+
+  function normalizarEspecTexto(s) {
+    return (s || "").toString()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  // Acha o treinamento "FICHA DE EPI" da pessoa pelo NOME (é assim que
+  // `a.colaboradores` guarda quem participou da auditoria — ver
+  // pessoaComboHtml/colabInputsHtml).
+  function buscarFichaEpiPessoa(nomeColaborador) {
+    var nome = (nomeColaborador || "").toString().trim();
+    if (!nome) return null;
+    var pessoa = (STATE.pessoas || []).filter(function (p) { return p.nome === nome; })[0];
+    if (!pessoa) return null;
+    return (STATE.treinamentos || []).filter(function (t) {
+      return t.pessoaId === pessoa.id && t.tipo === "FICHA DE EPI";
+    })[0] || null;
+  }
+
+  // Retorna { status, caFicha?, especFicha?, motivo? }. `status` é um de:
+  //   "vazio"          — auditor ainda não digitou nada
+  //   "sem-colaborador"— essa foto ainda não tem colaborador definido
+  //   "sem-ficha"      — a pessoa não tem Ficha de EPI cadastrada/anexada
+  //   "ocr-falhou"     — tem ficha anexada, mas a leitura automática não
+  //                      conseguiu ler a tabela (ver `motivo`)
+  //   "nao-encontrado" — a ficha foi lida, mas não achamos esse equipamento
+  //                      especificamente listado nela
+  //   "conforme"       — o CA digitado bate com o da ficha
+  //   "nao-conforme"   — o CA digitado é diferente do da ficha
+  function verificarCaItem(caCheck, nomeColaborador, caDigitado) {
+    var digitado = soDigitos(caDigitado);
+    if (!nomeColaborador) return { status: "sem-colaborador" };
+    if (!digitado) return { status: "vazio" };
+    var ficha = buscarFichaEpiPessoa(nomeColaborador);
+    if (!ficha || !ficha.arquivoPath) return { status: "sem-ficha" };
+    if (!ficha.epiItens || !ficha.epiItens.length) {
+      return { status: "ocr-falhou", motivo: ficha.epiOcrErro || "Leitura automática da ficha ainda não disponível." };
+    }
+    var keywords = caCheck.especKeywords || [];
+    var excluir = caCheck.especKeywordsExcluir || [];
+    var achados = ficha.epiItens.filter(function (it) {
+      var esp = normalizarEspecTexto(it.especificacao);
+      var bate = keywords.some(function (k) { return esp.indexOf(k) !== -1; });
+      if (!bate) return false;
+      var excluido = excluir.some(function (k) { return esp.indexOf(k) !== -1; });
+      return !excluido;
+    });
+    if (!achados.length) return { status: "nao-encontrado" };
+    var caFicha = soDigitos(achados[0].ca);
+    var especFicha = achados[0].especificacao;
+    if (digitado === caFicha) return { status: "conforme", caFicha: caFicha, especFicha: especFicha };
+    return { status: "nao-conforme", caFicha: caFicha, especFicha: especFicha };
+  }
+
+  function caCheckStatusHtml(resultado) {
+    var mapa = {
+      "vazio": { cls: "neutral", texto: "Digite o CA pra conferir" },
+      "sem-colaborador": { cls: "neutral", texto: "Selecione o colaborador na aba de dados da auditoria" },
+      "sem-ficha": { cls: "neutral", texto: "Pessoa sem Ficha de EPI anexada no cadastro" },
+      "ocr-falhou": { cls: "neutral", texto: "Não deu pra ler a ficha automaticamente" },
+      "nao-encontrado": { cls: "neutral", texto: "Item não encontrado na ficha da pessoa" },
+      "conforme": { cls: "ok", texto: "Conforme" },
+      "nao-conforme": { cls: "danger", texto: "Não confere (ficha: " + esc(resultado.caFicha) + ")" }
+    };
+    var info = mapa[resultado.status] || mapa["vazio"];
+    return '<span class="ca-check-status ' + info.cls + '" data-ca-status>' + esc(info.texto) + "</span>";
+  }
+
+  function caCheckHtml(a, item, colabIdx) {
+    var caCheck = item.caCheck;
+    if (!caCheck) return "";
+    var key = caCheck.keyBase + "_" + colabIdx;
+    var atual = ((a.respostas || {})[key] || "").toString();
+    var nomeColaborador = (a.colaboradores || [])[colabIdx - 1] || "";
+    var resultado = verificarCaItem(caCheck, nomeColaborador, atual);
+    return '<div class="ca-check" data-ca-check data-ca-key="' + esc(key) + '" data-colab-idx="' + colabIdx + '" data-item-n="' + item.n + '">' +
+      '<input type="text" inputmode="numeric" class="ca-check-input" data-no-uppercase data-ca-input placeholder="Nº do CA" value="' + esc(atual) + '">' +
+      caCheckStatusHtml(resultado) +
+      "</div>";
+  }
+
   function fotoSlotHtml(a, slotKey, colabLabel) {
     var f = fotoPorSlot(a, slotKey);
     var remota = a.modalidade === "REMOTA";
@@ -1681,7 +1785,9 @@
         html += perguntaHtml(a, item);
       } else if (item.porColaborador) {
         html += '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="foto-slot-grid">';
-        for (var i = 1; i <= (a.numColaboradores || 1); i++) html += fotoSlotHtml(a, item.slotBase + "_" + i, colaboradorLabel(i));
+        for (var i = 1; i <= (a.numColaboradores || 1); i++) {
+          html += '<div class="foto-slot-wrap">' + fotoSlotHtml(a, item.slotBase + "_" + i, colaboradorLabel(i)) + caCheckHtml(a, item, i) + "</div>";
+        }
         html += "</div></div>";
       } else {
         html += '<div class="checklist-item"><div class="checklist-item-label">' + item.n + ". " + esc(item.label) + '</div><div class="foto-slot-grid">' + fotoSlotHtml(a, item.slot, null) + "</div></div>";
@@ -1710,6 +1816,37 @@
         apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { respostas: patch } })
           .then(function () { setSaveDot(null); })
           .catch(function (err) { setSaveDot("error"); handleApiError(err); });
+      });
+    });
+    $all("[data-ca-input]", container).forEach(function (input) {
+      // "input" (não "change"/blur) pra atualizar o selo Conforme/Não
+      // conforme já enquanto o auditor digita, sem precisar sair do campo —
+      // é exatamente o "assim que digitar" que o Diego pediu. O salvamento
+      // no servidor sim é adiado (debounce) pra não disparar um PATCH a
+      // cada tecla.
+      var wrap = input.closest("[data-ca-check]");
+      var key = wrap.getAttribute("data-ca-key");
+      var colabIdx = Number(wrap.getAttribute("data-colab-idx"));
+      var itemN = Number(wrap.getAttribute("data-item-n"));
+      var item = AUDITORIA_ITEMS_NOKIA.filter(function (it) { return it.n === itemN; })[0];
+      var salvarDebounced = null;
+      input.addEventListener("input", function () {
+        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
+        var valor = input.value;
+        a.respostas = a.respostas || {};
+        a.respostas[key] = valor;
+        var nomeColaborador = (a.colaboradores || [])[colabIdx - 1] || "";
+        var resultado = verificarCaItem(item.caCheck, nomeColaborador, valor);
+        var statusEl = wrap.querySelector("[data-ca-status]");
+        if (statusEl) statusEl.outerHTML = caCheckStatusHtml(resultado);
+        clearTimeout(salvarDebounced);
+        salvarDebounced = setTimeout(function () {
+          var patch = {}; patch[key] = valor;
+          setSaveDot("saving");
+          apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { respostas: patch } })
+            .then(function () { setSaveDot(null); })
+            .catch(function (err) { setSaveDot("error"); handleApiError(err); });
+        }, 600);
       });
     });
     $all("[data-foto-input]", container).forEach(function (input) {
