@@ -16,13 +16,31 @@
 //      contra menos da metade lendo a página inteira de uma vez);
 //   3) OCR (Tesseract, também sem binário nativo) em cada coluna isolada.
 //
-// As posições das colunas abaixo foram calibradas numa ficha real (Alex
-// Lima, formulário "REV.: 01") e são expressas como FRAÇÃO da página
-// renderizada — não pixels fixos — pra tolerar pequenas variações de
-// tamanho. Se a Eolen um dia mudar o layout desse formulário (nova
-// revisão), essas frações precisam ser recalibradas — por isso toda falha
-// de leitura aqui é tratada como "não deu pra ler automaticamente", nunca
-// como "não confere", pra nunca gerar um falso "não conforme" pro auditor.
+// As posições das colunas abaixo foram calibradas em DUAS fichas reais
+// (Alex Lima e Janderson Gabriel, ambas formulário "REV.: 01") e são
+// expressas como FRAÇÃO da página renderizada — não pixels fixos — pra
+// tolerar pequenas variações de tamanho. Se a Eolen um dia mudar o layout
+// desse formulário (nova revisão), essas frações precisam ser
+// recalibradas — por isso toda falha de leitura aqui é tratada como "não
+// deu pra ler automaticamente", nunca como "não confere", pra nunca gerar
+// um falso "não conforme" pro auditor.
+//
+// IMPORTANTE (bug já visto e corrigido uma vez, não reintroduzir): um
+// recorte de coluna HORIZONTALMENTE largo demais faz o Tesseract parar de
+// reconhecer linha por linha — ele só devolve a primeira linha (ou nada)
+// do recorte inteiro, mesmo com a faixa vertical certinha cobrindo todas
+// as linhas da tabela. A causa exata não foi confirmada (provavelmente a
+// análise de layout do Tesseract interpreta o recorte largo como um bloco
+// só, não como uma coluna de linhas separadas), mas o efeito é
+// reproduzível: com as frações antigas (x0:0.036,x1:0.137, quase o dobro
+// da largura real dos dígitos do CA) a ficha do Janderson não lia
+// NENHUMA linha (OCR vazio) nem na coluna do CA nem na de ESPECIFICAÇÃO,
+// enquanto a mesma ficha lida com um recorte mais estreito (perto da
+// largura real do texto) leu as 9 linhas certas com confiança alta. As
+// frações abaixo já são as calibradas (estreitas) — se precisar ajustar
+// de novo por causa de outra ficha, ajuste a LARGURA (x0/x1) com cautela,
+// mantendo-a próxima da largura real do texto, e não apenas "para
+// garantir" deixando mais larga.
 import { createWorker } from "tesseract.js";
 import sharp from "sharp";
 import path from "path";
@@ -34,11 +52,14 @@ export type ResultadoOcrFichaEpi =
   | { ok: false; motivo: string };
 
 // Frações (x0 a x1) relativas à LARGURA da página renderizada.
-const COL_CA = { x0: 0.036, x1: 0.137 };
-const COL_ESPECIFICACAO = { x0: 0.161, x1: 0.375 };
+const COL_CA = { x0: 0.06, x1: 0.12 };
+const COL_ESPECIFICACAO = { x0: 0.195, x1: 0.34 };
 // Faixa vertical (relativa à ALTURA) que cobre as 20 linhas da tabela, sem
-// o cabeçalho "ITEM | CA | QTD | ..." acima dela.
-const LINHAS_Y = { y0: 0.203, y1: 0.727 };
+// o cabeçalho "ITEM | CA | QTD | ..." acima dela. y0 precisa ficar ANTES do
+// topo da linha 1 (senão a linha 1 fica cortada e nunca é lida) — 0.197 foi
+// o menor valor visto entre as duas fichas de calibração sem "vazar" o
+// cabeçalho pra dentro do recorte.
+const LINHAS_Y = { y0: 0.197, y1: 0.727 };
 
 const DPI_RENDER = 300;
 
