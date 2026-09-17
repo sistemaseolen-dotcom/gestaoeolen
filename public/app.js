@@ -1663,7 +1663,7 @@
     var ficha = buscarFichaEpiPessoa(nomeColaborador);
     if (!ficha || !ficha.arquivoPath) return { status: "sem-ficha" };
     if (!ficha.epiItens || !ficha.epiItens.length) {
-      return { status: "ocr-falhou", motivo: ficha.epiOcrErro || "Leitura automática da ficha ainda não disponível." };
+      return { status: "ocr-falhou", motivo: ficha.epiOcrErro || "Leitura automática da ficha ainda não disponível.", fichaId: ficha.id };
     }
     var keywords = caCheck.especKeywords || [];
     var excluir = caCheck.especKeywordsExcluir || [];
@@ -1692,7 +1692,16 @@
       "nao-conforme": { cls: "danger", texto: "Não confere (ficha: " + esc(resultado.caFicha) + ")" }
     };
     var info = mapa[resultado.status] || mapa["vazio"];
-    return '<span class="ca-check-status ' + info.cls + '" data-ca-status>' + esc(info.texto) + "</span>";
+    // Quando a leitura automática falhou mas já existe uma Ficha de EPI
+    // anexada, oferece reler o PDF que já está lá na hora — sem precisar
+    // navegar até o cadastro da pessoa nem reenviar o arquivo (pedido do
+    // Diego: a leitura tem que valer pro arquivo que está anexado agora,
+    // não só no momento do upload).
+    var botaoReler = (resultado.status === "ocr-falhou" && resultado.fichaId)
+      ? ' <button type="button" class="link-btn" data-ca-reler="' + resultado.fichaId + '" style="font-size:11px;">Reler ficha</button>'
+      : "";
+    return '<span data-ca-status style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+      '<span class="ca-check-status ' + info.cls + '">' + esc(info.texto) + "</span>" + botaoReler + "</span>";
   }
 
   function caCheckHtml(a, item, colabIdx) {
@@ -1847,6 +1856,35 @@
             .then(function () { setSaveDot(null); })
             .catch(function (err) { setSaveDot("error"); handleApiError(err); });
         }, 600);
+      });
+    });
+    $all("[data-ca-reler]", container).forEach(function (btn) {
+      // Lê de novo, agora, o PDF que já está anexado na Ficha de EPI da
+      // pessoa — sem precisar reenviar nada. Depois de atualizar o registro
+      // em STATE.treinamentos, reaproveita onAfterChange (o mesmo usado após
+      // upload de foto) pra re-renderizar o checklist inteiro: assim TODOS
+      // os itens de CA dessa mesma pessoa (Capacete, Trava-quedas, etc. —
+      // todos leem a mesma ficha) atualizam de uma vez, não só este campo.
+      btn.addEventListener("click", function () {
+        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
+        var fichaId = btn.getAttribute("data-ca-reler");
+        btn.disabled = true;
+        var textoOriginal = btn.textContent;
+        btn.textContent = "Lendo…";
+        apiFetch("/api/treinamentos/" + fichaId + "/reprocessar-epi", { method: "POST" })
+          .then(function (data) {
+            var rec = mapTreinamentoFromApi(data);
+            var idx = STATE.treinamentos.findIndex(function (x) { return x.id === rec.id; });
+            if (idx !== -1) STATE.treinamentos[idx] = rec;
+            if (rec.epiOcrErro) toast("Não deu pra ler a ficha: " + rec.epiOcrErro, "error");
+            else toast("Ficha lida com sucesso.", "success");
+            if (onAfterChange) onAfterChange();
+          })
+          .catch(function (err) {
+            handleApiError(err);
+            btn.disabled = false;
+            btn.textContent = textoOriginal;
+          });
       });
     });
     $all("[data-foto-input]", container).forEach(function (input) {
