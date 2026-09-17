@@ -4234,6 +4234,12 @@
       (t.arquivoPath
         ? '<button type="button" class="file-chip" id="btn-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Ver anexo") + "</button>"
         : '<div class="hint">Nenhum arquivo anexado a este registro.</div>') +
+      (t.tipo === "FICHA DE EPI" && t.arquivoPath
+        ? '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+          '<button type="button" class="btn sm" id="btn-reler-epi">' + ICONS.sync + "Reler ficha (CA/equipamento)</button>" +
+          '<span class="hint" id="epi-ocr-status">' + epiOcrStatusHtml(t) + "</span>" +
+          "</div>"
+        : "") +
       "</div></div></div>" +
       historyPanelHtml("treinamento", t.id);
     loadHistoryPanel("treinamento", t.id);
@@ -4241,6 +4247,38 @@
     if ($("#btn-edit-tr")) $("#btn-edit-tr").addEventListener("click", function () { openTreinamentoForm(t, null); });
     if ($("#btn-del-tr")) $("#btn-del-tr").addEventListener("click", function () { confirmDelete("treinamento", t.id, t.tipo + " — " + t.pessoaNome); });
     if ($("#btn-ver-anexo")) $("#btn-ver-anexo").addEventListener("click", function () { openAnexo(t.id); });
+    if ($("#btn-reler-epi")) {
+      $("#btn-reler-epi").addEventListener("click", function () {
+        var btn = $("#btn-reler-epi");
+        btn.disabled = true;
+        var textoOriginal = btn.innerHTML;
+        btn.innerHTML = ICONS.sync + "Lendo…";
+        apiFetch("/api/treinamentos/" + t.id + "/reprocessar-epi", { method: "POST" })
+          .then(function (data) {
+            var rec = mapTreinamentoFromApi(data);
+            var idx = STATE.treinamentos.findIndex(function (x) { return x.id === rec.id; });
+            if (idx !== -1) STATE.treinamentos[idx] = rec;
+            var statusEl = $("#epi-ocr-status");
+            if (statusEl) statusEl.innerHTML = epiOcrStatusHtml(rec);
+            if (rec.epiOcrErro) toast("Não deu pra ler a ficha: " + rec.epiOcrErro, "error");
+            else toast("Ficha lida com sucesso.", "success");
+          })
+          .catch(handleApiError)
+          .finally(function () {
+            btn.disabled = false;
+            btn.innerHTML = textoOriginal;
+          });
+      });
+    }
+  }
+
+  // Resumo em texto da última leitura por OCR da Ficha de EPI — mostrado
+  // direto na tela de detalhe, do lado do botão "Reler ficha", pra não
+  // precisar ir no banco pra saber se a leitura funcionou.
+  function epiOcrStatusHtml(t) {
+    if (t.epiOcrErro) return "Última leitura: " + esc(t.epiOcrErro);
+    if (t.epiItens && t.epiItens.length) return "Última leitura: " + t.epiItens.length + " item(ns) reconhecido(s).";
+    return "Ainda não foi lida.";
   }
 
   // Anexos não ficam mais embutidos como data URI no registro — o Storage é
