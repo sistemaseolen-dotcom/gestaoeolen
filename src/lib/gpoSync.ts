@@ -197,7 +197,7 @@ export type SyncResumo = {
 
 /* ---------------- Empresas ---------------- */
 
-async function syncEmpresas(): Promise<SyncResumo["empresas"]> {
+export async function syncEmpresas(): Promise<SyncResumo["empresas"]> {
   const rows = await gpoFetch(`/empresas?busca=&${GPO_QS}&deletado=0`);
   const admin = supabaseAdmin();
   let erros = 0;
@@ -238,7 +238,7 @@ async function syncEmpresas(): Promise<SyncResumo["empresas"]> {
 
 /* ---------------- Pessoas ---------------- */
 
-async function syncPessoas(): Promise<SyncResumo["pessoas"]> {
+export async function syncPessoas(): Promise<SyncResumo["pessoas"]> {
   const rows = await gpoFetch(`/pessoa?busca=&${GPO_QS}&status1=&tipopessoa1=&deletado=0`);
   const admin = supabaseAdmin();
   let erros = 0;
@@ -315,7 +315,7 @@ async function syncPessoas(): Promise<SyncResumo["pessoas"]> {
 
 /* ---------------- Equipes / equipe_membros ---------------- */
 
-async function syncEquipes(): Promise<SyncResumo["equipes"]> {
+export async function syncEquipes(): Promise<SyncResumo["equipes"]> {
   const rows = await gpoFetch(`/grupos`);
   const admin = supabaseAdmin();
 
@@ -413,7 +413,7 @@ async function syncEquipes(): Promise<SyncResumo["equipes"]> {
 
 /* ---------------- Treinamentos ---------------- */
 
-async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
+export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
   const rows = await gpoFetch(`/pessoa/treinamentogeral?busca=&${GPO_QS}&deletado=0`);
   const admin = supabaseAdmin();
 
@@ -539,7 +539,7 @@ async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
 //  - Itens excluídos no GPO não somem mais automaticamente daqui (o GPO não
 //    avisa exclusão) — se necessário, quem excluir no GPO deve excluir
 //    também aqui pela tela de Patrimônio.
-async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
+export async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
   const rows = await gpoFetch(
     `/patrimonio?busca=&${GPO_QS}&idcontroleacessobusca=${process.env.GPO_IDUSUARIO || "22"}&deletado=0`
   );
@@ -641,40 +641,16 @@ async function syncPatrimoniosHistorico(
   return { total: entradas.length, erros };
 }
 
-/* ---------------- Orquestração ---------------- */
+/* ---------------- Orquestração ----------------
+   A orquestração (ordem das etapas, encadeamento entre elas, log de
+   progresso) mudou de lugar — ver src/lib/gpoSyncSteps.ts.
 
-export async function syncFromGpo(): Promise<SyncResumo> {
-  // Ordem importa só até aqui: empresas antes de pessoas (FK), e pessoas
-  // antes de equipes/treinamentos/patrimônio (todos os três só leem a tabela
-  // `pessoas` já sincronizada, pra validar pessoa_id / casar nome). Entre
-  // si, equipes, treinamentos e patrimônio são independentes — não escrevem
-  // nem leem tabela um do outro — então rodam em paralelo (Promise.all) em
-  // vez de em sequência.
-  //
-  // Isso importa de verdade: com ~900 pessoas e quase 9 mil treinamentos, a
-  // soma sequencial das 5 etapas passou dos 60s (limite da função na
-  // Vercel, plano Hobby) e a sincronização começou a ser interrompida no
-  // meio (função morta pela plataforma, log fica "em_andamento" pra sempre
-  // — nunca chega no catch/finally daqui). Rodando as três últimas etapas
-  // ao mesmo tempo, o tempo total passa a ser dominado pela mais lenta das
-  // três, não pela soma — reduz bastante a chance de estourar o limite.
-  // Cronometragem de cada etapa nos logs da Vercel — se a função for
-  // interrompida por timeout de novo, essas linhas de console.log de quem
-  // já terminou continuam aparecendo no log (o console.log é enviado antes
-  // da etapa seguinte começar), então dá pra saber exatamente qual etapa
-  // ficou presa/lenta na próxima vez, em vez de só "deu timeout".
-  const t0 = Date.now();
-  const marcar = (nome: string) => console.log(`[gpoSync] ${nome} concluído em ${Date.now() - t0}ms`);
-
-  const empresas = await syncEmpresas();
-  marcar("empresas");
-  const pessoas = await syncPessoas();
-  marcar("pessoas");
-  const [equipes, treinamentos, patrimonio] = await Promise.all([
-    syncEquipes().then((r) => { marcar("equipes"); return r; }),
-    syncTreinamentos().then((r) => { marcar("treinamentos"); return r; }),
-    syncPatrimonios().then((r) => { marcar("patrimonio"); return r; }),
-  ]);
-  marcar("tudo");
-  return { empresas, pessoas, equipes, treinamentos, patrimonio };
-}
+   Motivo: mesmo rodando equipes/treinamentos/patrimônio em paralelo (era
+   assim antes), medimos nos logs da Vercel que só empresas+pessoas, uma
+   depois da outra, já consomem uns 50 dos 60s do plano Hobby (o GPO está
+   respondendo mais lento do que antes — o mesmo tipo de lentidão vista na
+   busca de documentos) — não sobra tempo nem pra começar o resto. Dá pra
+   confirmar isso rodando cada função abaixo isoladamente e cronometrando.
+   A solução foi parar de tentar caber as 5 etapas numa função só e passar
+   a rodar cada etapa como sua própria invocação (sua própria janela de
+   60s), encadeadas automaticamente — ver gpoSyncSteps.ts. */

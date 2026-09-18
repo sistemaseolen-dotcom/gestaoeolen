@@ -4763,26 +4763,42 @@
     var statusLabels = { sucesso: "Sucesso", erro: "Erro", em_andamento: "Em andamento" };
     var statusPill = { sucesso: "ok", erro: "danger", em_andamento: "neutral" };
 
+    // A sincronização agora roda em várias etapas encadeadas (empresas,
+    // pessoas, equipes, treinamentos, patrimônio — cada uma sua própria
+    // chamada ao GPO, pra não estourar o limite de tempo de cada uma) em
+    // vez de tudo de uma vez só. Por isso o `resumo` de uma sincronização
+    // "em andamento" pode ter só ALGUMAS dessas chaves preenchidas ainda —
+    // esta função mostra o que já tiver, sem quebrar por faltar o resto.
     function resumoHtml(r) {
       if (!r) return "";
-      return '<ul style="margin:8px 0 0 18px;padding:0;">' +
-        "<li>Empresas: " + r.empresas.total + " sincronizadas" + (r.empresas.erros ? " (" + r.empresas.erros + " com erro)" : "") + "</li>" +
-        "<li>Pessoas: " + r.pessoas.total + " sincronizadas" + (r.pessoas.erros ? " (" + r.pessoas.erros + " com erro)" : "") + "</li>" +
-        "<li>Equipes: " + r.equipes.totalEquipes + " equipes, " + r.equipes.totalMembros + " membros" + (r.equipes.membrosOrfaos ? " (" + r.equipes.membrosOrfaos + " membros ignorados por pessoa inexistente)" : "") + "</li>" +
-        "<li>Treinamentos: " + r.treinamentos.totalFinal + " registros (" + r.treinamentos.duplicadosRemovidos + " duplicados removidos" + (r.treinamentos.orfaos ? ", " + r.treinamentos.orfaos + " ignorados por pessoa inexistente" : "") +
-          (r.treinamentos.tiposDesconhecidos && r.treinamentos.tiposDesconhecidos.length ? ", tipos desconhecidos: " + r.treinamentos.tiposDesconhecidos.map(esc).join(", ") : "") + ")</li>" +
-        (r.patrimonio ? "<li>Patrimônio: " + r.patrimonio.total + " itens, " + r.patrimonio.historico + " movimentações de histórico sincronizadas" + (r.patrimonio.historicoErros ? " (" + r.patrimonio.historicoErros + " itens com erro ao buscar histórico)" : "") + "</li>" : "") +
-        "</ul>";
+      var linhas = [];
+      if (r.empresas) linhas.push("Empresas: " + r.empresas.total + " sincronizadas" + (r.empresas.erros ? " (" + r.empresas.erros + " com erro)" : ""));
+      if (r.pessoas) linhas.push("Pessoas: " + r.pessoas.total + " sincronizadas" + (r.pessoas.erros ? " (" + r.pessoas.erros + " com erro)" : ""));
+      if (r.equipes) linhas.push("Equipes: " + r.equipes.totalEquipes + " equipes, " + r.equipes.totalMembros + " membros" + (r.equipes.membrosOrfaos ? " (" + r.equipes.membrosOrfaos + " membros ignorados por pessoa inexistente)" : ""));
+      if (r.treinamentos) {
+        linhas.push("Treinamentos: " + r.treinamentos.totalFinal + " registros (" + r.treinamentos.duplicadosRemovidos + " duplicados removidos" + (r.treinamentos.orfaos ? ", " + r.treinamentos.orfaos + " ignorados por pessoa inexistente" : "") +
+          (r.treinamentos.tiposDesconhecidos && r.treinamentos.tiposDesconhecidos.length ? ", tipos desconhecidos: " + r.treinamentos.tiposDesconhecidos.map(esc).join(", ") : "") + ")");
+      }
+      if (r.patrimonio) linhas.push("Patrimônio: " + r.patrimonio.total + " itens, " + r.patrimonio.historico + " movimentações de histórico sincronizadas" + (r.patrimonio.historicoErros ? " (" + r.patrimonio.historicoErros + " itens com erro ao buscar histórico)" : ""));
+      if (!linhas.length) return "";
+      return '<ul style="margin:8px 0 0 18px;padding:0;">' + linhas.map(function (l) { return "<li>" + l + "</li>"; }).join("") + "</ul>";
     }
 
+    var pollTimer = null;
+    function pararPoll() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+
+    // Retorna a lista de logs (pra quem chamou poder checar o status do
+    // registro que está acompanhando), sem interromper o `draw()` normal.
     function draw() {
       var body = $("#admin-sync-body");
-      if (!body) return;
+      if (!body) return Promise.resolve([]);
       body.innerHTML = '<div class="hint" style="padding:20px;">Carregando…</div>';
-      apiFetch("/api/sync/gpo").then(function (data) {
+      return apiFetch("/api/sync/gpo").then(function (data) {
         body = $("#admin-sync-body");
-        if (!body) return;
         var logs = data.logs || [];
+        if (!body) return logs;
         var rows = logs.map(function (l) {
           return "<tr>" +
             '<td class="mono">' + fmtDateHoraBR(l.iniciado_em) + "</td>" +
@@ -4793,7 +4809,8 @@
         }).join("");
         body.innerHTML = '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Quando</th><th>Origem</th><th>Status</th><th>Resultado</th></tr></thead><tbody>' +
           (rows || '<tr><td colspan="4" class="hint" style="padding:20px;">Nenhuma sincronização ainda.</td></tr>') + "</tbody></table></div></div>";
-      }).catch(handleApiError);
+        return logs;
+      }).catch(function (err) { handleApiError(err); return []; });
     }
 
     main.innerHTML =
@@ -4811,16 +4828,38 @@
       var btn = $("#btn-sync-now");
       var statusEl = $("#sync-now-status");
       btn.disabled = true;
-      statusEl.textContent = "Sincronizando… isso pode levar alguns segundos.";
-      apiFetch("/api/sync/gpo", { method: "POST" }).then(function () {
-        statusEl.textContent = "";
-        toast("Sincronização concluída.", "success");
+      statusEl.textContent = "Sincronização iniciada… isso agora pode levar alguns minutos (o GPO está mais lento). A lista abaixo atualiza sozinha.";
+      pararPoll();
+
+      apiFetch("/api/sync/gpo", { method: "POST" }).then(function (resp) {
         draw();
+        var logId = resp && resp.logId;
+        var tentativas = 0;
+        var MAX_TENTATIVAS = 90; // ~6 minutos (4s entre tentativas)
+        pollTimer = setInterval(function () {
+          tentativas++;
+          if (!$("#admin-sync-body")) { pararPoll(); return; } // saiu da página
+          draw().then(function (logs) {
+            var linha = logId ? (logs || []).filter(function (l) { return l.id === logId; })[0] : null;
+            var terminou = linha && linha.status !== "em_andamento";
+            if (terminou) {
+              pararPoll();
+              statusEl.textContent = "";
+              btn.disabled = false;
+              if (linha.status === "sucesso") toast("Sincronização concluída.", "success");
+              else toast("A sincronização terminou com erro — veja o detalhe na lista.", "error");
+            } else if (tentativas >= MAX_TENTATIVAS) {
+              pararPoll();
+              statusEl.textContent = "";
+              btn.disabled = false;
+              toast("Ainda sincronizando em segundo plano — pode continuar navegando e voltar aqui depois.", "info");
+            }
+          });
+        }, 4000);
       }).catch(function (err) {
         statusEl.textContent = "";
-        handleApiError(err);
-      }).finally(function () {
         btn.disabled = false;
+        handleApiError(err);
       });
     });
   }

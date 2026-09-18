@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { getCurrentUser, unauthorized } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { syncFromGpo } from "@/lib/gpoSync";
+import { processStep, SYNC_STEPS } from "@/lib/gpoSyncSteps";
 
 export const maxDuration = 60;
 
@@ -23,22 +24,29 @@ async function checkAuth(req: Request): Promise<{ ok: true; origem: string } | {
   return { ok: true, origem: `manual:${user.nome}` };
 }
 
-async function runAndLog(origem: string) {
+// Cria o registro da sincronização e dispara a primeira etapa (ver
+// gpoSyncSteps.ts) — a partir daqui a sincronização inteira roda em segundo
+// plano, em várias invocações encadeadas, não mais dentro desta requisição.
+// Por isso essa função responde quase na hora: quem chamou (botão
+// "Sincronizar agora" ou o cron) só recebe a confirmação de que começou,
+// junto do id do registro pra poder acompanhar o andamento pela lista
+// (GET desta mesma rota).
+async function iniciarSincronizacao(origem: string, origin: string): Promise<NextResponse> {
   const admin = supabaseAdmin();
 
-  // Se a função for interrompida pela plataforma no meio (timeout de 60s —
-  // ver maxDuration acima), o código nunca chega no catch/finally lá embaixo
-  // e a linha fica "em_andamento" pra sempre, mesmo já morta de verdade.
-  // Pedido do Diego: ao iniciar uma nova sincronização, qualquer linha
-  // anterior ainda "em_andamento" é marcada como cancelada antes de começar
-  // — assim a tabela nunca acumula várias linhas "em andamento" que na
-  // prática já pararam de rodar.
+  // Se uma sincronização anterior tiver sido interrompida no meio (por
+  // exemplo, se uma etapa falhar em disparar a próxima), a linha dela fica
+  // "em_andamento" pra sempre, mesmo já morta de verdade. Pedido do Diego:
+  // ao iniciar uma nova sincronização, qualquer linha anterior ainda
+  // "em_andamento" é marcada como cancelada antes de começar — assim a
+  // tabela nunca acumula várias linhas "em andamento" que na prática já
+  // pararam de rodar.
   await admin
     .from("sync_log")
     .update({
       status: "erro",
       concluido_em: new Date().toISOString(),
-      erro: "Cancelado: uma nova sincronização foi iniciada antes desta terminar (provavelmente por timeout).",
+      erro: "Cancelado: uma nova sincronização foi iniciada antes desta terminar.",
     })
     .eq("status", "em_andamento");
 
@@ -48,32 +56,20 @@ async function runAndLog(origem: string) {
     .select()
     .single();
 
-  try {
-    const resumo = await syncFromGpo();
-    if (logRow) {
-      await admin
-        .from("sync_log")
-        .update({ status: "sucesso", concluido_em: new Date().toISOString(), resumo })
-        .eq("id", logRow.id);
-    }
-    return NextResponse.json({ ok: true, resumo });
-  } catch (err: any) {
-    const mensagem = err?.message || "Erro desconhecido na sincronização.";
-    if (logRow) {
-      await admin
-        .from("sync_log")
-        .update({ status: "erro", concluido_em: new Date().toISOString(), erro: mensagem })
-        .eq("id", logRow.id);
-    }
-    return NextResponse.json({ ok: false, error: mensagem }, { status: 500 });
+  if (!logRow) {
+    return NextResponse.json({ ok: false, error: "Falha ao registrar o início da sincronização." }, { status: 500 });
   }
+
+  waitUntil(processStep(logRow.id, SYNC_STEPS[0], origin));
+
+  return NextResponse.json({ ok: true, iniciado: true, logId: logRow.id });
 }
 
 // POST: botão "Sincronizar agora" (qualquer usuário logado).
 export async function POST(req: Request) {
   const auth = await checkAuth(req);
   if (!auth.ok) return auth.response;
-  return runAndLog(auth.origem);
+  return iniciarSincronizacao(auth.origem, new URL(req.url).origin);
 }
 
 // GET: o Vercel Cron só faz requisições GET, então é aqui que a
@@ -84,7 +80,7 @@ export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    return runAndLog("cron");
+    return iniciarSincronizacao("cron", new URL(req.url).origin);
   }
 
   const user = await getCurrentUser();
