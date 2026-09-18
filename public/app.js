@@ -2839,14 +2839,16 @@
         '<div class="kpi-row">' + kpiHtml + "</div>" +
         '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por semana</h3><span class="hint">' + (periodo.tipo === "geral" ? "últimas 8 semanas — clique numa barra" : "clique numa barra pra ver as auditorias") + '</span></div><div class="panel-body pad">' + semanaHtml + "</div></div>" +
+        '<div style="display:flex;flex-direction:column;gap:16px;">' +
         '<div class="panel"><div class="panel-head"><h3>Presencial x remota</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + modalidadeHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Pessoas auditadas por modalidade</h3><span class="hint">clique num segmento pra ver quem</span></div><div class="panel-body pad">' + pessoasModalidadeHtml + "</div></div>" +
+        "</div>" +
+        '<div class="panel"><div class="panel-head"><h3>Desvios de CA divergente por item</h3><span class="hint">CA digitado pelo auditor diferente do CA da Ficha de EPI — clique numa barra pra ver os desvios</span></div><div class="panel-body pad">' + caDivergenteHtml + "</div></div>" +
         "</div>" +
         '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por cliente</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + clienteHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por regional</h3><span class="hint">clique numa barra pra ver as auditorias</span></div><div class="panel-body pad">' + regionalHtml + "</div></div>" +
-        "</div>" +
-        '<div class="panel"><div class="panel-head"><h3>Desvios de CA divergente por item</h3><span class="hint">CA digitado pelo auditor diferente do CA da Ficha de EPI — clique numa barra pra ver os desvios</span></div><div class="panel-body pad">' + caDivergenteHtml + "</div></div>";
+        "</div>";
 
       bindAuditoriasTabs(main);
       bindTooltips(main);
