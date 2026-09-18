@@ -5,6 +5,19 @@ import Script from "next/script";
 // script in /public/app.js. All real rendering happens client-side inside
 // app.js — this file intentionally contains no logic of its own.
 
+// Essa página não busca nada dinâmico (é só o esqueleto fixo), então por
+// padrão o Next.js a trata como estática e a Vercel guarda o HTML pronto no
+// CDN — inclusive o <script src="/app.js?v=...SHA_ANTIGO..."> dentro dele.
+// Um novo deploy troca o SHA embutido no BUILD, mas se o CDN não invalidar
+// esse HTML na hora (visto acontecer: o domínio .vercel.app ficou horas
+// servindo o HTML de um deploy anterior, com `x-vercel-cache: HIT`, mesmo já
+// existindo deploy mais novo), o navegador de quem abre o site continua
+// pedindo o app.js VELHO — a correção parece "não ter chegado" mesmo já
+// publicada. `force-dynamic` faz essa página (baratíssima de renderizar, sem
+// consulta a banco nem nada pesado) rodar de novo em TODA requisição, nunca
+// cacheada — o SHA do <script> vem sempre do deploy atual.
+export const dynamic = "force-dynamic";
+
 // /app.js vive em public/ (sem hash no nome de arquivo, ao contrário do CSS
 // e dos chunks do Next, que já são versionados automaticamente). Sem um jeito
 // de "quebrar o cache", o celular do usuário pode continuar usando uma cópia
