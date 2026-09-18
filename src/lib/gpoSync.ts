@@ -644,13 +644,26 @@ async function syncPatrimoniosHistorico(
 /* ---------------- Orquestração ---------------- */
 
 export async function syncFromGpo(): Promise<SyncResumo> {
-  // Ordem importa: empresas antes de pessoas (FK), pessoas antes de
-  // equipes/treinamentos (validação de pessoa_id existente). Patrimônio é
-  // independente, não precisa vir em nenhuma ordem específica.
+  // Ordem importa só até aqui: empresas antes de pessoas (FK), e pessoas
+  // antes de equipes/treinamentos/patrimônio (todos os três só leem a tabela
+  // `pessoas` já sincronizada, pra validar pessoa_id / casar nome). Entre
+  // si, equipes, treinamentos e patrimônio são independentes — não escrevem
+  // nem leem tabela um do outro — então rodam em paralelo (Promise.all) em
+  // vez de em sequência.
+  //
+  // Isso importa de verdade: com ~900 pessoas e quase 9 mil treinamentos, a
+  // soma sequencial das 5 etapas passou dos 60s (limite da função na
+  // Vercel, plano Hobby) e a sincronização começou a ser interrompida no
+  // meio (função morta pela plataforma, log fica "em_andamento" pra sempre
+  // — nunca chega no catch/finally daqui). Rodando as três últimas etapas
+  // ao mesmo tempo, o tempo total passa a ser dominado pela mais lenta das
+  // três, não pela soma — reduz bastante a chance de estourar o limite.
   const empresas = await syncEmpresas();
   const pessoas = await syncPessoas();
-  const equipes = await syncEquipes();
-  const treinamentos = await syncTreinamentos();
-  const patrimonio = await syncPatrimonios();
+  const [equipes, treinamentos, patrimonio] = await Promise.all([
+    syncEquipes(),
+    syncTreinamentos(),
+    syncPatrimonios(),
+  ]);
   return { empresas, pessoas, equipes, treinamentos, patrimonio };
 }
