@@ -1711,7 +1711,10 @@
     var atual = ((a.respostas || {})[key] || "").toString();
     var nomeColaborador = (a.colaboradores || [])[colabIdx - 1] || "";
     var resultado = verificarCaItem(caCheck, nomeColaborador, atual);
-    return '<div class="ca-check" data-ca-check data-ca-key="' + esc(key) + '" data-colab-idx="' + colabIdx + '" data-item-n="' + item.n + '">' +
+    // no-print: a conferência de CA é uma ferramenta de trabalho do auditor
+    // dentro do sistema (digitar o CA e ver se bate com a ficha) — não faz
+    // sentido nem deve aparecer no PDF exportado, só na tela (pedido do Diego).
+    return '<div class="ca-check no-print" data-ca-check data-ca-key="' + esc(key) + '" data-colab-idx="' + colabIdx + '" data-item-n="' + item.n + '">' +
       '<input type="text" inputmode="numeric" class="ca-check-input" data-no-uppercase data-ca-input placeholder="Nº do CA" value="' + esc(atual) + '">' +
       caCheckStatusHtml(resultado) +
       "</div>";
@@ -3134,7 +3137,23 @@
           drawAuditoriaDetail(main, a);
         }).catch(function (err) { setSaveDot("error"); handleApiError(err); });
     });
-    $("#btn-baixar-auditoria").addEventListener("click", function () { window.print(); });
+    $("#btn-baixar-auditoria").addEventListener("click", function () {
+      // O nome sugerido pro PDF (na janela de impressão do navegador, que é
+      // quem realmente salva o arquivo) vem do <title> da aba no momento do
+      // print — por isso trocamos ele pra "SiteId_Cliente" só durante a
+      // impressão e devolvemos o título original depois (pedido do Diego:
+      // o arquivo baixado tem que vir com a sigla do site + o cliente, não
+      // com o título genérico da página).
+      var tituloOriginal = document.title;
+      var nomeArquivo = slugFilename((a.siteId || "auditoria") + "_" + clienteAuditoria(a));
+      document.title = nomeArquivo;
+      var restaurarTitulo = function () {
+        document.title = tituloOriginal;
+        window.removeEventListener("afterprint", restaurarTitulo);
+      };
+      window.addEventListener("afterprint", restaurarTitulo);
+      window.print();
+    });
     $("#btn-compartilhar-auditoria").addEventListener("click", function () {
       if (navigator.share) {
         navigator.share({ title: "Auditoria " + (a.siteId || ""), text: "Auditoria de segurança do trabalho — " + (a.siteId || ""), url: location.href }).catch(function () {});
