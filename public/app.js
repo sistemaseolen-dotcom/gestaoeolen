@@ -1537,21 +1537,21 @@
     { n: 14, tipo: "foto", label: "Foto da Equipe utilizando o EPI completo", slotBase: "foto_supervisor", porColaborador: true },
 
     { n: 15, secao: "EPI", subsecao: "Capacete", tipo: "pergunta", label: "Capacete em condições de uso e CA dentro da validade?", key: "q7", opcoes: ["Sim", "Não"] },
-    { n: 16, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true, caCheck: { keyBase: "ca_capacete", especKeywords: ["CAPACETE"] } },
+    { n: 16, tipo: "foto", label: "Foto CA Capacete", slotBase: "foto_ca_capacete", porColaborador: true, caCheck: { keyBase: "ca_capacete", especKeywords: ["CAPACETE"], caCheckLabel: "Capacete" } },
     { n: 17, subsecao: "Óculos", tipo: "pergunta", label: "Óculos em condições de uso e CA dentro da validade?", key: "q10", opcoes: ["Sim", "Não"] },
-    { n: 18, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true, caCheck: { keyBase: "ca_oculos", especKeywords: ["OCULOS"] } },
+    { n: 18, tipo: "foto", label: "Foto CA Óculos de proteção", slotBase: "foto_ca_oculos", porColaborador: true, caCheck: { keyBase: "ca_oculos", especKeywords: ["OCULOS"], caCheckLabel: "Óculos" } },
     { n: 19, subsecao: "Luvas", tipo: "pergunta", label: "Luva em condições de uso e CA dentro da validade?", key: "q13", opcoes: ["Sim", "Não"] },
-    { n: 20, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true, caCheck: { keyBase: "ca_luva", especKeywords: ["LUVA"] } },
+    { n: 20, tipo: "foto", label: "Foto CA Luva", slotBase: "foto_ca_luva", porColaborador: true, caCheck: { keyBase: "ca_luva", especKeywords: ["LUVA"], caCheckLabel: "Luva" } },
     { n: 21, subsecao: "Cinto", tipo: "pergunta", label: "Cinto em condições de uso e CA dentro da validade?", key: "q16", opcoes: ["Sim", "Não"] },
-    { n: 22, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true, caCheck: { keyBase: "ca_cinto", especKeywords: ["CINTO"] } },
+    { n: 22, tipo: "foto", label: "Foto CA Cinto", slotBase: "foto_ca_cinto", porColaborador: true, caCheck: { keyBase: "ca_cinto", especKeywords: ["CINTO"], caCheckLabel: "Cinto" } },
     { n: 23, subsecao: "Trava-quedas", tipo: "pergunta", label: "Trava-quedas em condições de uso e CA dentro da validade?", key: "q18", opcoes: ["Sim", "Não"] },
-    { n: 24, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true, caCheck: { keyBase: "ca_travaquedas", especKeywords: ["TRAVA QUEDAS", "TRAVAQUEDAS"] } },
+    { n: 24, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true, caCheck: { keyBase: "ca_travaquedas", especKeywords: ["TRAVA QUEDAS", "TRAVAQUEDAS"], caCheckLabel: "Trava-quedas" } },
     { n: 25, subsecao: "Talabarte Simples", tipo: "pergunta", label: "Talabarte simples em condições de uso e CA dentro da validade?", key: "q21", opcoes: ["Sim", "Não"] },
-    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true, caCheck: { keyBase: "ca_talabarte_simples", especKeywords: ["TALABARTE"], especKeywordsExcluir: ["TALABARTE Y"] } },
+    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true, caCheck: { keyBase: "ca_talabarte_simples", especKeywords: ["TALABARTE"], especKeywordsExcluir: ["TALABARTE Y"], caCheckLabel: "Talabarte simples" } },
     { n: 27, subsecao: "Talabarte Y", tipo: "pergunta", label: "Talabarte Y em condições de uso e CA dentro da validade?", key: "q24", opcoes: ["Sim", "Não"] },
-    { n: 28, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true, caCheck: { keyBase: "ca_talabarte_y", especKeywords: ["TALABARTE Y"] } },
+    { n: 28, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true, caCheck: { keyBase: "ca_talabarte_y", especKeywords: ["TALABARTE Y"], caCheckLabel: "Talabarte Y" } },
     { n: 29, subsecao: "Botas", tipo: "pergunta", label: "Botas em condições de uso e CA dentro da validade?", key: "q27", opcoes: ["Sim", "Não"] },
-    { n: 30, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true, caCheck: { keyBase: "ca_botas", especKeywords: ["BOTA"] } },
+    { n: 30, tipo: "foto", label: "Foto CA Botas", slotBase: "foto_ca_botas", porColaborador: true, caCheck: { keyBase: "ca_botas", especKeywords: ["BOTA"], caCheckLabel: "Botas" } },
 
     { n: 31, secao: "EPC", subsecao: "Içamento", tipo: "pergunta", label: "A quantidade de recursos para execução da tarefa é adequada? (acima de 20kg, mínimo 3 pessoas)", key: "q28", opcoes: ["Sim", "Não", "N/A"] },
     { n: 32, tipo: "pergunta", label: "A corda está em boas condições de uso?", key: "q29", opcoes: ["Sim", "Não", "N/A"] },
@@ -1656,11 +1656,17 @@
   //                      especificamente listado nela
   //   "conforme"       — o CA digitado bate com o da ficha
   //   "nao-conforme"   — o CA digitado é diferente do da ficha
-  function verificarCaItem(caCheck, nomeColaborador, caDigitado) {
+  function verificarCaItem(caCheck, nomeColaborador, caDigitado, fichaPreCarregada) {
     var digitado = soDigitos(caDigitado);
     if (!nomeColaborador) return { status: "sem-colaborador" };
     if (!digitado) return { status: "vazio" };
-    var ficha = buscarFichaEpiPessoa(nomeColaborador);
+    // `fichaPreCarregada` é opcional — só usado pelo Painel (ver
+    // caDivergenteInfo), que chama isto centenas/milhares de vezes (todo
+    // item de CA de toda auditoria do período) e não pode buscar a ficha
+    // do zero em `STATE.pessoas`/`STATE.treinamentos` a cada chamada; quem
+    // digita o CA na tela de uma auditoria continua chamando sem esse 4º
+    // argumento, igual antes.
+    var ficha = fichaPreCarregada !== undefined ? fichaPreCarregada : buscarFichaEpiPessoa(nomeColaborador);
     if (!ficha || !ficha.arquivoPath) return { status: "sem-ficha" };
     if (!ficha.epiItens || !ficha.epiItens.length) {
       return { status: "ocr-falhou", motivo: ficha.epiOcrErro || "Leitura automática da ficha ainda não disponível.", fichaId: ficha.id };
@@ -2467,6 +2473,80 @@
     var total = conforme + risco;
     return { pct: total ? Math.round((risco / total) * 100) : 0, nao: risco, total: total };
   }
+  // Desvios de CA divergente: pra cada item com conferência automática de
+  // CA (Capacete, Óculos, Luva, Cinto, Trava-quedas, Talabarte simples,
+  // Talabarte Y, Botas — ver caCheck em AUDITORIA_ITEMS_NOKIA), roda a
+  // mesma verificação que já aparece na tela da auditoria (verificarCaItem)
+  // pra cada colaborador de cada auditoria do período, e conta quantas
+  // vezes o resultado foi "nao-conforme" (CA digitado pelo auditor diferente
+  // do CA da Ficha de EPI da pessoa). Pedido do Diego: mostrar isso no
+  // Painel, no total e por item.
+  //
+  // A ficha de cada colaborador é buscada uma única vez por nome (memoizada
+  // aqui) em vez de a cada chamada de verificarCaItem — sem isso, com muitas
+  // auditorias no período, seria uma busca em `pessoas`/`treinamentos` (que
+  // já passam de 800/8000 linhas) repetida centenas de vezes.
+  var CA_CHECK_ITEMS = AUDITORIA_ITEMS_NOKIA.filter(function (it) { return !!it.caCheck; });
+  function caDivergenteInfo(lista) {
+    var fichaPorNome = {};
+    function fichaCached(nome) {
+      if (!(nome in fichaPorNome)) fichaPorNome[nome] = buscarFichaEpiPessoa(nome);
+      return fichaPorNome[nome];
+    }
+    var porItem = {};
+    var ocorrencias = [];
+    CA_CHECK_ITEMS.forEach(function (item) { porItem[item.caCheck.caCheckLabel] = 0; });
+    lista.forEach(function (a) {
+      var respostas = a.respostas || {};
+      var qtd = a.numColaboradores || 1;
+      CA_CHECK_ITEMS.forEach(function (item) {
+        for (var i = 1; i <= qtd; i++) {
+          var nomeColaborador = (a.colaboradores || [])[i - 1] || "";
+          if (!nomeColaborador) continue;
+          var caDigitado = (respostas[item.caCheck.keyBase + "_" + i] || "").toString();
+          var resultado = verificarCaItem(item.caCheck, nomeColaborador, caDigitado, fichaCached(nomeColaborador));
+          if (resultado.status === "nao-conforme") {
+            porItem[item.caCheck.caCheckLabel]++;
+            ocorrencias.push({
+              auditoriaId: a.id, siteId: a.siteId, empresa: a.empresa, data: a.data,
+              colaborador: nomeColaborador, item: item.caCheck.caCheckLabel,
+              caDigitado: soDigitos(caDigitado), caFicha: resultado.caFicha
+            });
+          }
+        }
+      });
+    });
+    var total = ocorrencias.length;
+    return { total: total, porItem: porItem, ocorrencias: ocorrencias };
+  }
+  function openCaDivergenteDrawer(ocorrencias, periodoTxt, itemFiltro) {
+    var list = (itemFiltro ? ocorrencias.filter(function (o) { return o.item === itemFiltro; }) : ocorrencias)
+      .slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.auditoriaId - a.auditoriaId; });
+    var rowsHtml = list.map(function (o) {
+      return '<tr data-id="' + o.auditoriaId + '">' +
+        "<td>" + fmtDateBR(o.data) + "</td>" +
+        '<td class="mono">' + esc(o.siteId || "—") + "</td>" +
+        "<td>" + esc(o.empresa || "—") + "</td>" +
+        "<td>" + esc(o.colaborador || "—") + "</td>" +
+        "<td>" + esc(o.item) + "</td>" +
+        "<td>" + esc(o.caDigitado || "—") + "</td>" +
+        "<td>" + esc(o.caFicha || "—") + "</td>" +
+        "</tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: "Desvios de CA divergente" + (itemFiltro ? " — " + itemFiltro : ""),
+      subtitle: list.length + " desvio" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt + " — clique numa linha pra abrir a auditoria",
+      theadHtml: "<th>Data</th><th>Site ID</th><th>Empresa</th><th>Colaborador</th><th>Item</th><th>CA digitado</th><th>CA da ficha</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Data", "Site ID", "Empresa", "Colaborador", "Item", "CA digitado", "CA da ficha"],
+      exportRows: list.map(function (o) { return [fmtDateBR(o.data), o.siteId || "", o.empresa || "", o.colaborador || "", o.item, o.caDigitado || "", o.caFicha || ""]; }),
+      onRowBind: function (root) {
+        $all("[data-id]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
+        });
+      }
+    });
+  }
   // Quantas auditorias por cliente (NOKIA/ERICSSON/HUAWEI/TELEFONICA) —
   // todas usam o mesmo checklist, isso é só categorização pra relatório.
   function auditoriasPorCliente(lista) {
@@ -2638,6 +2718,7 @@
       var naoConf = taxaNaoConformidade(lista);
       var clienteCounts = auditoriasPorCliente(lista);
       var regionalCounts = auditoriasPorRegional(lista);
+      var caDivergente = caDivergenteInfo(lista);
       var meses = auditoriasMesesDisponiveis();
 
       // Filtro do Painel: Geral, Mês, Dia exato ou Período (intervalo) —
@@ -2672,7 +2753,8 @@
         ["Em rascunho", rascunhos, rascunhos > 0 ? "warn" : "", null],
         ["Pessoas auditadas", pessoasInfo.auditadas.length + " de " + pessoasInfo.totalElegiveis, "ok", "auditadas"],
         ["Pessoas não auditadas", pessoasInfo.naoAuditadas.length, pessoasInfo.naoAuditadas.length > 0 ? "danger" : "ok", "naoAuditadas"],
-        ["Não conformidade", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null]
+        ["Não conformidade", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null],
+        ["Desvios de CA divergente", caDivergente.total, caDivergente.total > 0 ? "danger" : "ok", "caDivergente"]
       ];
       var kpiHtml = kpis.map(function (k) {
         var clickAttrs = k[3] ? ' tabindex="0" data-painel-kpi="' + k[3] + '" style="cursor:pointer;"' : "";
@@ -2747,6 +2829,7 @@
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
 
       var regionalHtml = simpleBarsHtml(regionalCounts, "auditoria-regional", { showZero: true });
+      var caDivergenteHtml = simpleBarsHtml(caDivergente.porItem, "ca-divergente-item", { showZero: false });
 
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + esc(periodoLabelLongo(periodo)) + '</div></div>' +
@@ -2762,7 +2845,8 @@
         '<div class="viz-grid-3">' +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por cliente</h3><span class="hint">clique num segmento pra ver as auditorias</span></div><div class="panel-body pad">' + clienteHtml + "</div></div>" +
         '<div class="panel"><div class="panel-head"><h3>Auditorias por regional</h3><span class="hint">clique numa barra pra ver as auditorias</span></div><div class="panel-body pad">' + regionalHtml + "</div></div>" +
-        "</div>";
+        "</div>" +
+        '<div class="panel"><div class="panel-head"><h3>Desvios de CA divergente por item</h3><span class="hint">CA digitado pelo auditor diferente do CA da Ficha de EPI — clique numa barra pra ver os desvios</span></div><div class="panel-body pad">' + caDivergenteHtml + "</div></div>";
 
       bindAuditoriasTabs(main);
       bindTooltips(main);
@@ -2787,7 +2871,8 @@
         el.addEventListener("click", function () {
           var kind = el.getAttribute("data-painel-kpi");
           if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, periodoTxt, true, null, null, lista);
-          else openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, periodoTxt, false);
+          else if (kind === "naoAuditadas") openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, periodoTxt, false);
+          else if (kind === "caDivergente") openCaDivergenteDrawer(caDivergente.ocorrencias, periodoTxt);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -2817,11 +2902,18 @@
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
       $all("[data-simple-bar]", main).forEach(function (el) {
-        if (el.getAttribute("data-simple-bar") !== "auditoria-regional") return;
-        el.addEventListener("click", function () {
-          openAuditoriasRegionalDrawer(el.getAttribute("data-simple-bar-value"), lista, periodoTxt);
-        });
-        el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+        var kind = el.getAttribute("data-simple-bar");
+        if (kind === "auditoria-regional") {
+          el.addEventListener("click", function () {
+            openAuditoriasRegionalDrawer(el.getAttribute("data-simple-bar-value"), lista, periodoTxt);
+          });
+          el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+        } else if (kind === "ca-divergente-item") {
+          el.addEventListener("click", function () {
+            openCaDivergenteDrawer(caDivergente.ocorrencias, periodoTxt, el.getAttribute("data-simple-bar-value"));
+          });
+          el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
+        }
       });
     }
     draw();
