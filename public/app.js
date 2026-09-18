@@ -1481,6 +1481,26 @@
   function statusPillAuditoria(status) {
     return status === "CONCLUIDO" ? '<span class="pill ok">Concluído</span>' : '<span class="pill warn">Rascunho</span>';
   }
+  // "Criado em" (a.criadoEm) é a data/hora em que o REGISTRO entrou no
+  // sistema — preenchida pelo próprio banco (default do banco, nunca vem
+  // de formulário nem é editável), diferente de "Data" (a.data), que é a
+  // data da REALIZAÇÃO em campo, digitada pelo técnico. Pedido do Diego:
+  // dá pra alguém fazer o relatório hoje sobre uma auditoria de ontem (ou
+  // de outro dia qualquer) — precisa ficar visível quando isso acontece,
+  // não só a data que a pessoa digitou. Aqui mostra o timestamp e, quando
+  // o dia (em UTC, mesma convenção usada no resto do app — ver todaySP())
+  // não bate com `a.data`, acrescenta um aviso com a diferença em dias.
+  function criadoEmComDivergenciaHtml(a) {
+    if (!a.criadoEm) return "—";
+    var texto = fmtDateHoraBR(a.criadoEm);
+    var diaCriado = a.criadoEm.slice(0, 10);
+    if (!a.data || diaCriado === a.data) return esc(texto);
+    var diffDias = Math.round((new Date(diaCriado + "T00:00:00Z") - new Date(a.data + "T00:00:00Z")) / 86400000);
+    var aviso = diffDias > 0
+      ? diffDias + " dia" + (diffDias !== 1 ? "s" : "") + " depois da realização"
+      : Math.abs(diffDias) + " dia" + (Math.abs(diffDias) !== 1 ? "s" : "") + " antes da realização";
+    return esc(texto) + ' <span class="pill warn" style="margin-left:4px;white-space:nowrap;">' + esc(aviso) + "</span>";
+  }
   function colaboradorLabel(i) { return i === 1 ? "Líder" : "Colaborador " + i; }
 
   // Cliente da auditoria — não muda mais o formulário/checklist (o mesmo
@@ -2251,6 +2271,7 @@
           "<td>" + esc(a.empresa || "—") + "</td>" +
           '<td><span class="tag">' + clienteAuditoria(a) + "</span></td>" +
           "<td>" + fmtDateBR(a.data) + "</td>" +
+          "<td>" + criadoEmComDivergenciaHtml(a) + "</td>" +
           "<td>" + esc(a.inspetorNome || "—") + "</td>" +
           "<td>" + esc(modalidadeLabel) + "</td>" +
           "<td>" + esc(a.criadoPorNome || "—") + "</td>" +
@@ -2271,7 +2292,7 @@
         auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th>",
+          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada."
         });
@@ -3184,7 +3205,16 @@
       detailItem("Data", fmtDateBR(a.data), "data") +
       detailItem("Inspetor", a.inspetorNome, "inspetor_nome") + detailItem("Colaboradores", (a.colaboradores || []).join(", ") || "—") +
       detailItem("Modalidade", a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "Não informado", "modalidade") +
-      detailItem("Criado por", a.criadoPorNome, null, { noPrint: true }) + detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
+      detailItem("Criado por", a.criadoPorNome, null, { noPrint: true }) +
+      // "Criado em" é preenchido pelo próprio sistema no instante em que a
+      // auditoria é criada (nunca editável — não existe rota que altere
+      // isso) — diferente de "Data", que é a data da REALIZAÇÃO em campo,
+      // digitada pelo técnico. Pedido do Diego: precisa dar pra distinguir
+      // uma auditoria feita hoje sobre um serviço de ontem (ou outro dia
+      // qualquer) — hoje só "Data" aparecia, sem rastro de quando o
+      // relatório de fato entrou no sistema.
+      detailItem("Criado em (sistema)", fmtDateHoraBR(a.criadoEm), null, { noPrint: true }) +
+      detailItem("Status", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", "status") +
       "</div></div></div>" +
       corpoHtml +
       '<div class="panel"><div class="panel-head"><h3>Observações finais</h3></div><div class="panel-body pad">' +
