@@ -658,12 +658,23 @@ export async function syncFromGpo(): Promise<SyncResumo> {
   // — nunca chega no catch/finally daqui). Rodando as três últimas etapas
   // ao mesmo tempo, o tempo total passa a ser dominado pela mais lenta das
   // três, não pela soma — reduz bastante a chance de estourar o limite.
+  // Cronometragem de cada etapa nos logs da Vercel — se a função for
+  // interrompida por timeout de novo, essas linhas de console.log de quem
+  // já terminou continuam aparecendo no log (o console.log é enviado antes
+  // da etapa seguinte começar), então dá pra saber exatamente qual etapa
+  // ficou presa/lenta na próxima vez, em vez de só "deu timeout".
+  const t0 = Date.now();
+  const marcar = (nome: string) => console.log(`[gpoSync] ${nome} concluído em ${Date.now() - t0}ms`);
+
   const empresas = await syncEmpresas();
+  marcar("empresas");
   const pessoas = await syncPessoas();
+  marcar("pessoas");
   const [equipes, treinamentos, patrimonio] = await Promise.all([
-    syncEquipes(),
-    syncTreinamentos(),
-    syncPatrimonios(),
+    syncEquipes().then((r) => { marcar("equipes"); return r; }),
+    syncTreinamentos().then((r) => { marcar("treinamentos"); return r; }),
+    syncPatrimonios().then((r) => { marcar("patrimonio"); return r; }),
   ]);
+  marcar("tudo");
   return { empresas, pessoas, equipes, treinamentos, patrimonio };
 }

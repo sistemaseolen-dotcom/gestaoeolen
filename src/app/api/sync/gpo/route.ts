@@ -25,6 +25,23 @@ async function checkAuth(req: Request): Promise<{ ok: true; origem: string } | {
 
 async function runAndLog(origem: string) {
   const admin = supabaseAdmin();
+
+  // Se a função for interrompida pela plataforma no meio (timeout de 60s —
+  // ver maxDuration acima), o código nunca chega no catch/finally lá embaixo
+  // e a linha fica "em_andamento" pra sempre, mesmo já morta de verdade.
+  // Pedido do Diego: ao iniciar uma nova sincronização, qualquer linha
+  // anterior ainda "em_andamento" é marcada como cancelada antes de começar
+  // — assim a tabela nunca acumula várias linhas "em andamento" que na
+  // prática já pararam de rodar.
+  await admin
+    .from("sync_log")
+    .update({
+      status: "erro",
+      concluido_em: new Date().toISOString(),
+      erro: "Cancelado: uma nova sincronização foi iniciada antes desta terminar (provavelmente por timeout).",
+    })
+    .eq("status", "em_andamento");
+
   const { data: logRow } = await admin
     .from("sync_log")
     .insert({ status: "em_andamento", origem })
