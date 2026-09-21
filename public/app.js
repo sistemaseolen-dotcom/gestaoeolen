@@ -4305,11 +4305,15 @@
       ["A vencer (60 dias)", data.byStatus.A_VENCER_60, "info", "A_VENCER_60"],
       ["A vencer (30 dias)", data.byStatus.A_VENCER, "warn", "A_VENCER"],
       ["A vencer (7 dias)", data.urgenteCount, "danger" + (data.urgenteCount > 0 ? " alert-blink" : ""), "URGENTE_7"],
-      ["Vencidos", data.byStatus.VENCIDO, "danger", "VENCIDO"]
+      // Pedido do Diego: "vencidos" deve piscar igual ao card de 7 dias, e
+      // ainda ganha o ícone de alerta (sirene) no canto quando tiver pelo
+      // menos 1 documento vencido — só esse card mostra o ícone.
+      ["Vencidos", data.byStatus.VENCIDO, "danger" + (data.byStatus.VENCIDO > 0 ? " alert-blink has-alert-badge" : ""), "VENCIDO", data.byStatus.VENCIDO > 0]
     ];
     var kpiHtml = kpis.map(function (k) {
       var clickAttrs = k[3] ? ' tabindex="0" data-status-code="' + k[3] + '" style="cursor:pointer;"' : "";
-      return '<div class="kpi ' + k[2] + '"' + clickAttrs + '><span class="label">' + k[0] + '</span><span class="value tabular">' + k[1] + "</span></div>";
+      var alertBadge = k[4] ? '<img src="/alerta-vencido.gif" alt="Alerta: existe documento vencido" class="kpi-alert-badge" aria-hidden="true">' : "";
+      return '<div class="kpi ' + k[2] + '"' + clickAttrs + '>' + alertBadge + '<span class="label">' + k[0] + '</span><span class="value tabular">' + k[1] + "</span></div>";
     }).join("");
 
     container.innerHTML =

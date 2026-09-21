@@ -230,6 +230,15 @@ main { grid-column: 2; grid-row: 2; min-width: 0; padding: 26px 32px 60px; }
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
   padding: 14px 16px; box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column; gap: 6px;
+  position: relative;
+}
+/* Ícone de sirene no canto do card, só quando o card tem algo vencido (Diego
+   pediu especificamente pro card "Vencidos" - ver has-alert-badge no app.js).
+   Abre espaço à direita pro texto não ficar embaixo do ícone. */
+.kpi.has-alert-badge { padding-right: 52px; }
+.kpi-alert-badge {
+  position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
+  width: 32px; height: 32px; pointer-events: none;
 }
 .kpi[data-status-code], .kpi[data-headcount-nav], .kpi[data-headcount-cargo] { transition: box-shadow .1s ease, transform .1s ease; }
 .kpi[data-status-code]:hover, .kpi[data-headcount-nav]:hover, .kpi[data-headcount-cargo]:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
