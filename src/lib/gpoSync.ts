@@ -192,7 +192,11 @@ export type SyncResumo = {
   pessoas: { total: number; erros: number };
   equipes: { totalEquipes: number; totalMembros: number; membrosOrfaos: number };
   treinamentos: { totalOriginal: number; totalFinal: number; duplicadosRemovidos: number; tiposDesconhecidos: string[]; orfaos: number };
-  patrimonio: { total: number; historico: number; historicoErros: number };
+  // Separado em duas etapas porque, com o GPO cada vez mais lento, o
+  // histórico (uma requisição POR item de patrimônio) sozinho já passou dos
+  // 60s do plano Hobby da Vercel — ver syncPatrimoniosHistoricoPagina.
+  patrimonio: { total: number };
+  patrimonio_historico: { total: number; erros: number };
 };
 
 /* ---------------- Empresas ---------------- */
@@ -574,35 +578,56 @@ export async function syncPatrimonios(): Promise<SyncResumo["patrimonio"]> {
     })
     .filter((p) => p.legacy_id !== null);
 
-  const patrimonioIdPorLegacyId = new Map<number, number>();
   for (const batch of chunk(payload, 500)) {
-    const { data, error } = await admin.from("patrimonios").upsert(batch, { onConflict: "legacy_id" }).select("id, legacy_id");
+    const { error } = await admin.from("patrimonios").upsert(batch, { onConflict: "legacy_id" });
     if (error) throw new Error(`Falha ao sincronizar patrimônio: ${error.message}`);
-    (data || []).forEach((row: any) => patrimonioIdPorLegacyId.set(row.legacy_id, row.id));
   }
 
-  const historico = await syncPatrimoniosHistorico(admin, payload, patrimonioIdPorLegacyId, pessoaPorNome);
-
-  return { total: payload.length, historico: historico.total, historicoErros: historico.erros };
+  // O histórico (uma requisição ao GPO POR ITEM) virou uma etapa própria,
+  // paginada em várias invocações — ver syncPatrimoniosHistoricoPagina, logo
+  // abaixo, e a orquestração em gpoSyncSteps.ts.
+  return { total: payload.length };
 }
 
 // Histórico de movimentação de cada item — a API do GPO só devolve isso um
-// item por vez (GET /patrimonio/historico?...&idpatrimonio=X), então busca
-// com um pool de requisições em paralelo (ver mapWithConcurrency) em vez de
-// sequencial (estouraria os 60s da função) ou tudo de uma vez (sobrecarrega
-// o servidor do GPO, que já é frágil).
-async function syncPatrimoniosHistorico(
-  admin: ReturnType<typeof supabaseAdmin>,
-  payload: Array<{ legacy_id: number | null; responsavel_nome: string | null }>,
-  patrimonioIdPorLegacyId: Map<number, number>,
-  pessoaPorNome: Map<string, number>
-): Promise<{ total: number; erros: number }> {
-  const legacyIds = payload.map((p) => p.legacy_id).filter((id): id is number => id !== null);
-  let erros = 0;
+// item por vez (GET /patrimonio/historico?...&idpatrimonio=X). Com o GPO
+// respondendo cada vez mais devagar, buscar o histórico de TODOS os itens
+// numa chamada só (mesmo com um pool de requisições em paralelo, ver
+// mapWithConcurrency) passou a estourar os 60s do plano Hobby da Vercel —
+// por isso processa só uma PÁGINA de itens por vez (`limit` itens a partir
+// de `offset`, na ordem do id em `patrimonios`) e devolve se ainda falta
+// página (`done: false`) pra quem chama (processStep, em gpoSyncSteps.ts)
+// encadear a próxima automaticamente, cada uma com seu próprio orçamento de
+// tempo.
+export async function syncPatrimoniosHistoricoPagina(
+  offset: number,
+  limit: number
+): Promise<{ total: number; erros: number; done: boolean; nextOffset: number }> {
+  const admin = supabaseAdmin();
 
-  const historicoPorItem = await mapWithConcurrency(legacyIds, 12, async (idpatrimonio) => {
+  const { data: pagina, error: paginaErro } = await admin
+    .from("patrimonios")
+    .select("id, legacy_id, responsavel_nome")
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (paginaErro) throw new Error(`Falha ao ler página de patrimônios: ${paginaErro.message}`);
+
+  const itens = (pagina || []).filter((p: any) => p.legacy_id !== null);
+  if (itens.length === 0) {
+    return { total: 0, erros: 0, done: true, nextOffset: offset };
+  }
+
+  const { data: pessoasRows } = await admin.from("pessoas").select("id, nome");
+  const pessoaPorNome = new Map<string, number>();
+  (pessoasRows || []).forEach((p: any) => {
+    const key = normUpper(p.nome);
+    if (key && !pessoaPorNome.has(key)) pessoaPorNome.set(key, p.id);
+  });
+
+  let erros = 0;
+  const historicoPorItem = await mapWithConcurrency(itens, 12, async (item: any) => {
     try {
-      return await gpoFetch(`/patrimonio/historico?${GPO_QS}&idpatrimonio=${idpatrimonio}`);
+      return await gpoFetch(`/patrimonio/historico?${GPO_QS}&idpatrimonio=${item.legacy_id}`);
     } catch {
       erros++;
       return [] as any[];
@@ -610,13 +635,11 @@ async function syncPatrimoniosHistorico(
   });
 
   const entradas: any[] = [];
-  legacyIds.forEach((idpatrimonio, idx) => {
-    const patrimonioId = patrimonioIdPorLegacyId.get(idpatrimonio);
-    if (!patrimonioId) return;
+  itens.forEach((item: any, idx: number) => {
     for (const h of historicoPorItem[idx] || []) {
       const responsavelNome = normUpper(h.nome);
       entradas.push({
-        patrimonio_id: patrimonioId,
+        patrimonio_id: item.id,
         legacy_id: normNum(h.id),
         status: normUpper(h.tipohistorico),
         responsavel_nome: responsavelNome,
@@ -638,7 +661,12 @@ async function syncPatrimoniosHistorico(
     if (error) throw new Error(`Falha ao sincronizar histórico de patrimônio: ${error.message}`);
   }
 
-  return { total: entradas.length, erros };
+  return {
+    total: entradas.length,
+    erros,
+    done: itens.length < limit,
+    nextOffset: offset + itens.length,
+  };
 }
 
 /* ---------------- Orquestração ----------------

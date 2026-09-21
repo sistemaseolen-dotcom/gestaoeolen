@@ -18,6 +18,9 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   const step = body?.step;
   const logId = Number(body?.logId);
+  // `offset` só é usado pela etapa paginada "patrimonio_historico" (ver
+  // gpoSyncSteps.ts) — nas demais etapas vem 0 e é ignorado.
+  const offset = Number.isFinite(Number(body?.offset)) ? Number(body?.offset) : 0;
   if (!isSyncStep(step) || !Number.isFinite(logId)) {
     return NextResponse.json({ ok: false, error: "Parâmetros inválidos." }, { status: 400 });
   }
@@ -26,7 +29,7 @@ export async function POST(req: Request) {
 
   // Responde na hora; o trabalho de verdade dessa etapa (e o disparo da
   // etapa seguinte) roda em segundo plano.
-  waitUntil(processStep(logId, step, origin));
+  waitUntil(processStep(logId, step, origin, offset));
 
   return NextResponse.json({ ok: true, started: step });
 }

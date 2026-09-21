@@ -4907,7 +4907,13 @@
         linhas.push("Treinamentos: " + r.treinamentos.totalFinal + " registros (" + r.treinamentos.duplicadosRemovidos + " duplicados removidos" + (r.treinamentos.orfaos ? ", " + r.treinamentos.orfaos + " ignorados por pessoa inexistente" : "") +
           (r.treinamentos.tiposDesconhecidos && r.treinamentos.tiposDesconhecidos.length ? ", tipos desconhecidos: " + r.treinamentos.tiposDesconhecidos.map(esc).join(", ") : "") + ")");
       }
-      if (r.patrimonio) linhas.push("Patrimônio: " + r.patrimonio.total + " itens, " + r.patrimonio.historico + " movimentações de histórico sincronizadas" + (r.patrimonio.historicoErros ? " (" + r.patrimonio.historicoErros + " itens com erro ao buscar histórico)" : ""));
+      if (r.patrimonio) {
+        // O histórico agora é paginado (várias etapas, ver gpoSyncSteps.ts) —
+        // enquanto ainda não chegou nenhuma página, mostra só a contagem de
+        // itens; a linha se completa sozinha no próximo carregamento.
+        var hist = r.patrimonio_historico;
+        linhas.push("Patrimônio: " + r.patrimonio.total + " itens" + (hist ? ", " + hist.total + " movimentações de histórico sincronizadas" + (hist.erros ? " (" + hist.erros + " itens com erro ao buscar histórico)" : "") : " (buscando histórico...)"));
+      }
       if (!linhas.length) return "";
       return '<ul style="margin:8px 0 0 18px;padding:0;">' + linhas.map(function (l) { return "<li>" + l + "</li>"; }).join("") + "</ul>";
     }
