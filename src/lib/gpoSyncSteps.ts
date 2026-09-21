@@ -119,14 +119,30 @@ export async function processStep(logId: number, step: SyncStep, origin: string,
 // trabalho pesado dela em segundo plano), então esse await não fica
 // esperando a etapa seguinte terminar — só confirma que o pedido de fato
 // saiu.
+//
+// Tentado até 3 vezes: já apareceu um "508 Loop Detected" vindo da própria
+// infraestrutura da Vercel (não do nosso código — não há log nenhum da
+// função pra essa chamada, ela nunca chegou a ser invocada) numa dessas
+// chamadas internas repetidas em sequência rápida. Sem confirmação exata da
+// causa, o jeito mais simples e seguro de não deixar isso derrubar a
+// sincronização inteira é tentar de novo antes de desistir.
 async function dispararEtapa(logId: number, step: SyncStep, origin: string, offset = 0): Promise<void> {
   const secret = process.env.CRON_SECRET || "";
-  const res = await fetch(`${origin}/api/sync/gpo/step`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-sync-secret": secret },
-    body: JSON.stringify({ logId, step, offset }),
-  });
-  if (!res.ok) {
-    throw new Error(`Falha ao disparar a etapa "${step}" (HTTP ${res.status})`);
+  const tentativas = 3;
+  let ultimoErro: unknown = null;
+  for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
+    try {
+      const res = await fetch(`${origin}/api/sync/gpo/step`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-sync-secret": secret },
+        body: JSON.stringify({ logId, step, offset }),
+      });
+      if (res.ok) return;
+      ultimoErro = new Error(`Falha ao disparar a etapa "${step}" (HTTP ${res.status})`);
+    } catch (err) {
+      ultimoErro = err;
+    }
+    if (tentativa < tentativas) await new Promise((r) => setTimeout(r, 1500));
   }
+  throw ultimoErro instanceof Error ? ultimoErro : new Error(`Falha ao disparar a etapa "${step}"`);
 }
