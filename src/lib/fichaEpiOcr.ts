@@ -56,10 +56,40 @@ const COL_CA = { x0: 0.06, x1: 0.12 };
 const COL_ESPECIFICACAO = { x0: 0.195, x1: 0.34 };
 // Faixa vertical (relativa à ALTURA) que cobre as 20 linhas da tabela, sem
 // o cabeçalho "ITEM | CA | QTD | ..." acima dela. y0 precisa ficar ANTES do
-// topo da linha 1 (senão a linha 1 fica cortada e nunca é lida) — 0.197 foi
-// o menor valor visto entre as duas fichas de calibração sem "vazar" o
-// cabeçalho pra dentro do recorte.
-const LINHAS_Y = { y0: 0.197, y1: 0.727 };
+// topo da linha 1 (senão a linha 1 fica cortada e nunca é lida).
+//
+// Bug real visto em produção (reportado pelo Diego): nas fichas do José
+// Gregório Guzman Roche e do Cesar Oswaldo Ávila, o item 1 (CAPACETE) nunca
+// era encontrado ("Item não encontrado na ficha da pessoa"), mesmo a ficha
+// estando correta. Comparando as posições reais da linha 1 nessas duas
+// fichas com as duas fichas usadas antes pra calibrar (Alex Lima e
+// Janderson Gabriel), a tabela some pra cima ou pra baixo dependendo de
+// quanto texto tem no cabeçalho (campo "EMPRESA", etc.) — ou seja, a
+// posição da linha 1 NÃO é fixa nem entre fichas da mesma "REV.: 01". Com
+// y0:0.197 (valor antigo), a linha 1 do José Gregório e do Cesar Oswaldo já
+// tinha passado inteira ANTES do recorte começar — por isso nunca era lida,
+// nunca virava um item, e a busca por "CAPACETE" dava "não encontrado".
+// 0.174 é o valor mais alto (early) confirmado com as 4 fichas reais
+// disponíveis (Alex Lima, Janderson Gabriel, José Gregório, Cesar Oswaldo) —
+// pega a linha 1 certinha nas 4. Nas duas fichas de calibração originais,
+// esse valor faz o recorte "vazar" um pedacinho da linha de cabeçalho
+// ("CA"/"ESPECIFICAÇÃO"), mas isso é inofensivo: essa linha extra aparece
+// igualmente nas duas colunas (CA e ESPECIFICAÇÃO), então o pareamento por
+// índice continua certo, e o guarda-corpo abaixo (`ehLinhaDeCabecalho`)
+// descarta essa linha de qualquer forma antes de virar item.
+const LINHAS_Y = { y0: 0.174, y1: 0.727 };
+
+// Se um pedaço da linha de cabeçalho ("CA" / "ESPECIFICAÇÃO") vazar pro
+// recorte (ver comentário acima), essa linha precisa ser descartada ANTES
+// do pareamento por índice — não só quando os dígitos do CA vierem vazios,
+// porque se o vazamento acontecer em só UMA das duas colunas (não nas duas
+// igualmente), descartar só depois do pareamento deixaria todo o resto da
+// tabela desalinhado (linha N de uma coluna pareada com a linha N+1 da
+// outra). Esses dois textos de cabeçalho são fixos e não têm como colidir
+// com o nome de um equipamento de verdade.
+function ehLinhaDeCabecalho(linhaNormalizada: string): boolean {
+  return linhaNormalizada === "CA" || linhaNormalizada.indexOf("ESPECIFICA") !== -1;
+}
 
 const DPI_RENDER = 300;
 
@@ -163,10 +193,21 @@ export async function extrairItensFichaEpi(buffer: Buffer): Promise<ResultadoOcr
         .filter(Boolean);
     }
 
-    const [linhasCa, linhasEspecificacao] = await Promise.all([
+    let [linhasCa, linhasEspecificacao] = await Promise.all([
       ocrColuna(COL_CA),
       ocrColuna(COL_ESPECIFICACAO),
     ]);
+
+    // Descarta um possível vazamento da linha de cabeçalho (ver comentário
+    // de LINHAS_Y) em CADA coluna independentemente — só pode acontecer na
+    // primeira linha lida, já que o recorte agora começa levemente dentro
+    // da linha do cabeçalho pra garantir que a linha 1 nunca fique de fora.
+    if (linhasCa.length && ehLinhaDeCabecalho(normalizarTexto(linhasCa[0]))) {
+      linhasCa = linhasCa.slice(1);
+    }
+    if (linhasEspecificacao.length && ehLinhaDeCabecalho(normalizarTexto(linhasEspecificacao[0]))) {
+      linhasEspecificacao = linhasEspecificacao.slice(1);
+    }
 
     // As duas colunas vêm da mesma faixa vertical, então tendem a produzir
     // uma linha por item na mesma ordem — casamos pelo índice, só até o
