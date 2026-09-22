@@ -1,26 +1,39 @@
 // Orquestração da sincronização com o GPO, dividida em etapas — ver o
 // comentário no lugar de `syncFromGpo` em gpoSync.ts pra entender o motivo:
-// as 5 etapas juntas passaram a demorar mais que os 60s do plano Hobby da
+// as etapas juntas passaram a demorar mais que os 60s do plano Hobby da
 // Vercel (GPO respondendo mais lento do que antes).
 //
 // Solução: cada etapa roda como sua PRÓPRIA invocação da função, com seus
 // próprios 60s — a rota /api/sync/gpo/step (ver route.ts ao lado) recebe
-// "rode a etapa X do registro Y" e, ao terminar essa etapa, ela mesma
-// dispara a próxima etapa (chamando a si mesma via HTTP) em vez de tudo
-// rodar dentro de uma função só. Isso é feito em segundo plano (waitUntil
-// do pacote @vercel/functions): a rota responde na hora pra quem chamou
-// (o botão "Sincronizar agora", o cron, ou a etapa anterior), e só então o
-// trabalho de verdade (e o disparo da etapa seguinte) continua rodando —
-// senão quem chamou ficaria esperando a etapa (e a cadeia inteira, se
-// esperasse a resposta de cada disparo até o fim) terminar, voltando pro
-// mesmo problema de estourar 60s.
+// "rode a etapa X do registro Y" e, ao terminar essa etapa, grava no
+// registro (`sync_log.resumo._proximaEtapa` / `_proximaOffset`) qual é a
+// etapa seguinte, SEM disparar nada sozinha.
+//
+// Isso é proposital, não uma limitação: cada etapa que chamava a próxima
+// (função->função, dentro da própria Vercel) diretamente por HTTP tropeçava
+// num limite interno da Vercel — não documentado — de aproximadamente 4
+// chamadas encadeadas desse tipo em sequência; a 5ª sempre voltava
+// "508 Loop Detected" antes até de chegar no nosso código (confirmado pelos
+// logs: nenhum log de aplicação pra essa chamada). Retry não resolve, porque
+// não é um erro de rede — é a Vercel detectando e bloqueando a cadeia.
+//
+// Pedido do Diego: em vez de pagar por um plano maior ou depender de um
+// serviço externo de fila, a sincronização passa a ser SÓ MANUAL — cada
+// etapa é disparada por quem está com a tela de Sincronização aberta (ver
+// app.js: o polling que já existia, a cada 4s, agora também dispara a
+// próxima etapa quando vê uma pendente). Cada disparo desses é uma
+// requisição NOVA vinda do navegador, não uma chamada função->função da
+// Vercel — por isso nunca entra na cadeia que estourava o limite. O efeito
+// colateral aceito: a sincronização não roda mais sozinha de madrugada (o
+// cron em vercel.json foi removido) — precisa da tela aberta até terminar.
 import { supabaseAdmin } from "./supabaseAdmin";
 import { syncEmpresas, syncPessoas, syncEquipes, syncTreinamentos, syncPatrimonios, syncPatrimoniosHistoricoPagina } from "./gpoSync";
 
 // "patrimonio_historico" é diferente das outras: não roda de uma vez, e sim
 // em PÁGINAS (ver syncPatrimoniosHistoricoPagina em gpoSync.ts) — cada
-// invocação processa só um pedaço e, se ainda faltar, dispara a SI MESMA de
-// novo (com o próximo offset) em vez de avançar pra próxima etapa da lista.
+// invocação processa só um pedaço e, se ainda faltar, grava a SI MESMA como
+// próxima etapa (com o próximo offset) em vez de avançar pra próxima etapa
+// da lista.
 export const SYNC_STEPS = ["empresas", "pessoas", "equipes", "treinamentos", "patrimonio", "patrimonio_historico"] as const;
 export type SyncStep = (typeof SYNC_STEPS)[number];
 
@@ -42,12 +55,18 @@ const STEP_FN: Partial<Record<SyncStep, () => Promise<unknown>>> = {
   patrimonio: syncPatrimonios,
 };
 
+type Resumo = Record<string, unknown> & { _proximaEtapa?: SyncStep | null; _proximaOffset?: number };
+
+async function lerResumo(admin: ReturnType<typeof supabaseAdmin>, logId: number): Promise<Resumo> {
+  const { data: row } = await admin.from("sync_log").select("resumo").eq("id", logId).single();
+  return ((row?.resumo as Resumo) || {}) as Resumo;
+}
+
 // Roda UMA etapa da sincronização (identificada por `logId` + `step`) e, ao
-// terminar, decide o que vem a seguir: dispara a próxima etapa, ou — se essa
-// era a última — marca o registro como concluído. Qualquer erro (na etapa em
-// si, ou ao disparar a próxima) marca o registro como erro na hora, em vez
-// de deixá-lo "em_andamento" esperando a próxima sincronização limpar.
-export async function processStep(logId: number, step: SyncStep, origin: string, offset = 0): Promise<void> {
+// terminar, grava qual é a próxima etapa a rodar (ou marca o registro como
+// concluído/erro, se for o caso) — ver o comentário grande no topo do
+// arquivo sobre por que isso não dispara mais a próxima etapa sozinho.
+export async function processStep(logId: number, step: SyncStep, offset = 0): Promise<void> {
   const admin = supabaseAdmin();
   try {
     if (step === "patrimonio_historico") {
@@ -55,23 +74,26 @@ export async function processStep(logId: number, step: SyncStep, origin: string,
 
       // Acumula entre páginas (cada invocação só processa um pedaço) em vez
       // de sobrescrever — senão o resumo final mostraria só a última página.
-      const { data: row } = await admin.from("sync_log").select("resumo").eq("id", logId).single();
-      const resumoAtual = (row?.resumo as Record<string, any>) || {};
-      const acumulado = resumoAtual.patrimonio_historico || { total: 0, erros: 0 };
-      const resumo = {
+      const resumoAtual = await lerResumo(admin, logId);
+      const acumulado = (resumoAtual.patrimonio_historico as { total: number; erros: number } | undefined) || { total: 0, erros: 0 };
+      const resumo: Resumo = {
         ...resumoAtual,
         patrimonio_historico: { total: acumulado.total + pagina.total, erros: acumulado.erros + pagina.erros },
       };
-      await admin.from("sync_log").update({ resumo }).eq("id", logId);
 
       if (!pagina.done) {
-        await dispararEtapa(logId, "patrimonio_historico", origin, pagina.nextOffset);
+        resumo._proximaEtapa = "patrimonio_historico";
+        resumo._proximaOffset = pagina.nextOffset;
+        await admin.from("sync_log").update({ resumo }).eq("id", logId);
         return;
       }
+
       // "patrimonio_historico" é sempre a última etapa da lista.
+      resumo._proximaEtapa = null;
+      resumo._proximaOffset = 0;
       await admin
         .from("sync_log")
-        .update({ status: "sucesso", concluido_em: new Date().toISOString() })
+        .update({ status: "sucesso", concluido_em: new Date().toISOString(), resumo })
         .eq("id", logId);
       return;
     }
@@ -80,69 +102,35 @@ export async function processStep(logId: number, step: SyncStep, origin: string,
     if (!fn) throw new Error(`Etapa sem função associada: ${step}`);
     const resultado = await fn();
 
-    // Só uma etapa por vez roda pra cada `logId` (a cadeia é sequencial),
-    // então não há concorrência escrevendo em `resumo` ao mesmo tempo — dá
-    // pra ler, mesclar e gravar de volta sem se preocupar em perder escrita.
-    const { data: row } = await admin.from("sync_log").select("resumo").eq("id", logId).single();
-    const resumo = { ...(((row?.resumo as Record<string, unknown>) || {})), [step]: resultado };
-    await admin.from("sync_log").update({ resumo }).eq("id", logId);
+    // Só uma etapa por vez roda pra cada `logId` (a cadeia é sequencial —
+    // quem dispara a próxima só faz isso depois de ver esta terminar),
+    // então não há concorrência escrevendo em `resumo` ao mesmo tempo.
+    const resumo: Resumo = { ...(await lerResumo(admin, logId)), [step]: resultado };
 
     const proximo = SYNC_STEPS[SYNC_STEPS.indexOf(step) + 1];
     if (proximo) {
-      await dispararEtapa(logId, proximo, origin);
+      resumo._proximaEtapa = proximo;
+      resumo._proximaOffset = 0;
+      await admin.from("sync_log").update({ resumo }).eq("id", logId);
     } else {
+      resumo._proximaEtapa = null;
+      resumo._proximaOffset = 0;
       await admin
         .from("sync_log")
-        .update({ status: "sucesso", concluido_em: new Date().toISOString() })
+        .update({ status: "sucesso", concluido_em: new Date().toISOString(), resumo })
         .eq("id", logId);
     }
   } catch (err: any) {
     const mensagem = err?.message || "Erro desconhecido na sincronização.";
+    const resumoAtual = await lerResumo(admin, logId).catch(() => ({}) as Resumo);
     await admin
       .from("sync_log")
       .update({
         status: "erro",
         concluido_em: new Date().toISOString(),
         erro: `Falhou na etapa "${step}"${offset ? " (a partir do item " + offset + ")" : ""}: ${mensagem}`,
+        resumo: { ...resumoAtual, _proximaEtapa: null, _proximaOffset: 0 },
       })
       .eq("id", logId);
   }
-}
-
-// Chama a rota interna que roda a próxima etapa (ou a próxima PÁGINA da
-// mesma etapa, no caso de "patrimonio_historico" — ver `offset` acima).
-// Fica AWAITED aqui dentro (mesmo sem usar o corpo da resposta) porque essa
-// chamada só tem garantia de realmente saír pela rede enquanto ESTA função
-// (processStep) ainda estiver "viva" pro waitUntil que a envolve lá na
-// rota — e ela só continua viva enquanto houver uma Promise pendente sendo
-// observada. A rota de destino responde rápido (ela também só enfileira o
-// trabalho pesado dela em segundo plano), então esse await não fica
-// esperando a etapa seguinte terminar — só confirma que o pedido de fato
-// saiu.
-//
-// Tentado até 3 vezes: já apareceu um "508 Loop Detected" vindo da própria
-// infraestrutura da Vercel (não do nosso código — não há log nenhum da
-// função pra essa chamada, ela nunca chegou a ser invocada) numa dessas
-// chamadas internas repetidas em sequência rápida. Sem confirmação exata da
-// causa, o jeito mais simples e seguro de não deixar isso derrubar a
-// sincronização inteira é tentar de novo antes de desistir.
-async function dispararEtapa(logId: number, step: SyncStep, origin: string, offset = 0): Promise<void> {
-  const secret = process.env.CRON_SECRET || "";
-  const tentativas = 3;
-  let ultimoErro: unknown = null;
-  for (let tentativa = 1; tentativa <= tentativas; tentativa++) {
-    try {
-      const res = await fetch(`${origin}/api/sync/gpo/step`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-sync-secret": secret },
-        body: JSON.stringify({ logId, step, offset }),
-      });
-      if (res.ok) return;
-      ultimoErro = new Error(`Falha ao disparar a etapa "${step}" (HTTP ${res.status})`);
-    } catch (err) {
-      ultimoErro = err;
-    }
-    if (tentativa < tentativas) await new Promise((r) => setTimeout(r, 1500));
-  }
-  throw ultimoErro instanceof Error ? ultimoErro : new Error(`Falha ao disparar a etapa "${step}"`);
 }

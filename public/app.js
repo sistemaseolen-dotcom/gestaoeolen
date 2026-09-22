@@ -4921,6 +4921,28 @@
     var pollTimer = null;
     function pararPoll() {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+      ultimoDisparo = null;
+    }
+
+    // A sincronização não dispara mais a próxima etapa sozinha (ver
+    // gpoSyncSteps.ts — a Vercel tem um limite não documentado de chamadas
+    // função->função encadeadas). Em vez disso, cada etapa terminada grava
+    // em `resumo._proximaEtapa`/`_proximaOffset` qual é a próxima, e é esta
+    // tela (com o polling que já existia) que dispara essa próxima etapa —
+    // por isso a sincronização só avança enquanto esta tela estiver aberta.
+    var ultimoDisparo = null; // "etapa:offset" já disparado, evita repetir enquanto ainda não avançou
+    function dispararProximaEtapaSeNecessario(linha) {
+      if (!linha || linha.status !== "em_andamento") return;
+      var r = linha.resumo || {};
+      var proxima = r._proximaEtapa;
+      if (!proxima) return;
+      var offset = r._proximaOffset || 0;
+      var chave = proxima + ":" + offset;
+      if (chave === ultimoDisparo) return;
+      ultimoDisparo = chave;
+      apiFetch("/api/sync/gpo/step", { method: "POST", body: { logId: linha.id, step: proxima, offset: offset } }).catch(function () {
+        ultimoDisparo = null; // falhou disparar — deixa a próxima rodada do polling tentar de novo
+      });
     }
 
     // Retorna a lista de logs (pra quem chamou poder checar o status do
@@ -4951,7 +4973,7 @@
       '<div class="topbar"><div><h1>Sincronização</h1><div class="sub">Traz os dados mais recentes do GPO pro Controle Eolen</div></div></div>' +
       '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
       "<p>Traz os dados mais recentes do GPO (pessoas, empresas, equipes, treinamentos e patrimônio) direto pro Controle Eolen. " +
-      "Roda sozinho todo dia de madrugada — qualquer pessoa pode usar o botão abaixo pra trazer uma atualização na hora, sempre que quiser.</p>" +
+      "Qualquer pessoa pode usar o botão abaixo pra trazer uma atualização na hora. Ela não roda mais sozinha de madrugada — precisa ficar com esta tela aberta até terminar (a barra abaixo mostra o andamento).</p>" +
       '<button class="btn primary" id="btn-sync-now" style="margin-top:10px;">' + ICONS.sync + "Sincronizar agora</button>" +
       '<span id="sync-now-status" class="hint" style="margin-left:12px;"></span>' +
       "</div>" +
@@ -4975,6 +4997,7 @@
           if (!$("#admin-sync-body")) { pararPoll(); return; } // saiu da página
           draw().then(function (logs) {
             var linha = logId ? (logs || []).filter(function (l) { return l.id === logId; })[0] : null;
+            dispararProximaEtapaSeNecessario(linha);
             var terminou = linha && linha.status !== "em_andamento";
             if (terminou) {
               pararPoll();

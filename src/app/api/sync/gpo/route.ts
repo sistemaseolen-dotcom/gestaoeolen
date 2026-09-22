@@ -31,7 +31,7 @@ async function checkAuth(req: Request): Promise<{ ok: true; origem: string } | {
 // "Sincronizar agora" ou o cron) só recebe a confirmação de que começou,
 // junto do id do registro pra poder acompanhar o andamento pela lista
 // (GET desta mesma rota).
-async function iniciarSincronizacao(origem: string, origin: string): Promise<NextResponse> {
+async function iniciarSincronizacao(origem: string): Promise<NextResponse> {
   const admin = supabaseAdmin();
 
   // Se uma sincronização anterior tiver sido interrompida no meio (por
@@ -60,7 +60,7 @@ async function iniciarSincronizacao(origem: string, origin: string): Promise<Nex
     return NextResponse.json({ ok: false, error: "Falha ao registrar o início da sincronização." }, { status: 500 });
   }
 
-  waitUntil(processStep(logRow.id, SYNC_STEPS[0], origin));
+  waitUntil(processStep(logRow.id, SYNC_STEPS[0]));
 
   return NextResponse.json({ ok: true, iniciado: true, logId: logRow.id });
 }
@@ -69,18 +69,23 @@ async function iniciarSincronizacao(origem: string, origin: string): Promise<Nex
 export async function POST(req: Request) {
   const auth = await checkAuth(req);
   if (!auth.ok) return auth.response;
-  return iniciarSincronizacao(auth.origem, new URL(req.url).origin);
+  return iniciarSincronizacao(auth.origem);
 }
 
-// GET: o Vercel Cron só faz requisições GET, então é aqui que a
-// sincronização diária automática entra (com o header do CRON_SECRET). Sem
-// esse header, GET vira uma consulta às últimas sincronizações (pra exibir
-// na página de Sincronização, acessível a qualquer usuário logado).
+// GET: pedido do Diego — a sincronização automática de madrugada (Vercel
+// Cron) foi removida (ver vercel.json); ela dependia de disparar as etapas
+// em cadeia (função->função), o que tropeçava num limite interno da Vercel
+// depois de ~4 chamadas (ver o comentário grande em gpoSyncSteps.ts). Agora
+// cada etapa é disparada por quem está com a tela de Sincronização aberta.
+// O header do CRON_SECRET continua funcionando aqui só como uma forma
+// manual de disparar por fora do navegador (ex.: um curl), se precisar —
+// sem esse header, GET vira uma consulta às últimas sincronizações (pra
+// exibir na página de Sincronização, acessível a qualquer usuário logado).
 export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-    return iniciarSincronizacao("cron", new URL(req.url).origin);
+    return iniciarSincronizacao("manual:secret");
   }
 
   const user = await getCurrentUser();
