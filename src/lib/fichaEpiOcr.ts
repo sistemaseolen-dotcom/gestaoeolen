@@ -81,8 +81,18 @@ function normalizarTexto(s: string): string {
 
 // O número do CA nunca tem letra — pega a primeira sequência de 3 a 6
 // dígitos que aparecer na linha reconhecida pelo OCR.
+//
+// Bug real visto numa ficha (reportado pelo Diego): CAs de 5 dígitos vêm
+// impressos na ficha com "." separando milhar (ex.: "39.538"). Sem tratar
+// isso, a busca por dígitos consecutivos parava no ponto e só achava "538"
+// (os 3 dígitos depois do ponto — "39" antes dele tem só 2, não bate o
+// mínimo de 3 exigido acima), gerando um falso "não confere" contra o CA
+// certo (39538) que o auditor digitou. Por isso o ponto (ou vírgula) entre
+// um dígito e um grupo de exatamente 3 dígitos é removido ANTES de procurar
+// a sequência — "39.538" vira "39538" antes do match.
 function digitosDaLinha(linha: string): string | null {
-  const m = linha.match(/\d{3,6}/);
+  const semSeparadorDeMilhar = (linha || "").replace(/(\d)[.,](\d{3})(?!\d)/g, "$1$2");
+  const m = semSeparadorDeMilhar.match(/\d{3,6}/);
   return m ? m[0] : null;
 }
 

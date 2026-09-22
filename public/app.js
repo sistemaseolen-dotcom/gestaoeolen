@@ -703,7 +703,7 @@
       document.body.insertBefore(el, shell);
     }
     el.innerHTML = html;
-    el.style.display = "flex";
+    el.style.display = "grid";
   }
   function hideAuthOverlay() {
     var el = document.getElementById("auth-screen");
@@ -711,18 +711,25 @@
     var shell = document.getElementById("shell");
     if (shell) shell.style.display = "";
   }
+  // Painel esquerdo da tela de entrada (cor da marca) — pedido do Diego pra
+  // deixar a tela de login com mais identidade da Eolen, em vez do cartão
+  // pequeno e genérico de antes. Some numa faixa no topo em telas estreitas
+  // (ver @media 860px em globals.css).
   function authBrandHtml() {
-    return '<div class="auth-brand"><div class="brand-mark"><img src="/logo-eolen-mark.png" alt="Eolen"></div><div><strong>Controle Eolen</strong><span>Pessoas &amp; Segurança</span></div></div>';
+    return '<div class="auth-brand-panel"><div class="brand-mark"><img src="/logo-eolen-mark.png" alt="Eolen"></div>' +
+      "<div><h1>Controle Eolen</h1>" +
+      '<p class="tagline">Pessoas, treinamentos e patrimônio da Eolen em um só lugar — sempre atualizado.</p></div></div>';
   }
   function renderLoginScreen(errorMsg) {
-    var html = '<div class="auth-card">' + authBrandHtml() +
+    var html = authBrandHtml() +
+      '<div class="auth-form-panel"><div class="auth-card">' +
       "<h2>Entrar</h2>" +
       (errorMsg ? '<div class="auth-error">' + esc(errorMsg) + "</div>" : "") +
       '<form id="login-form">' +
       '<div class="field"><label>E-mail</label><input type="email" name="email" autocomplete="username" required></div>' +
       '<div class="field"><label>Senha</label><input type="password" name="senha" autocomplete="current-password" required></div>' +
       '<button type="submit" class="btn primary" style="width:100%;margin-top:8px;">Entrar</button>' +
-      "</form></div>";
+      "</form></div></div>";
     showAuthOverlay(html);
     var emailInput = $('#login-form input[name="email"]');
     if (emailInput) emailInput.focus();
@@ -749,14 +756,15 @@
     });
   }
   function renderTrocarSenhaScreen() {
-    var html = '<div class="auth-card">' + authBrandHtml() +
+    var html = authBrandHtml() +
+      '<div class="auth-form-panel"><div class="auth-card">' +
       "<h2>Defina sua nova senha</h2>" +
       '<div class="hint" style="margin-bottom:12px;">Por segurança, você precisa trocar a senha padrão antes de continuar.</div>' +
       '<form id="trocar-senha-form">' +
       '<div class="field"><label>Nova senha</label><input type="password" name="nova" autocomplete="new-password" minlength="6" required></div>' +
       '<div class="field"><label>Confirmar nova senha</label><input type="password" name="confirmar" autocomplete="new-password" minlength="6" required></div>' +
       '<button type="submit" class="btn primary" style="width:100%;margin-top:8px;">Salvar e continuar</button>' +
-      "</form></div>";
+      "</form></div></div>";
     showAuthOverlay(html);
     var novaInput = $('#trocar-senha-form input[name="nova"]');
     if (novaInput) novaInput.focus();
@@ -1567,7 +1575,11 @@
     { n: 23, subsecao: "Trava-quedas", tipo: "pergunta", label: "Trava-quedas em condições de uso e CA dentro da validade?", key: "q18", opcoes: ["Sim", "Não"] },
     { n: 24, tipo: "foto", label: "Foto Trava-quedas (fotos individualizadas de cada colaborador utilizando o EPI)", slotBase: "foto_travaquedas", porColaborador: true, caCheck: { keyBase: "ca_travaquedas", especKeywords: ["TRAVA QUEDAS", "TRAVAQUEDAS"], caCheckLabel: "Trava-quedas" } },
     { n: 25, subsecao: "Talabarte Simples", tipo: "pergunta", label: "Talabarte simples em condições de uso e CA dentro da validade?", key: "q21", opcoes: ["Sim", "Não"] },
-    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true, caCheck: { keyBase: "ca_talabarte_simples", especKeywords: ["TALABARTE"], especKeywordsExcluir: ["TALABARTE Y"], caCheckLabel: "Talabarte simples" } },
+    // Pedido do Diego: a Ficha de EPI chama esse mesmo equipamento de
+    // "POSICIONAMENTO" em vez de "TALABARTE" (é o mesmo item, nomes
+    // diferentes) — sem esse sinônimo a busca nunca achava a linha certa na
+    // ficha pra esse item.
+    { n: 26, tipo: "foto", label: "Foto CA Talabarte simples", slotBase: "foto_ca_talabarte_simples", porColaborador: true, caCheck: { keyBase: "ca_talabarte_simples", especKeywords: ["TALABARTE", "POSICIONAMENTO"], especKeywordsExcluir: ["TALABARTE Y"], caCheckLabel: "Talabarte simples" } },
     { n: 27, subsecao: "Talabarte Y", tipo: "pergunta", label: "Talabarte Y em condições de uso e CA dentro da validade?", key: "q24", opcoes: ["Sim", "Não"] },
     { n: 28, tipo: "foto", label: "Foto CA Talabarte Y", slotBase: "foto_ca_talabarte_y", porColaborador: true, caCheck: { keyBase: "ca_talabarte_y", especKeywords: ["TALABARTE Y"], caCheckLabel: "Talabarte Y" } },
     { n: 29, subsecao: "Botas", tipo: "pergunta", label: "Botas em condições de uso e CA dentro da validade?", key: "q27", opcoes: ["Sim", "Não"] },
