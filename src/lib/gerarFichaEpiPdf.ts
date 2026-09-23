@@ -6,15 +6,29 @@
 // colaborador (por item, com o dedo), pra já deixar tudo formalizado sem
 // depender de imprimir/assinar em papel de novo.
 //
-// As proporções do formulário (larguras de coluna, altura de linha) foram
-// medidas em 4 fichas reais (Alex Lima, Janderson Gabriel, José Gregório
-// Guzman Roche, Cesar Oswaldo Ávila) analisando onde ficam as linhas de
-// grade da tabela na imagem renderizada do PDF original — ver o histórico
-// de investigação do bug "capacete não encontrado" pra esse mesmo formulário
-// (src/lib/fichaEpiOcr.ts). Não é um clone byte-a-byte do formulário
-// original (esse é gerado por uma ferramenta de assinatura eletrônica de
-// terceiro) — é uma reconstrução própria, no mesmo layout/proporções, pra
-// ficar reconhecível como "a mesma ficha".
+// Pedido explícito do Diego (23/09/2026, depois de ver a primeira versão):
+// a ficha gerada precisa ficar EXATAMENTE no padrão do formulário original —
+// isso incluiu duas correções em relação à primeira versão:
+//  1) a v1 só desenhava a tabela de itens; faltavam as seções de baixo que
+//     todo formulário original tem (OBSERVAÇÕES, TERMO DE RESPONSABILIDADE,
+//     linha "CIDADE, DATA" e a linha final de "Assinatura do Empregado").
+//     Adicionadas aqui, com o texto do termo copiado exatamente de uma ficha
+//     real.
+//  2) a v1 destacava a linha do item com CA corrigido (fundo levemente
+//     colorido + CA em negrito) — o Diego pediu pra tirar: TODA linha tem
+//     que sair com a mesma aparência, tenha CA corrigido ou não.
+// Além disso, o formulário original sempre numera as linhas de ITEM até 21
+// (mesmo com poucos itens preenchidos, o resto fica em branco) — replicado
+// abaixo em vez de desenhar só as linhas realmente usadas.
+//
+// As proporções (larguras de coluna, altura de linha) foram medidas em 4
+// fichas reais (Alex Lima, Janderson Gabriel, José Gregório Guzman Roche,
+// Cesar Oswaldo Ávila) e depois recalibradas comparando com a ficha do
+// Edixon Reinaldo Alcina Martinez enviada pelo Diego como referência. Não é
+// um clone byte-a-byte do formulário original (esse é gerado por uma
+// ferramenta de assinatura eletrônica de terceiro) — é uma reconstrução
+// própria, no mesmo layout/proporções/textos, pra ficar indistinguível como
+// "a mesma ficha".
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 
 export type ItemFichaGerada = {
@@ -29,8 +43,12 @@ export type ItemFichaGerada = {
   // formulário original (uma ASSINATURA por linha da tabela).
   assinaturaPngBase64?: string | null;
   // true quando este item teve o CA corrigido nesta rodada (a divergência
-  // encontrada na auditoria) — usado só pra destacar visualmente a linha
-  // no PDF gerado (fundo levemente diferente), não muda a estrutura.
+  // encontrada na auditoria). NÃO altera a aparência da linha no PDF — pedido
+  // explícito do Diego: a ficha regenerada precisa ficar EXATAMENTE no mesmo
+  // padrão visual do formulário original, sem nenhuma marcação/cor diferente
+  // indicando o que mudou. Mantido no tipo só porque a rota de geração
+  // (gerar-ficha-epi) ainda usa esse campo pra decidir o resumo que vai pro
+  // audit_log e pra fila de pendências do GPO.
   alterado?: boolean;
 };
 
@@ -40,12 +58,18 @@ export type DadosFichaEpiPdf = {
   empresaNome?: string | null;
   cnpj?: string | null;
   // "Grupo Homogêneo de Exposição" — não existe um campo equivalente
-  // cadastrado em `pessoas` hoje; nas 4 fichas reais usadas de referência
-  // esse campo sempre veio "EXTERNO" (colaborador terceirizado atuando no
-  // site do cliente), então esse é o padrão aqui. Dá pra tornar
-  // configurável no futuro se aparecer um caso diferente.
+  // cadastrado em `pessoas` hoje; nas fichas reais usadas de referência esse
+  // campo sempre veio "EXTERNO" (colaborador terceirizado atuando no site do
+  // cliente), então esse é o padrão aqui. Dá pra tornar configurável no
+  // futuro se aparecer um caso diferente.
   ghe?: string;
   funcao?: string | null;
+  // Cidade usada na linha de declaração final ("CIDADE, DATA") — vem do
+  // cadastro da empresa (`empresas.cidade`) quando existe. ATENÇÃO: esse
+  // campo não é sempre preenchido no cadastro hoje; quando falta, a linha
+  // sai só com a data (sem cidade) — sinalizado pro Diego confirmar se quer
+  // uma regra diferente (ex.: cidade do site/regional da auditoria).
+  cidade?: string | null;
   itens: ItemFichaGerada[];
 };
 
@@ -76,8 +100,14 @@ function colX(frac: number): number {
   return TABLE_LEFT + frac * TABLE_WIDTH;
 }
 
-const ROW_H = 30; // altura de cada linha de item — um pouco maior que o
-// original (~18pt) pra caber uma assinatura desenhada à mão legível.
+// Formulário original tem linhas bem mais compactas (~18pt) que a v1 deste
+// gerador (30pt) — reduzido de volta pra caber a tabela inteira (21 linhas
+// numeradas) + Observações + Termo de Responsabilidade numa página só,
+// exatamente como o original. A assinatura de cada item ainda cabe: a
+// imagem é redimensionada pra caber na célula, do mesmo jeito que no
+// formulário real (onde a assinatura também é pequena).
+const ROW_H = 18;
+const TOTAL_ROWS = 21; // o formulário original numera ITEM de 1 a 21, sempre — linhas sem item usado ficam em branco.
 const HEADER_ROW_H = 20;
 const TITLE_H = 34;
 const FIELD_ROW_H = 20;
@@ -85,6 +115,15 @@ const FIELD_ROW_H = 20;
 function hoje(): string {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+const MESES_EXTENSO = [
+  "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+  "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+];
+function hojeExtenso(): string {
+  const d = new Date();
+  return `${d.getDate()} DE ${MESES_EXTENSO[d.getMonth()]} DE ${d.getFullYear()}`;
 }
 
 function drawRect(page: PDFPage, x: number, y: number, w: number, h: number, opts?: { fill?: [number, number, number] }) {
@@ -121,6 +160,25 @@ function drawText(page: PDFPage, font: PDFFont, text: string, x: number, y: numb
   page.drawText(t, { x: drawX, y, size: s, font: f, color: rgb(0, 0, 0) });
 }
 
+// Quebra um parágrafo em linhas que cabem em `maxWidth`, palavra por
+// palavra (pdf-lib não quebra texto automaticamente).
+function wrapText(font: PDFFont, text: string, size: number, maxWidth: number): string[] {
+  const palavras = text.split(/\s+/).filter(Boolean);
+  const linhas: string[] = [];
+  let atual = "";
+  for (const palavra of palavras) {
+    const tentativa = atual ? `${atual} ${palavra}` : palavra;
+    if (font.widthOfTextAtSize(tentativa, size) > maxWidth && atual) {
+      linhas.push(atual);
+      atual = palavra;
+    } else {
+      atual = tentativa;
+    }
+  }
+  if (atual) linhas.push(atual);
+  return linhas;
+}
+
 function headerFieldRow(
   page: PDFPage,
   font: PDFFont,
@@ -149,6 +207,17 @@ function drawTableHeaderRow(page: PDFPage, bold: PDFFont, top: number): number {
   }
   return top - HEADER_ROW_H;
 }
+
+// Barra de título cinza (mesmo estilo do cabeçalho da tabela) usada em
+// OBSERVAÇÕES e TERMO DE RESPONSABILIDADE no formulário original.
+function drawSectionTitleBar(page: PDFPage, bold: PDFFont, top: number, titulo: string, height: number): number {
+  drawRect(page, TABLE_LEFT, top - height, TABLE_WIDTH, height, { fill: [0.85, 0.85, 0.85] });
+  drawText(page, bold, titulo, TABLE_LEFT, top - height + (height - 9) / 2 + 1, 9.5, { center: [TABLE_LEFT, TABLE_RIGHT] });
+  return top - height;
+}
+
+const TERMO_RESPONSABILIDADE =
+  "Recebi para serem usados nos desempenhos de minhas funções, os EPI'S acima especificados. Estou ciente e de pleno acordo que sou responsável pela guarda e conservação dos mesmos. Estou ciente, também, que o não uso dos EPI'S, implicará em insubordinação sujeita as sanções disciplinares previstas na legislação trabalhista vigente. Declaro, ainda, que recebi o treinamento referente ao uso correto dos EPI's e sobre as Normas e Procedimentos de Segurança do Trabalho a serem observados e cumpridos.";
 
 async function embedAssinatura(pdfDoc: PDFDocument, base64: string | null | undefined) {
   if (!base64) return null;
@@ -204,54 +273,102 @@ export async function gerarFichaEpiPdf(dados: DadosFichaEpiPdf): Promise<Buffer>
 
   cabecalho();
 
-  for (let i = 0; i < dados.itens.length; i++) {
-    if (y - ROW_H < MARGIN + 40) {
+  // Sempre numera até TOTAL_ROWS (21), igual ao formulário original — linhas
+  // sem item real ficam em branco (só o número), em vez de a tabela
+  // "encolher" pra caber exatamente a quantidade de itens.
+  for (let i = 0; i < TOTAL_ROWS; i++) {
+    if (y - ROW_H < MARGIN) {
       novaPagina();
       cabecalho();
     }
-    const item = dados.itens[i];
+    const item: ItemFichaGerada | undefined = dados.itens[i];
     const rowTop = y;
-    const fill: [number, number, number] | undefined = item.alterado ? [1, 0.96, 0.85] : undefined;
 
+    // Sem destaque de cor/negrito pra linha alterada — a ficha regenerada
+    // tem que sair idêntica ao padrão visual do formulário original,
+    // divergência de CA ou não (pedido do Diego).
     for (const col of COLS_FRAC) {
       const x0 = colX(col.x0);
       const x1 = colX(col.x1);
-      drawRect(page, x0, rowTop - ROW_H, x1 - x0, ROW_H, { fill });
+      drawRect(page, x0, rowTop - ROW_H, x1 - x0, ROW_H);
     }
 
     const textY = rowTop - ROW_H / 2 - 3;
     drawText(page, font, String(i + 1), colX(COLS_FRAC[0].x0), textY, 9, { center: [colX(COLS_FRAC[0].x0), colX(COLS_FRAC[0].x1)] });
-    drawText(page, item.alterado ? bold : font, item.ca || "", colX(COLS_FRAC[1].x0), textY, 9, { center: [colX(COLS_FRAC[1].x0), colX(COLS_FRAC[1].x1)] });
-    drawText(page, font, item.qtd || "1", colX(COLS_FRAC[2].x0), textY, 9, { center: [colX(COLS_FRAC[2].x0), colX(COLS_FRAC[2].x1)] });
-    drawText(page, font, item.especificacao || "", colX(COLS_FRAC[3].x0) + 4, textY, 9, { maxWidth: colX(COLS_FRAC[3].x1) - colX(COLS_FRAC[3].x0) - 8 });
-    drawText(page, font, item.fabricacao || "", colX(COLS_FRAC[4].x0), textY, 8, { center: [colX(COLS_FRAC[4].x0), colX(COLS_FRAC[4].x1)] });
-    drawText(page, font, item.entrega || hoje(), colX(COLS_FRAC[5].x0), textY, 8, { center: [colX(COLS_FRAC[5].x0), colX(COLS_FRAC[5].x1)] });
 
-    const assinaturaImg = await embedAssinatura(pdfDoc, item.assinaturaPngBase64);
-    if (assinaturaImg) {
-      const cellX0 = colX(COLS_FRAC[7].x0);
-      const cellX1 = colX(COLS_FRAC[7].x1);
-      const cellW = cellX1 - cellX0 - 8;
-      const cellH = ROW_H - 6;
-      const scale = Math.min(cellW / assinaturaImg.width, cellH / assinaturaImg.height, 1);
-      const w = assinaturaImg.width * scale;
-      const h = assinaturaImg.height * scale;
-      page.drawImage(assinaturaImg, {
-        x: cellX0 + (cellX1 - cellX0 - w) / 2,
-        y: rowTop - ROW_H + (ROW_H - h) / 2,
-        width: w,
-        height: h,
-      });
+    if (item) {
+      drawText(page, font, item.ca || "", colX(COLS_FRAC[1].x0), textY, 9, { center: [colX(COLS_FRAC[1].x0), colX(COLS_FRAC[1].x1)] });
+      drawText(page, font, item.qtd || "1", colX(COLS_FRAC[2].x0), textY, 9, { center: [colX(COLS_FRAC[2].x0), colX(COLS_FRAC[2].x1)] });
+      drawText(page, font, item.especificacao || "", colX(COLS_FRAC[3].x0) + 4, textY, 9, { maxWidth: colX(COLS_FRAC[3].x1) - colX(COLS_FRAC[3].x0) - 8 });
+      drawText(page, font, item.fabricacao || "", colX(COLS_FRAC[4].x0), textY, 8, { center: [colX(COLS_FRAC[4].x0), colX(COLS_FRAC[4].x1)] });
+      drawText(page, font, item.entrega || hoje(), colX(COLS_FRAC[5].x0), textY, 8, { center: [colX(COLS_FRAC[5].x0), colX(COLS_FRAC[5].x1)] });
+
+      const assinaturaImg = await embedAssinatura(pdfDoc, item.assinaturaPngBase64);
+      if (assinaturaImg) {
+        const cellX0 = colX(COLS_FRAC[7].x0);
+        const cellX1 = colX(COLS_FRAC[7].x1);
+        const cellW = cellX1 - cellX0 - 6;
+        const cellH = ROW_H - 4;
+        const scale = Math.min(cellW / assinaturaImg.width, cellH / assinaturaImg.height, 1);
+        const w = assinaturaImg.width * scale;
+        const h = assinaturaImg.height * scale;
+        page.drawImage(assinaturaImg, {
+          x: cellX0 + (cellX1 - cellX0 - w) / 2,
+          y: rowTop - ROW_H + (ROW_H - h) / 2,
+          width: w,
+          height: h,
+        });
+      }
     }
 
     y -= ROW_H;
   }
 
-  y -= 24;
-  if (y < MARGIN + 20) {
+  // ---- OBSERVAÇÕES ----
+  const OBS_ROW_H = 16;
+  const OBS_LINHAS = 5;
+  if (y - (HEADER_ROW_H + OBS_LINHAS * OBS_ROW_H) < MARGIN) {
     novaPagina();
   }
-  drawText(page, font, `Ficha regenerada pelo Controle Eolen em ${hoje()} — CA(s) corrigido(s) após auditoria.`, TABLE_LEFT, y, 8);
+  y = drawSectionTitleBar(page, bold, y, "OBSERVAÇÕES", HEADER_ROW_H);
+  for (let i = 0; i < OBS_LINHAS; i++) {
+    drawRect(page, TABLE_LEFT, y - OBS_ROW_H, TABLE_WIDTH, OBS_ROW_H);
+    y -= OBS_ROW_H;
+  }
+
+  // ---- TERMO DE RESPONSABILIDADE ----
+  const termoFontSize = 8.5;
+  const termoLineH = 11;
+  const termoPad = 6;
+  const termoLinhas = wrapText(font, TERMO_RESPONSABILIDADE, termoFontSize, TABLE_WIDTH - 2 * termoPad);
+  const termoBoxH = termoLinhas.length * termoLineH + 2 * termoPad;
+  if (y - (HEADER_ROW_H + termoBoxH) < MARGIN) {
+    novaPagina();
+  }
+  y = drawSectionTitleBar(page, bold, y, "TERMO DE RESPONSABILIDADE", HEADER_ROW_H);
+  drawRect(page, TABLE_LEFT, y - termoBoxH, TABLE_WIDTH, termoBoxH);
+  let termoY = y - termoPad - termoFontSize + 2;
+  for (const linha of termoLinhas) {
+    drawText(page, font, linha, TABLE_LEFT, termoY, termoFontSize, { center: [TABLE_LEFT, TABLE_RIGHT] });
+    termoY -= termoLineH;
+  }
+  y -= termoBoxH;
+
+  // ---- Cidade + data da declaração, e assinatura final do empregado ----
+  // (mesmo padrão do formulário original: linha "CIDADE, DIA DE MÊS DE ANO"
+  // seguida da linha de assinatura, alinhadas à direita)
+  if (y - 70 < MARGIN) {
+    novaPagina();
+  }
+  y -= 14;
+  const dataDeclaracao = dados.cidade ? `${dados.cidade.toUpperCase()}, ${hojeExtenso()}` : hojeExtenso();
+  drawText(page, bold, dataDeclaracao, TABLE_LEFT, y, 10, { center: [TABLE_LEFT, TABLE_RIGHT] });
+  y -= 40;
+  const sigX0 = TABLE_LEFT + TABLE_WIDTH * 0.55;
+  const sigX1 = TABLE_RIGHT;
+  page.drawLine({ start: { x: sigX0, y }, end: { x: sigX1, y }, thickness: 1, color: rgb(0, 0, 0) });
+  y -= 12;
+  drawText(page, bold, "Assinatura do Empregado", sigX0, y, 9, { center: [sigX0, sigX1] });
 
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);

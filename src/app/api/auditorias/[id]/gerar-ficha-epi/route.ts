@@ -89,9 +89,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   let cnpj: string | null = null;
+  let cidade: string | null = null;
   if (pessoa.empresa_id) {
-    const { data: empresa } = await admin.from("empresas").select("cnpj").eq("id", pessoa.empresa_id).maybeSingle();
+    const { data: empresa } = await admin.from("empresas").select("cnpj, cidade").eq("id", pessoa.empresa_id).maybeSingle();
     cnpj = empresa?.cnpj || null;
+    cidade = empresa?.cidade || null;
   }
 
   const itensPdf: ItemFichaGerada[] = itensBody.map((it) => ({
@@ -111,6 +113,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       cpf: pessoa.cpf,
       empresaNome: pessoa.empresa_nome,
       cnpj,
+      cidade,
       funcao: pessoa.cargo,
       itens: itensPdf,
     });
