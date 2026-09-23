@@ -720,6 +720,14 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 }
 tr.row-divergente { background: var(--warning-soft); }
 
+/* Data de fabricação por item, na mesma tela de assinatura (pedido do
+   Diego, 23/09/2026): obrigatório pra item com CA corrigido, editável nos
+   demais — mesmo visual do ca-check-input. */
+.ficha-epi-fabricacao-input {
+  width: 90px; padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 12.5px; background: var(--surface);
+}
+
 /* Combo de pessoa (colaborador da auditoria): campo de busca + lista de
    sugestões. O valor real fica num <input type="hidden"> — este campo de
    texto é só pra filtrar/exibir. */

@@ -7,6 +7,10 @@ import { ASSINATURA_PLACEHOLDER_BASE64 } from "@/lib/assinaturaPlaceholder";
 
 const BUCKET = "treinamentos-anexos";
 
+// Mês/ano de fabricação, ex.: "01/2026" — mesmo formato usado no formulário
+// real (ver gerarFichaEpiPdf.ts).
+const FABRICACAO_REGEX = /^\d{2}\/\d{4}$/;
+
 type ItemBody = {
   especificacao: string;
   ca: string;
@@ -58,6 +62,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
     if (!it.assinaturaPngBase64) {
       return NextResponse.json({ error: `Falta a assinatura do item "${it.especificacao}".` }, { status: 400 });
+    }
+    // Pedido do Diego (23/09/2026): item com CA novo (corrigido nesta
+    // auditoria) é um equipamento diferente do que estava na ficha — exige
+    // informar a fabricação de novo, não dá pra deixar em branco nem repetir
+    // a de antes. Item sem mudança de CA pode vir vazio (repete/mantém o que
+    // já estava), mas se vier preenchido precisa estar no formato certo.
+    const fabricacao = (it.fabricacao || "").toString().trim();
+    if (it.alterado && !fabricacao) {
+      return NextResponse.json({ error: `Informe a data de fabricação do item "${it.especificacao}" (CA foi corrigido).` }, { status: 400 });
+    }
+    if (fabricacao && !FABRICACAO_REGEX.test(fabricacao)) {
+      return NextResponse.json({ error: `Data de fabricação inválida no item "${it.especificacao}" — use o formato MM/AAAA.` }, { status: 400 });
     }
   }
 
@@ -141,7 +157,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: `Falha ao salvar o novo PDF: ${uploadError.message}` }, { status: 500 });
   }
 
-  const epiItensNovos = itensPdf.map((it) => ({ especificacao: normalizarEspecTexto(it.especificacao), ca: soDigitos(it.ca) }));
+  const epiItensNovos = itensPdf.map((it) => ({
+    especificacao: normalizarEspecTexto(it.especificacao),
+    ca: soDigitos(it.ca),
+    fabricacao: (it.fabricacao || "").toString().trim() || null,
+  }));
 
   const { data: treinoAtualizado, error: updateError } = await admin
     .from("treinamentos")

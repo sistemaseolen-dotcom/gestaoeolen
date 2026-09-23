@@ -70,7 +70,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .map((d) => {
       const ficha = fichaPorNome.get(d.nomeColaborador) || null;
       const pessoa = pessoaPorNome.get(d.nomeColaborador) as any;
-      const itensAtuais = (ficha?.epi_itens || []) as { especificacao: string; ca: string }[];
+      const itensAtuais = (ficha?.epi_itens || []) as { especificacao: string; ca: string; fabricacao?: string | null }[];
 
       // Marca, dentro da lista COMPLETA de itens da ficha atual (todos os
       // ~9-20 equipamentos), qual linha exata é a que a auditoria achou
@@ -100,6 +100,12 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           divergente: !!divergente,
           caNovo: divergente ? divergente.caNovo : null,
           caCheckLabel: divergente ? divergente.caCheck.caCheckLabel : null,
+          // Pedido do Diego (23/09/2026): item com CA novo é um equipamento
+          // diferente — não faz sentido repetir a fabricação antiga, por
+          // isso não manda `fabricacaoAtual` pra esses (a tela exige digitar
+          // de novo). Item sem mudança de CA repete o que já está
+          // registrado, só editável se precisar corrigir.
+          fabricacaoAtual: divergente ? null : it.fabricacao || null,
         };
       });
 
@@ -124,7 +130,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     .map((nome) => {
       const ficha = fichaPorNome.get(nome) || null;
       const pessoa = pessoaPorNome.get(nome) as any;
-      const itensAtuais = (ficha?.epi_itens || []) as { especificacao: string; ca: string }[];
+      const itensAtuais = (ficha?.epi_itens || []) as { especificacao: string; ca: string; fabricacao?: string | null }[];
       return {
         colabIdx: colaboradores.indexOf(nome) + 1,
         nomeColaborador: nome,
@@ -139,6 +145,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           divergente: false,
           caNovo: null,
           caCheckLabel: null,
+          fabricacaoAtual: it.fabricacao || null,
         })),
       };
     });

@@ -2445,9 +2445,19 @@
         ? '<span class="mono" style="text-decoration:line-through;color:var(--ink-faint);">' + esc(it.ca) + "</span> → " +
           '<span class="mono" style="font-weight:700;">' + esc(it.caNovo) + "</span>"
         : '<span class="mono">' + esc(it.ca) + "</span>";
+      // Pedido do Diego (23/09/2026): item com CA corrigido é um equipamento
+      // diferente — a fabricação precisa ser informada de novo (obrigatório,
+      // começa vazio). Item sem mudança de CA repete a fabricação já
+      // registrada na ficha (se tiver), só editável se precisar corrigir.
+      var fabricacaoValor = it.divergente ? "" : (it.fabricacaoAtual || "");
+      var fabricacaoHtml =
+        '<input type="text" class="ficha-epi-fabricacao-input" id="ficha-epi-fab-' + idx + '" placeholder="MM/AAAA" maxlength="7" ' +
+        'value="' + esc(fabricacaoValor) + '" />' +
+        (it.divergente ? '<div class="hint" style="margin-top:2px;">Obrigatório (CA novo)</div>' : "");
       return '<tr' + (it.divergente ? ' class="row-divergente"' : "") + '>' +
         "<td>" + esc(it.especificacao) + (it.divergente ? ' <span class="tag">CA corrigido</span>' : "") + "</td>" +
         "<td>" + caHtml + "</td>" +
+        "<td>" + fabricacaoHtml + "</td>" +
         '<td><canvas class="assinatura-canvas-sm" id="ficha-epi-sig-' + idx + '" width="360" height="120"></canvas>' +
         '<div><button type="button" class="btn sm ghost" data-limpar="' + idx + '">Limpar</button></div></td></tr>';
     }).join("");
@@ -2456,8 +2466,8 @@
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Colaboradores</button><h1 style="margin-top:6px;">Ficha de EPI — ' + esc(colab.nomeColaborador) + "</h1>" +
       '<div class="sub">' + esc(pessoa.cargo || "—") + " · " + esc(pessoa.empresaNome || "—") + "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Itens</h3></div><div class="panel-body pad">' +
-      '<div class="hint" style="margin-bottom:10px;">Peça pro colaborador assinar com o dedo (ou o mouse) em cada item, confirmando a entrega/conferência do EPI. Os itens marcados com "CA corrigido" tiveram o número do CA atualizado nesta auditoria; os demais repetem os dados da ficha atual.</div>' +
-      '<div class="table-scroll"><table class="data"><thead><tr><th>Especificação</th><th>CA</th><th style="min-width:220px;">Assinatura</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<div class="hint" style="margin-bottom:10px;">Peça pro colaborador assinar com o dedo (ou o mouse) em cada item, confirmando a entrega/conferência do EPI. Os itens marcados com "CA corrigido" tiveram o número do CA atualizado nesta auditoria e exigem informar a fabricação (MM/AAAA) de novo; os demais repetem os dados da ficha atual, mas a fabricação pode ser editada se precisar.</div>' +
+      '<div class="table-scroll"><table class="data"><thead><tr><th>Especificação</th><th>CA</th><th>Fabricação</th><th style="min-width:220px;">Assinatura</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
       "</div></div>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn primary" id="btn-finalizar-ficha-epi">Finalizar e gerar PDF</button></div>';
 
@@ -2478,10 +2488,29 @@
       });
     });
 
+    var FABRICACAO_REGEX = /^\d{2}\/\d{4}$/;
+    var fabInputs = itens.map(function (it, idx) { return document.getElementById("ficha-epi-fab-" + idx); });
+
     $("#btn-finalizar-ficha-epi").addEventListener("click", function () {
       if (assinado.some(function (v) { return !v; })) {
         toast("Assine todos os itens antes de finalizar.", "error");
         return;
+      }
+      // Pedido do Diego: fabricação é obrigatória pra item com CA corrigido
+      // (equipamento novo), e sempre precisa estar no formato MM/AAAA quando
+      // preenchida (mesmo nos itens sem mudança de CA, onde é opcional).
+      for (var i = 0; i < itens.length; i++) {
+        var fabricacao = fabInputs[i].value.trim();
+        if (itens[i].divergente && !fabricacao) {
+          toast('Informe a data de fabricação (MM/AAAA) do item "' + itens[i].especificacao + '" — o CA foi corrigido.', "error");
+          fabInputs[i].focus();
+          return;
+        }
+        if (fabricacao && !FABRICACAO_REGEX.test(fabricacao)) {
+          toast('Data de fabricação inválida no item "' + itens[i].especificacao + '" — use o formato MM/AAAA.', "error");
+          fabInputs[i].focus();
+          return;
+        }
       }
       var btn = $("#btn-finalizar-ficha-epi");
       btn.disabled = true;
@@ -2492,6 +2521,7 @@
           return {
             especificacao: it.especificacao,
             ca: it.divergente ? it.caNovo : it.ca,
+            fabricacao: fabInputs[idx].value.trim(),
             assinaturaPngBase64: canvases[idx].toDataURL("image/png"),
             alterado: !!it.divergente
           };

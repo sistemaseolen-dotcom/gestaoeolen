@@ -38,7 +38,13 @@ export const CA_CHECK_ITEMS: CaCheckItem[] = [
   { n: 30, keyBase: "ca_botas", especKeywords: ["BOTA"], caCheckLabel: "Botas" },
 ];
 
-export type ItemFichaEpi = { especificacao: string; ca: string };
+// `fabricacao` (mês/ano de fabricação do equipamento, ex.: "01/2026") só
+// existe pros itens de uma ficha já gerada por este sistema (nunca vem do
+// OCR da ficha física — ver fichaEpiOcr.ts) — pedido do Diego (23/09/2026):
+// item com CA novo (corrigido nesta auditoria) exige informar a fabricação
+// de novo (é um equipamento diferente); item sem mudança de CA repete a
+// fabricação já registrada, só editável se precisar corrigir.
+export type ItemFichaEpi = { especificacao: string; ca: string; fabricacao?: string | null };
 
 export type TreinamentoFichaEpi = {
   id: number;
