@@ -45,7 +45,13 @@ import { createWorker } from "tesseract.js";
 import sharp from "sharp";
 import path from "path";
 
-export type ItemFichaEpi = { especificacao: string; ca: string };
+// `fabricacao` (mês/ano de fabricação do equipamento, já normalizado pro
+// formato MM/AAAA usado no resto do sistema, ex.: "07/2024") só vem
+// preenchido quando a coluna FABRICAÇÃO do PDF foi lida com confiança — ver
+// fabricacaoDaLinha. Pedido do Diego (24/09/2026): antes disso, o OCR só
+// lia CA e ESPECIFICAÇÃO; fichas antigas já lidas antes desta mudança
+// continuam sem fabricação até serem relidas ("Reler ficha").
+export type ItemFichaEpi = { especificacao: string; ca: string; fabricacao?: string | null };
 
 export type ResultadoOcrFichaEpi =
   | { ok: true; itens: ItemFichaEpi[] }
@@ -54,6 +60,13 @@ export type ResultadoOcrFichaEpi =
 // Frações (x0 a x1) relativas à LARGURA da página renderizada.
 const COL_CA = { x0: 0.06, x1: 0.12 };
 const COL_ESPECIFICACAO = { x0: 0.195, x1: 0.34 };
+// Calibrado (24/09/2026) na ficha real do Edixon Reinaldo Alcina Martinez —
+// mesmo método das outras duas colunas: detectei as linhas de grade da
+// tabela na página renderizada (300dpi) e recortei um pedaço mais estreito
+// que a coluna inteira (a coluna FABRICAÇÃO vai de ~0.377 a ~0.502 da
+// largura da página; aqui fica só o miolo, evitando pegar um pedacinho da
+// borda/coluna vizinha, mesmo cuidado documentado no topo do arquivo).
+const COL_FABRICACAO = { x0: 0.397, x1: 0.483 };
 // Faixa vertical (relativa à ALTURA) que cobre as 20 linhas da tabela, sem
 // o cabeçalho "ITEM | CA | QTD | ..." acima dela. y0 precisa ficar ANTES do
 // topo da linha 1 (senão a linha 1 fica cortada e nunca é lida).
@@ -88,7 +101,31 @@ const LINHAS_Y = { y0: 0.174, y1: 0.727 };
 // outra). Esses dois textos de cabeçalho são fixos e não têm como colidir
 // com o nome de um equipamento de verdade.
 function ehLinhaDeCabecalho(linhaNormalizada: string): boolean {
-  return linhaNormalizada === "CA" || linhaNormalizada.indexOf("ESPECIFICA") !== -1;
+  return linhaNormalizada === "CA" || linhaNormalizada.indexOf("ESPECIFICA") !== -1 || linhaNormalizada.indexOf("FABRICA") !== -1;
+}
+
+// Mês impresso na ficha como abreviação em português ("jul/24", "mar/24").
+// `normalizarTexto` já troca a barra por espaço, então a linha chega aqui
+// como "JUL 24".
+const MESES_ABREV: Record<string, string> = {
+  JAN: "01", FEV: "02", MAR: "03", ABR: "04", MAI: "05", JUN: "06",
+  JUL: "07", AGO: "08", SET: "09", OUT: "10", NOV: "11", DEZ: "12",
+};
+
+// Devolve a fabricação já no formato MM/AAAA (mesmo formato usado no resto
+// do sistema — ver FABRICACAO_REGEX em gerar-ficha-epi/route.ts e
+// normalizarFabricacao em epiChecklist.ts/app.js), ou null se a linha não
+// tiver o formato "mês abreviado + 2 dígitos de ano" reconhecível — nunca
+// arrisca devolver uma data errada, só "não deu pra ler esse item" (mesma
+// filosofia do resto deste arquivo). Ano de 2 dígitos assumido 20xx: os
+// equipamentos registrados aqui são todos recentes, nunca de antes de 2000.
+function fabricacaoDaLinha(linha: string): string | null {
+  const texto = normalizarTexto(linha);
+  const m = texto.match(/([A-Z]{3})\s*(\d{2})(?!\d)/);
+  if (!m) return null;
+  const mes = MESES_ABREV[m[1]];
+  if (!mes) return null;
+  return `${mes}/${2000 + Number(m[2])}`;
 }
 
 const DPI_RENDER = 300;
@@ -193,9 +230,10 @@ export async function extrairItensFichaEpi(buffer: Buffer): Promise<ResultadoOcr
         .filter(Boolean);
     }
 
-    let [linhasCa, linhasEspecificacao] = await Promise.all([
+    let [linhasCa, linhasEspecificacao, linhasFabricacao] = await Promise.all([
       ocrColuna(COL_CA),
       ocrColuna(COL_ESPECIFICACAO),
+      ocrColuna(COL_FABRICACAO),
     ]);
 
     // Descarta um possível vazamento da linha de cabeçalho (ver comentário
@@ -208,18 +246,25 @@ export async function extrairItensFichaEpi(buffer: Buffer): Promise<ResultadoOcr
     if (linhasEspecificacao.length && ehLinhaDeCabecalho(normalizarTexto(linhasEspecificacao[0]))) {
       linhasEspecificacao = linhasEspecificacao.slice(1);
     }
+    if (linhasFabricacao.length && ehLinhaDeCabecalho(normalizarTexto(linhasFabricacao[0]))) {
+      linhasFabricacao = linhasFabricacao.slice(1);
+    }
 
-    // As duas colunas vêm da mesma faixa vertical, então tendem a produzir
+    // As três colunas vêm da mesma faixa vertical, então tendem a produzir
     // uma linha por item na mesma ordem — casamos pelo índice, só até o
-    // menor tamanho das duas (uma coluna "perder" uma linha é possível,
-    // mas raro depois do recorte isolado).
+    // menor tamanho das três (uma coluna "perder" uma linha é possível, mas
+    // rara depois do recorte isolado). A coluna FABRICAÇÃO costuma sobrar
+    // uma linha de ruído no final (texto de rodapé vazando no recorte) —
+    // por isso ela não entra no cálculo do CA/ESPECIFICAÇÃO de cada linha,
+    // só complementa quando dá pra ler.
     const total = Math.min(linhasCa.length, linhasEspecificacao.length);
     const itens: ItemFichaEpi[] = [];
     for (let i = 0; i < total; i++) {
       const ca = digitosDaLinha(linhasCa[i]);
       const especificacao = normalizarTexto(linhasEspecificacao[i]);
       if (!ca || !especificacao) continue;
-      itens.push({ especificacao, ca });
+      const fabricacao = i < linhasFabricacao.length ? fabricacaoDaLinha(linhasFabricacao[i]) : null;
+      itens.push({ especificacao, ca, fabricacao });
     }
 
     if (!itens.length) {
