@@ -60,6 +60,23 @@ export type ResultadoCaCheck =
   | { status: "conforme"; caFicha: string; especFicha: string }
   | { status: "nao-conforme"; caFicha: string; especFicha: string };
 
+// Pedido do Diego (23/09/2026): igual à conferência de CA, mas pra data de
+// fabricação — o auditor digita o que está escrito no equipamento e o
+// sistema compara com o que já está registrado na Ficha de EPI atual. Uma
+// diferença aqui conta como divergência (gera ficha nova/assinatura) mesmo
+// que o CA em si esteja certo. `sem-fabricacao-registrada` é o caso comum
+// hoje (nenhuma ficha antiga tem fabricação capturada, só as regeneradas
+// por este sistema a partir de agora) — tratado como "não dá pra conferir
+// ainda", nunca como divergência (evitaria marcar TODA ficha antiga como
+// divergente só por falta de dado histórico).
+export type ResultadoFabricacaoCheck =
+  | { status: "vazio" | "sem-colaborador" | "sem-ficha" }
+  | { status: "ocr-falhou"; motivo: string; fichaId: number }
+  | { status: "nao-encontrado" }
+  | { status: "sem-fabricacao-registrada"; especFicha: string }
+  | { status: "conforme"; fabricacaoFicha: string; especFicha: string }
+  | { status: "nao-conforme"; fabricacaoFicha: string; especFicha: string };
+
 export function soDigitos(s: string | null | undefined): string {
   return (s || "").toString().replace(/\D/g, "");
 }
@@ -75,6 +92,27 @@ export function normalizarEspecTexto(s: string | null | undefined): string {
     .trim();
 }
 
+// Mês/ano de fabricação, ex.: "01/2026" — normaliza pra comparar (remove
+// espaços, aceita "1/2026" ou "01/26" tratando como não-comparável — só
+// confia no formato certinho MM/AAAA, o mesmo exigido na tela de assinatura).
+export function normalizarFabricacao(s: string | null | undefined): string {
+  const t = (s || "").toString().trim();
+  return /^\d{2}\/\d{4}$/.test(t) ? t : "";
+}
+
+function encontrarItemFicha(caCheck: CaCheckItem, ficha: TreinamentoFichaEpi): ItemFichaEpi | null {
+  const keywords = caCheck.especKeywords || [];
+  const excluir = caCheck.especKeywordsExcluir || [];
+  const achados = (ficha.epi_itens || []).filter((it) => {
+    const esp = normalizarEspecTexto(it.especificacao);
+    const bate = keywords.some((k) => esp.indexOf(k) !== -1);
+    if (!bate) return false;
+    const excluido = excluir.some((k) => esp.indexOf(k) !== -1);
+    return !excluido;
+  });
+  return achados[0] || null;
+}
+
 export function verificarCaItem(
   caCheck: CaCheckItem,
   nomeColaborador: string | null | undefined,
@@ -88,20 +126,34 @@ export function verificarCaItem(
   if (!ficha.epi_itens || !ficha.epi_itens.length) {
     return { status: "ocr-falhou", motivo: ficha.epi_ocr_erro || "Leitura automática da ficha ainda não disponível.", fichaId: ficha.id };
   }
-  const keywords = caCheck.especKeywords || [];
-  const excluir = caCheck.especKeywordsExcluir || [];
-  const achados = ficha.epi_itens.filter((it) => {
-    const esp = normalizarEspecTexto(it.especificacao);
-    const bate = keywords.some((k) => esp.indexOf(k) !== -1);
-    if (!bate) return false;
-    const excluido = excluir.some((k) => esp.indexOf(k) !== -1);
-    return !excluido;
-  });
-  if (!achados.length) return { status: "nao-encontrado" };
-  const caFicha = soDigitos(achados[0].ca);
-  const especFicha = achados[0].especificacao;
+  const achado = encontrarItemFicha(caCheck, ficha);
+  if (!achado) return { status: "nao-encontrado" };
+  const caFicha = soDigitos(achado.ca);
+  const especFicha = achado.especificacao;
   if (digitado === caFicha) return { status: "conforme", caFicha, especFicha };
   return { status: "nao-conforme", caFicha, especFicha };
+}
+
+export function verificarFabricacaoItem(
+  caCheck: CaCheckItem,
+  nomeColaborador: string | null | undefined,
+  fabricacaoDigitada: string | null | undefined,
+  ficha: TreinamentoFichaEpi | null
+): ResultadoFabricacaoCheck {
+  const digitado = normalizarFabricacao(fabricacaoDigitada);
+  if (!nomeColaborador) return { status: "sem-colaborador" };
+  if (!digitado) return { status: "vazio" };
+  if (!ficha || !ficha.arquivo_path) return { status: "sem-ficha" };
+  if (!ficha.epi_itens || !ficha.epi_itens.length) {
+    return { status: "ocr-falhou", motivo: ficha.epi_ocr_erro || "Leitura automática da ficha ainda não disponível.", fichaId: ficha.id };
+  }
+  const achado = encontrarItemFicha(caCheck, ficha);
+  if (!achado) return { status: "nao-encontrado" };
+  const especFicha = achado.especificacao;
+  const fabricacaoFicha = normalizarFabricacao(achado.fabricacao);
+  if (!fabricacaoFicha) return { status: "sem-fabricacao-registrada", especFicha };
+  if (digitado === fabricacaoFicha) return { status: "conforme", fabricacaoFicha, especFicha };
+  return { status: "nao-conforme", fabricacaoFicha, especFicha };
 }
 
 export type DivergenciaColaborador = {
@@ -109,9 +161,13 @@ export type DivergenciaColaborador = {
   nomeColaborador: string;
   itens: {
     caCheck: CaCheckItem;
-    caFichaAtual: string; // CA que está na ficha hoje (o que vai ser substituído)
     especFichaAtual: string; // texto exato da linha da ficha que bateu — usado pra achar a linha certa (CAs repetidos entre linhas, ex.: cinto/talabarte y/trava-quedas costumam compartilhar o mesmo número, então só comparar CA não basta)
-    caNovo: string; // CA que o auditor digitou/encontrou no equipamento em uso
+    // CA: null quando só a fabricação divergiu (CA em si está certo).
+    caFichaAtual: string | null;
+    caNovo: string | null;
+    // Fabricação: null quando só o CA divergiu (nenhuma fabricação nova
+    // capturada pelo auditor pra esse item nesta auditoria).
+    fabricacaoNova: string | null;
   }[];
 };
 
@@ -135,10 +191,29 @@ export function calcularDivergenciasAuditoria(
 
     for (const caCheck of CA_CHECK_ITEMS) {
       const caDigitado = (r[`${caCheck.keyBase}_${colabIdx}`] || "").toString();
-      const resultado = verificarCaItem(caCheck, nomeColaborador, caDigitado, ficha);
-      if (resultado.status === "nao-conforme") {
-        itens.push({ caCheck, caFichaAtual: resultado.caFicha, especFichaAtual: resultado.especFicha, caNovo: soDigitos(caDigitado) });
-      }
+      const fabKeyBase = caCheck.keyBase.replace(/^ca_/, "fab_");
+      const fabDigitada = (r[`${fabKeyBase}_${colabIdx}`] || "").toString();
+
+      const resultadoCa = verificarCaItem(caCheck, nomeColaborador, caDigitado, ficha);
+      const resultadoFab = verificarFabricacaoItem(caCheck, nomeColaborador, fabDigitada, ficha);
+
+      const caDivergente = resultadoCa.status === "nao-conforme";
+      const fabDivergente = resultadoFab.status === "nao-conforme";
+      if (!caDivergente && !fabDivergente) continue;
+
+      // A especificação/CA "atual" pra achar a linha certa na ficha: vem de
+      // qualquer um dos dois resultados que tenha achado a linha (os dois
+      // procuram a MESMA linha, então nunca discordam sobre ela).
+      const especFichaAtual = (resultadoCa as any).especFicha || (resultadoFab as any).especFicha || "";
+      const caFichaAtual = (resultadoCa as any).caFicha ?? null;
+
+      itens.push({
+        caCheck,
+        especFichaAtual,
+        caFichaAtual,
+        caNovo: caDivergente ? soDigitos(caDigitado) : null,
+        fabricacaoNova: fabDivergente ? normalizarFabricacao(fabDigitada) : null,
+      });
     }
 
     if (itens.length) out.push({ colabIdx, nomeColaborador, itens });

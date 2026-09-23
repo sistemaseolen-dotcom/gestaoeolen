@@ -93,19 +93,30 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       }
 
       const itens = itensAtuais.map((it, idx) => {
-        const divergente = divergentePorIndice.get(idx) || null;
+        const divergencia = divergentePorIndice.get(idx) || null;
+        // Pedido do Diego (24/09/2026): agora a auditoria confere DUAS
+        // coisas por item — CA e data de fabricação — cada uma podendo
+        // divergir independente da outra (ex.: CA certo mas fabricação
+        // desatualizada, ou vice-versa). `divergente` (usado pra destacar a
+        // linha e exigir assinatura de novo) fica true se qualquer uma das
+        // duas divergir.
+        const caDivergente = !!divergencia && divergencia.caNovo != null;
+        const fabricacaoDivergente = !!divergencia && divergencia.fabricacaoNova != null;
         return {
           especificacao: it.especificacao,
           ca: it.ca,
-          divergente: !!divergente,
-          caNovo: divergente ? divergente.caNovo : null,
-          caCheckLabel: divergente ? divergente.caCheck.caCheckLabel : null,
-          // Pedido do Diego (23/09/2026): item com CA novo é um equipamento
-          // diferente — não faz sentido repetir a fabricação antiga, por
-          // isso não manda `fabricacaoAtual` pra esses (a tela exige digitar
-          // de novo). Item sem mudança de CA repete o que já está
-          // registrado, só editável se precisar corrigir.
-          fabricacaoAtual: divergente ? null : it.fabricacao || null,
+          divergente: caDivergente || fabricacaoDivergente,
+          caDivergente,
+          fabricacaoDivergente,
+          caNovo: caDivergente ? divergencia!.caNovo : null,
+          caCheckLabel: divergencia ? divergencia.caCheck.caCheckLabel : null,
+          // Se a fabricação divergiu, já vem o valor que o auditor conferiu
+          // em campo (não precisa digitar de novo na tela de assinatura).
+          // Se só o CA divergiu (equipamento diferente, mas sem fabricação
+          // nova capturada na auditoria), fica em branco — obrigatório
+          // preencher na hora de assinar. Sem nenhuma divergência, repete o
+          // que já estava registrado, editável se precisar corrigir.
+          fabricacaoAtual: fabricacaoDivergente ? divergencia!.fabricacaoNova : caDivergente ? null : it.fabricacao || null,
         };
       });
 
@@ -143,6 +154,8 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
           especificacao: it.especificacao,
           ca: it.ca,
           divergente: false,
+          caDivergente: false,
+          fabricacaoDivergente: false,
           caNovo: null,
           caCheckLabel: null,
           fabricacaoAtual: it.fabricacao || null,

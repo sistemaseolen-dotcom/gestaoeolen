@@ -1685,6 +1685,27 @@
       .toUpperCase().replace(/[^A-Z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
   }
 
+  // Mês/ano de fabricação, ex.: "01/2026" — só aceita esse formato certinho
+  // pra comparar (mesma regra da tela de assinatura da Ficha de EPI
+  // regenerada); qualquer outra coisa não é comparável.
+  function normalizarFabricacao(s) {
+    var t = (s || "").toString().trim();
+    return /^\d{2}\/\d{4}$/.test(t) ? t : "";
+  }
+
+  function achaItemNaFicha(caCheck, ficha) {
+    var keywords = caCheck.especKeywords || [];
+    var excluir = caCheck.especKeywordsExcluir || [];
+    var achados = (ficha.epiItens || []).filter(function (it) {
+      var esp = normalizarEspecTexto(it.especificacao);
+      var bate = keywords.some(function (k) { return esp.indexOf(k) !== -1; });
+      if (!bate) return false;
+      var excluido = excluir.some(function (k) { return esp.indexOf(k) !== -1; });
+      return !excluido;
+    });
+    return achados[0] || null;
+  }
+
   // Acha o treinamento "FICHA DE EPI" da pessoa pelo NOME (é assim que
   // `a.colaboradores` guarda quem participou da auditoria — ver
   // pessoaComboHtml/colabInputsHtml).
@@ -1723,20 +1744,36 @@
     if (!ficha.epiItens || !ficha.epiItens.length) {
       return { status: "ocr-falhou", motivo: ficha.epiOcrErro || "Leitura automática da ficha ainda não disponível.", fichaId: ficha.id };
     }
-    var keywords = caCheck.especKeywords || [];
-    var excluir = caCheck.especKeywordsExcluir || [];
-    var achados = ficha.epiItens.filter(function (it) {
-      var esp = normalizarEspecTexto(it.especificacao);
-      var bate = keywords.some(function (k) { return esp.indexOf(k) !== -1; });
-      if (!bate) return false;
-      var excluido = excluir.some(function (k) { return esp.indexOf(k) !== -1; });
-      return !excluido;
-    });
-    if (!achados.length) return { status: "nao-encontrado" };
-    var caFicha = soDigitos(achados[0].ca);
-    var especFicha = achados[0].especificacao;
+    var achado = achaItemNaFicha(caCheck, ficha);
+    if (!achado) return { status: "nao-encontrado" };
+    var caFicha = soDigitos(achado.ca);
+    var especFicha = achado.especificacao;
     if (digitado === caFicha) return { status: "conforme", caFicha: caFicha, especFicha: especFicha };
     return { status: "nao-conforme", caFicha: caFicha, especFicha: especFicha };
+  }
+
+  // Igual a verificarCaItem, mas pra data de fabricação (pedido do Diego,
+  // 24/09/2026: segunda verificação, independente do CA — equipamento pode
+  // ter o CA certo e a fabricação desatualizada, ou vice-versa).
+  // "sem-fabricacao-registrada" é o caso comum hoje (fichas antigas nunca
+  // tiveram fabricação capturada) — tratado como "não dá pra conferir
+  // ainda", nunca como divergência.
+  function verificarFabricacaoItem(caCheck, nomeColaborador, fabricacaoDigitada, fichaPreCarregada) {
+    var digitado = normalizarFabricacao(fabricacaoDigitada);
+    if (!nomeColaborador) return { status: "sem-colaborador" };
+    if (!digitado) return { status: "vazio" };
+    var ficha = fichaPreCarregada !== undefined ? fichaPreCarregada : buscarFichaEpiPessoa(nomeColaborador);
+    if (!ficha || !ficha.arquivoPath) return { status: "sem-ficha" };
+    if (!ficha.epiItens || !ficha.epiItens.length) {
+      return { status: "ocr-falhou", motivo: ficha.epiOcrErro || "Leitura automática da ficha ainda não disponível.", fichaId: ficha.id };
+    }
+    var achado = achaItemNaFicha(caCheck, ficha);
+    if (!achado) return { status: "nao-encontrado" };
+    var especFicha = achado.especificacao;
+    var fabricacaoFicha = normalizarFabricacao(achado.fabricacao);
+    if (!fabricacaoFicha) return { status: "sem-fabricacao-registrada", especFicha: especFicha };
+    if (digitado === fabricacaoFicha) return { status: "conforme", fabricacaoFicha: fabricacaoFicha, especFicha: especFicha };
+    return { status: "nao-conforme", fabricacaoFicha: fabricacaoFicha, especFicha: especFicha };
   }
 
   function caCheckStatusHtml(resultado) {
@@ -1762,19 +1799,43 @@
       '<span class="ca-check-status ' + info.cls + '">' + esc(info.texto) + "</span>" + botaoReler + "</span>";
   }
 
+  function fabricacaoCheckStatusHtml(resultado) {
+    var mapa = {
+      "vazio": { cls: "neutral", texto: "Digite a fabricação (MM/AAAA) pra conferir" },
+      "sem-colaborador": { cls: "neutral", texto: "Selecione o colaborador na aba de dados da auditoria" },
+      "sem-ficha": { cls: "neutral", texto: "Pessoa sem Ficha de EPI anexada no cadastro" },
+      "ocr-falhou": { cls: "neutral", texto: "Não deu pra ler a ficha automaticamente" },
+      "nao-encontrado": { cls: "neutral", texto: "Item não encontrado na ficha da pessoa" },
+      "sem-fabricacao-registrada": { cls: "neutral", texto: "Ficha atual não tem fabricação registrada ainda" },
+      "conforme": { cls: "ok", texto: "Conforme" },
+      "nao-conforme": { cls: "danger", texto: "Não confere (ficha: " + esc(resultado.fabricacaoFicha || "") + ")" }
+    };
+    var info = mapa[resultado.status] || mapa["vazio"];
+    return '<span data-fab-status style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+      '<span class="ca-check-status ' + info.cls + '">' + esc(info.texto) + "</span></span>";
+  }
+
   function caCheckHtml(a, item, colabIdx) {
     var caCheck = item.caCheck;
     if (!caCheck) return "";
     var key = caCheck.keyBase + "_" + colabIdx;
+    var fabKey = caCheck.keyBase.replace(/^ca_/, "fab_") + "_" + colabIdx;
     var atual = ((a.respostas || {})[key] || "").toString();
+    var fabAtual = ((a.respostas || {})[fabKey] || "").toString();
     var nomeColaborador = (a.colaboradores || [])[colabIdx - 1] || "";
     var resultado = verificarCaItem(caCheck, nomeColaborador, atual);
-    // no-print: a conferência de CA é uma ferramenta de trabalho do auditor
-    // dentro do sistema (digitar o CA e ver se bate com a ficha) — não faz
-    // sentido nem deve aparecer no PDF exportado, só na tela (pedido do Diego).
+    var resultadoFab = verificarFabricacaoItem(caCheck, nomeColaborador, fabAtual);
+    // no-print: a conferência de CA/fabricação é uma ferramenta de trabalho
+    // do auditor dentro do sistema (digitar e ver se bate com a ficha) — não
+    // faz sentido nem deve aparecer no PDF exportado, só na tela (pedido do
+    // Diego). Pedido do Diego (24/09/2026): além do CA, confere também a
+    // data de fabricação (MM/AAAA) do equipamento — as duas são
+    // independentes, uma pode divergir sem a outra.
     return '<div class="ca-check no-print" data-ca-check data-ca-key="' + esc(key) + '" data-colab-idx="' + colabIdx + '" data-item-n="' + item.n + '">' +
       '<input type="text" inputmode="numeric" class="ca-check-input" data-no-uppercase data-ca-input placeholder="Nº do CA" value="' + esc(atual) + '">' +
       caCheckStatusHtml(resultado) +
+      '<input type="text" class="ca-check-input" data-no-uppercase data-fab-input data-fab-key="' + esc(fabKey) + '" placeholder="Fabricação (MM/AAAA)" maxlength="7" value="' + esc(fabAtual) + '" style="margin-top:6px;">' +
+      fabricacaoCheckStatusHtml(resultadoFab) +
       "</div>";
   }
 
@@ -1912,6 +1973,35 @@
         clearTimeout(salvarDebounced);
         salvarDebounced = setTimeout(function () {
           var patch = {}; patch[key] = valor;
+          setSaveDot("saving");
+          apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { respostas: patch } })
+            .then(function () { setSaveDot(null); })
+            .catch(function (err) { setSaveDot("error"); handleApiError(err); });
+        }, 600);
+      });
+    });
+    $all("[data-fab-input]", container).forEach(function (input) {
+      // Mesmo padrão do [data-ca-input] acima, mas pra data de fabricação —
+      // segunda verificação pedida pelo Diego (24/09/2026), independente do
+      // CA (ver verificarFabricacaoItem).
+      var wrap = input.closest("[data-ca-check]");
+      var fabKey = input.getAttribute("data-fab-key");
+      var colabIdx = Number(wrap.getAttribute("data-colab-idx"));
+      var itemN = Number(wrap.getAttribute("data-item-n"));
+      var item = AUDITORIA_ITEMS_NOKIA.filter(function (it) { return it.n === itemN; })[0];
+      var salvarDebounced = null;
+      input.addEventListener("input", function () {
+        if (!canDo("auditorias", "editar")) { toast("Você não tem permissão para editar esta auditoria.", "error"); return; }
+        var valor = input.value;
+        a.respostas = a.respostas || {};
+        a.respostas[fabKey] = valor;
+        var nomeColaborador = (a.colaboradores || [])[colabIdx - 1] || "";
+        var resultado = verificarFabricacaoItem(item.caCheck, nomeColaborador, valor);
+        var statusEl = wrap.querySelector("[data-fab-status]");
+        if (statusEl) statusEl.outerHTML = fabricacaoCheckStatusHtml(resultado);
+        clearTimeout(salvarDebounced);
+        salvarDebounced = setTimeout(function () {
+          var patch = {}; patch[fabKey] = valor;
           setSaveDot("saving");
           apiFetch("/api/auditorias/" + a.id, { method: "PATCH", body: { respostas: patch } })
             .then(function () { setSaveDot(null); })
@@ -2347,14 +2437,17 @@
     draw();
   }
 
-  // Pedido do Diego: quando uma auditoria concluída tiver CA "não confere"
-  // em algum item, aparece aqui o botão pra iniciar o fluxo de regenerar a
-  // Ficha de EPI (nova ficha, mesmo padrão, com o CA corrigido e assinatura
-  // na tela) — ver #/auditorias/:id/ficha-epi.
+  // Pedido do Diego: quando uma auditoria concluída tiver CA ou fabricação
+  // "não confere" em algum item, aparece aqui o botão pra iniciar o fluxo de
+  // regenerar a Ficha de EPI (nova ficha, mesmo padrão, com os dados
+  // corrigidos e assinatura na tela) — ver #/auditorias/:id/ficha-epi.
+  // `temCaDivergente` (nome mantido por compatibilidade com a coluna do
+  // banco) na verdade cobre as duas verificações — CA e fabricação — desde
+  // a checagem dupla (24/09/2026).
   function fichaEpiBotaoHtml(a) {
     if ((!a.temCaDivergente && !a.temPendenciaAssinatura) || a.status !== "CONCLUIDO") return "—";
     if (!canDo("auditorias", "editar")) {
-      return '<span class="pill warn">' + (a.temCaDivergente ? "CA divergente" : "Assinatura pendente") + "</span>";
+      return '<span class="pill warn">' + (a.temCaDivergente ? "Divergência na Ficha de EPI" : "Assinatura pendente") + "</span>";
     }
     return '<button type="button" class="btn sm" data-ficha-epi="' + a.id + '">' + ICONS.alert + "Gerar ficha de EPI</button>";
   }
@@ -2400,10 +2493,10 @@
 
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditoria</button><h1 style="margin-top:6px;">Gerar ficha de EPI</h1>' +
-      '<div class="sub">Colaboradores desta auditoria com CA divergente ou assinatura pendente na Ficha de EPI</div></div></div>' +
+      '<div class="sub">Colaboradores desta auditoria com CA e/ou fabricação divergente, ou assinatura pendente na Ficha de EPI</div></div></div>' +
       (colaboradores.length
         ? '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Colaborador</th><th>Função</th><th>Empresa</th><th>Pendência</th><th></th></tr></thead><tbody>' + body + "</tbody></table></div></div>"
-        : '<div class="panel"><div class="empty-state">' + ICONS.inbox + "<div>Nenhuma divergência de CA ou assinatura pendente nesta auditoria.</div></div></div>");
+        : '<div class="panel"><div class="empty-state">' + ICONS.inbox + "<div>Nenhuma divergência de CA/fabricação ou assinatura pendente nesta auditoria.</div></div></div>");
 
     $("#back-btn").addEventListener("click", function () { navigate("#/auditorias/" + id); });
     $all("[data-nome]", main).forEach(function (btn) {
@@ -2441,21 +2534,32 @@
     var assinado = itens.map(function () { return false; });
 
     var rows = itens.map(function (it, idx) {
-      var caHtml = it.divergente
+      // Pedido do Diego (24/09/2026): CA e fabricação agora divergem cada um
+      // por conta própria (`caDivergente` / `fabricacaoDivergente`), então o
+      // "de → para" do CA só aparece quando o CA em si mudou — se só a
+      // fabricação divergiu, `caNovo` vem null e o CA continua o mesmo.
+      var caHtml = it.caDivergente
         ? '<span class="mono" style="text-decoration:line-through;color:var(--ink-faint);">' + esc(it.ca) + "</span> → " +
           '<span class="mono" style="font-weight:700;">' + esc(it.caNovo) + "</span>"
         : '<span class="mono">' + esc(it.ca) + "</span>";
-      // Pedido do Diego (23/09/2026): item com CA corrigido é um equipamento
-      // diferente — a fabricação precisa ser informada de novo (obrigatório,
-      // começa vazio). Item sem mudança de CA repete a fabricação já
-      // registrada na ficha (se tiver), só editável se precisar corrigir.
-      var fabricacaoValor = it.divergente ? "" : (it.fabricacaoAtual || "");
+      // Fabricação: obrigatória (começa vazia) só quando o CA mudou e a
+      // auditoria não capturou fabricação nova pra esse item. Quando a
+      // fabricação divergiu na auditoria, já vem preenchida com o valor
+      // conferido em campo (editável, mas não em branco). Sem nenhuma
+      // divergência, repete o que já estava registrado, editável se precisar.
+      var fabricacaoValor = it.fabricacaoAtual || "";
+      var fabricacaoObrigatoria = it.caDivergente && !fabricacaoValor;
+      var fabricacaoHint = fabricacaoObrigatoria
+        ? '<div class="hint" style="margin-top:2px;">Obrigatório (CA novo)</div>'
+        : (it.fabricacaoDivergente ? '<div class="hint" style="margin-top:2px;">Atualizado na auditoria</div>' : "");
       var fabricacaoHtml =
         '<input type="text" class="ficha-epi-fabricacao-input" id="ficha-epi-fab-' + idx + '" placeholder="MM/AAAA" maxlength="7" ' +
-        'value="' + esc(fabricacaoValor) + '" />' +
-        (it.divergente ? '<div class="hint" style="margin-top:2px;">Obrigatório (CA novo)</div>' : "");
+        'value="' + esc(fabricacaoValor) + '" />' + fabricacaoHint;
+      var tags = "";
+      if (it.caDivergente) tags += ' <span class="tag">CA corrigido</span>';
+      if (it.fabricacaoDivergente) tags += ' <span class="tag">Fabricação atualizada</span>';
       return '<tr' + (it.divergente ? ' class="row-divergente"' : "") + '>' +
-        "<td>" + esc(it.especificacao) + (it.divergente ? ' <span class="tag">CA corrigido</span>' : "") + "</td>" +
+        "<td>" + esc(it.especificacao) + tags + "</td>" +
         "<td>" + caHtml + "</td>" +
         "<td>" + fabricacaoHtml + "</td>" +
         '<td><canvas class="assinatura-canvas-sm" id="ficha-epi-sig-' + idx + '" width="360" height="120"></canvas>' +
@@ -2466,7 +2570,7 @@
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Colaboradores</button><h1 style="margin-top:6px;">Ficha de EPI — ' + esc(colab.nomeColaborador) + "</h1>" +
       '<div class="sub">' + esc(pessoa.cargo || "—") + " · " + esc(pessoa.empresaNome || "—") + "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Itens</h3></div><div class="panel-body pad">' +
-      '<div class="hint" style="margin-bottom:10px;">Peça pro colaborador assinar com o dedo (ou o mouse) em cada item, confirmando a entrega/conferência do EPI. Os itens marcados com "CA corrigido" tiveram o número do CA atualizado nesta auditoria e exigem informar a fabricação (MM/AAAA) de novo; os demais repetem os dados da ficha atual, mas a fabricação pode ser editada se precisar.</div>' +
+      '<div class="hint" style="margin-bottom:10px;">Peça pro colaborador assinar com o dedo (ou o mouse) em cada item, confirmando a entrega/conferência do EPI. Os itens marcados com "CA corrigido" tiveram o número do CA atualizado nesta auditoria e exigem informar a fabricação (MM/AAAA), se ainda não vier preenchida; os marcados com "Fabricação atualizada" já vêm com a data conferida em campo (pode ajustar se precisar); os demais repetem os dados da ficha atual, mas a fabricação pode ser editada se precisar.</div>' +
       '<div class="table-scroll"><table class="data"><thead><tr><th>Especificação</th><th>CA</th><th>Fabricação</th><th style="min-width:220px;">Assinatura</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
       "</div></div>" +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn primary" id="btn-finalizar-ficha-epi">Finalizar e gerar PDF</button></div>';
@@ -2497,11 +2601,14 @@
         return;
       }
       // Pedido do Diego: fabricação é obrigatória pra item com CA corrigido
-      // (equipamento novo), e sempre precisa estar no formato MM/AAAA quando
-      // preenchida (mesmo nos itens sem mudança de CA, onde é opcional).
+      // (equipamento novo) — mesmo quando a auditoria já capturou a
+      // fabricação nova pra esse item (o input vem pré-preenchido nesse
+      // caso, então normalmente já não está vazio). Sempre precisa estar no
+      // formato MM/AAAA quando preenchida (mesmo nos itens sem mudança de
+      // CA, onde é opcional).
       for (var i = 0; i < itens.length; i++) {
         var fabricacao = fabInputs[i].value.trim();
-        if (itens[i].divergente && !fabricacao) {
+        if (itens[i].caDivergente && !fabricacao) {
           toast('Informe a data de fabricação (MM/AAAA) do item "' + itens[i].especificacao + '" — o CA foi corrigido.', "error");
           fabInputs[i].focus();
           return;
@@ -2520,10 +2627,13 @@
         itens: itens.map(function (it, idx) {
           return {
             especificacao: it.especificacao,
-            ca: it.divergente ? it.caNovo : it.ca,
+            // Só troca o CA quando o CA em si divergiu — se só a fabricação
+            // divergiu, `it.caNovo` vem null do servidor e o CA continua o
+            // mesmo já registrado (`it.ca`).
+            ca: it.caDivergente ? it.caNovo : it.ca,
             fabricacao: fabInputs[idx].value.trim(),
             assinaturaPngBase64: canvases[idx].toDataURL("image/png"),
-            alterado: !!it.divergente
+            alterado: !!it.caDivergente
           };
         })
       };
