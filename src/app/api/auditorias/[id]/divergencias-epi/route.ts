@@ -23,18 +23,37 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const colaboradores: string[] = auditoria.colaboradores || [];
   const fichaPorNome = await carregarFichasPorNome(admin, colaboradores);
   const divergencias = calcularDivergenciasAuditoria(auditoria.respostas, colaboradores, fichaPorNome);
+  const nomesComDivergencia = new Set(divergencias.map((d) => d.nomeColaborador));
 
-  if (!divergencias.length) {
+  // Pedido do Diego (23/09/2026): um colaborador cujo CA já foi corrigido mas
+  // que ainda assinou só com o marcador em branco (ver
+  // src/lib/assinaturaPlaceholder.ts e a rota POST gerar-ficha-epi) precisa
+  // continuar aparecendo aqui — junto com quem tem CA divergente de verdade —
+  // até alguém assinar pra valer. Isso não é uma divergência de CA (o número
+  // já está certo), então não entra em `calcularDivergenciasAuditoria`; é
+  // buscado à parte pela pendência de GPO ainda aberta.
+  const { data: pendenciasAssinatura } = await admin
+    .from("gpo_pendencias")
+    .select("pessoa_nome")
+    .eq("auditoria_id", id)
+    .eq("regularizado", false)
+    .eq("assinatura_pendente", true);
+  const nomesPendenteAssinatura = Array.from(
+    new Set((pendenciasAssinatura || []).map((p: any) => p.pessoa_nome as string).filter((nome) => !nomesComDivergencia.has(nome)))
+  );
+
+  if (!divergencias.length && !nomesPendenteAssinatura.length) {
     return NextResponse.json({ auditoriaId: id, colaboradores: [] });
   }
 
   // Dados de pessoa/empresa pro cabeçalho da ficha (CPF, empresa, CNPJ,
-  // função) — só busca de quem realmente tem divergência.
-  const nomesComDivergencia = divergencias.map((d) => d.nomeColaborador);
+  // função) — só busca de quem realmente tem algo pendente (divergência ou
+  // assinatura).
+  const nomesRelevantes = [...nomesComDivergencia, ...nomesPendenteAssinatura];
   const { data: pessoas } = await admin
     .from("pessoas")
     .select("id, nome, cpf, cargo, empresa_id, empresa_nome")
-    .in("nome", nomesComDivergencia);
+    .in("nome", nomesRelevantes);
   const pessoaPorNome = new Map((pessoas || []).map((p: any) => [p.nome, p]));
 
   const empresaIds = Array.from(new Set((pessoas || []).map((p: any) => p.empresa_id).filter((v: any) => v != null)));
@@ -88,6 +107,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         colabIdx: d.colabIdx,
         nomeColaborador: d.nomeColaborador,
         qtdItensDivergentes: d.itens.length,
+        pendenteAssinatura: false,
         pessoa: pessoa
           ? { id: pessoa.id, cpf: pessoa.cpf, cargo: pessoa.cargo, empresaNome: pessoa.empresa_nome, cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null }
           : null,
@@ -95,5 +115,33 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
       };
     });
 
-  return NextResponse.json({ auditoriaId: id, colaboradores: resultado });
+  // Colaboradores só com assinatura pendente (CA já certo) — repete a ficha
+  // atual inteira, sem nenhum item marcado como "divergente" (decisão do
+  // Diego #2: repete os dados de hoje; aqui nem teve mudança de CA, é só
+  // re-assinar). Filtra por `somenteNome` do mesmo jeito que os divergentes.
+  const resultadoAssinaturaPendente = nomesPendenteAssinatura
+    .filter((nome) => !somenteNome || nome === somenteNome)
+    .map((nome) => {
+      const ficha = fichaPorNome.get(nome) || null;
+      const pessoa = pessoaPorNome.get(nome) as any;
+      const itensAtuais = (ficha?.epi_itens || []) as { especificacao: string; ca: string }[];
+      return {
+        colabIdx: colaboradores.indexOf(nome) + 1,
+        nomeColaborador: nome,
+        qtdItensDivergentes: 0,
+        pendenteAssinatura: true,
+        pessoa: pessoa
+          ? { id: pessoa.id, cpf: pessoa.cpf, cargo: pessoa.cargo, empresaNome: pessoa.empresa_nome, cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null }
+          : null,
+        itens: itensAtuais.map((it) => ({
+          especificacao: it.especificacao,
+          ca: it.ca,
+          divergente: false,
+          caNovo: null,
+          caCheckLabel: null,
+        })),
+      };
+    });
+
+  return NextResponse.json({ auditoriaId: id, colaboradores: [...resultado, ...resultadoAssinaturaPendente] });
 }

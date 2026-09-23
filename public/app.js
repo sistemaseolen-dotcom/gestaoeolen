@@ -577,6 +577,13 @@
       // confere" numa auditoria concluída, aparece o botão "Gerar ficha de
       // EPI" na listagem, sem precisar abrir a auditoria pra descobrir.
       temCaDivergente: !!row.tem_ca_divergente,
+      // Pedido do Diego (23/09/2026): distinto de temCaDivergente — o CA já
+      // está certo, mas a última regeneração da Ficha de EPI usou assinatura
+      // em branco (correção feita direto pela API) e falta alguém assinar de
+      // verdade. Também mostra o botão "Gerar ficha de EPI" (ver
+      // fichaEpiBotaoHtml) e junta esse colaborador na mesma tela dos que
+      // têm CA divergente.
+      temPendenciaAssinatura: !!row.tem_pendencia_assinatura,
       colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null,
       observacaoFinal: row.observacao_final,
       criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
@@ -2345,8 +2352,10 @@
   // Ficha de EPI (nova ficha, mesmo padrão, com o CA corrigido e assinatura
   // na tela) — ver #/auditorias/:id/ficha-epi.
   function fichaEpiBotaoHtml(a) {
-    if (!a.temCaDivergente || a.status !== "CONCLUIDO") return "—";
-    if (!canDo("auditorias", "editar")) return '<span class="pill warn">CA divergente</span>';
+    if ((!a.temCaDivergente && !a.temPendenciaAssinatura) || a.status !== "CONCLUIDO") return "—";
+    if (!canDo("auditorias", "editar")) {
+      return '<span class="pill warn">' + (a.temCaDivergente ? "CA divergente" : "Assinatura pendente") + "</span>";
+    }
     return '<button type="button" class="btn sm" data-ficha-epi="' + a.id + '">' + ICONS.alert + "Gerar ficha de EPI</button>";
   }
 
@@ -2383,16 +2392,18 @@
         "<td>" + esc(c.nomeColaborador) + "</td>" +
         "<td>" + esc(pessoa.cargo || "—") + "</td>" +
         "<td>" + esc(pessoa.empresaNome || "—") + "</td>" +
-        '<td><span class="pill warn">' + c.qtdItensDivergentes + " item" + (c.qtdItensDivergentes === 1 ? "" : "s") + "</span></td>" +
+        "<td>" + (c.pendenteAssinatura
+          ? '<span class="pill warn">Assinatura pendente</span>'
+          : '<span class="pill warn">' + c.qtdItensDivergentes + " item" + (c.qtdItensDivergentes === 1 ? "" : "s") + "</span>") + "</td>" +
         '<td><button type="button" class="btn sm primary" data-nome="' + esc(c.nomeColaborador) + '">Preencher ficha</button></td></tr>';
     }).join("");
 
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditoria</button><h1 style="margin-top:6px;">Gerar ficha de EPI</h1>' +
-      '<div class="sub">Colaboradores desta auditoria com CA divergente na Ficha de EPI</div></div></div>' +
+      '<div class="sub">Colaboradores desta auditoria com CA divergente ou assinatura pendente na Ficha de EPI</div></div></div>' +
       (colaboradores.length
-        ? '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Colaborador</th><th>Função</th><th>Empresa</th><th>Divergências</th><th></th></tr></thead><tbody>' + body + "</tbody></table></div></div>"
-        : '<div class="panel"><div class="empty-state">' + ICONS.inbox + "<div>Nenhuma divergência de CA pendente nesta auditoria.</div></div></div>");
+        ? '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Colaborador</th><th>Função</th><th>Empresa</th><th>Pendência</th><th></th></tr></thead><tbody>' + body + "</tbody></table></div></div>"
+        : '<div class="panel"><div class="empty-state">' + ICONS.inbox + "<div>Nenhuma divergência de CA ou assinatura pendente nesta auditoria.</div></div></div>");
 
     $("#back-btn").addEventListener("click", function () { navigate("#/auditorias/" + id); });
     $all("[data-nome]", main).forEach(function (btn) {
@@ -2409,7 +2420,7 @@
       .then(function (data) {
         var colab = (data.colaboradores || [])[0];
         if (!colab) {
-          toast("Esse colaborador não tem (mais) divergência de CA pendente nesta auditoria.", "error");
+          toast("Esse colaborador não tem (mais) divergência de CA ou assinatura pendente nesta auditoria.", "error");
           navigate("#/auditorias/" + id + "/ficha-epi");
           return;
         }

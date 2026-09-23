@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { normalizarEspecTexto, soDigitos } from "@/lib/epiChecklist";
+import { carregarFichasPorNome, normalizarEspecTexto, soDigitos, temAlgumaDivergencia } from "@/lib/epiChecklist";
 import { gerarFichaEpiPdf, type ItemFichaGerada } from "@/lib/gerarFichaEpiPdf";
+import { ASSINATURA_PLACEHOLDER_BASE64 } from "@/lib/assinaturaPlaceholder";
 
 const BUCKET = "treinamentos-anexos";
 
@@ -156,7 +157,28 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .single();
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
 
+  // Qualquer pendência de GPO anterior desta MESMA ficha que ainda estivesse
+  // aberta (regularizado=false) — seja por CA divergente, seja por
+  // assinatura pendente — se refere a um arquivo que acabou de ser
+  // substituído acima. Fecha ela automaticamente (regularizado=true) pra não
+  // deixar entrada duplicada/obsoleta no indicador do Painel; a pendência
+  // válida agora é a nova, inserida embaixo.
+  await admin
+    .from("gpo_pendencias")
+    .update({ regularizado: true, regularizado_em: new Date().toISOString() })
+    .eq("treinamento_id", treino.id)
+    .eq("regularizado", false);
+
   const itensAlterados = itensPdf.filter((it) => it.alterado);
+
+  // Pedido do Diego (23/09/2026): se TODOS os itens vieram com o marcador de
+  // assinatura em branco (ver assinaturaPlaceholder.ts) em vez de um traço
+  // real desenhado no canvas, essa regeneração ainda não está "pronta de
+  // verdade" — só corrigiu o CA, falta alguém assinar. Marca isso na
+  // pendência de GPO e na própria auditoria, pra esse colaborador continuar
+  // aparecendo na tela "Gerar ficha de EPI" (junto com quem tem CA
+  // divergente) até a assinatura de verdade acontecer.
+  const semAssinaturaReal = itensBody.every((it) => it.assinaturaPngBase64 === ASSINATURA_PLACEHOLDER_BASE64);
 
   const { data: pendencia, error: pendenciaError } = await admin
     .from("gpo_pendencias")
@@ -167,6 +189,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       auditoria_id: id,
       arquivo_path: novoPath,
       itens_alterados: itensAlterados.map((it) => ({ especificacao: it.especificacao, ca: it.ca })),
+      assinatura_pendente: semAssinaturaReal,
       criado_por_id: gate.user?.id ?? null,
       criado_por_nome: gate.user?.nome ?? null,
     })
@@ -177,6 +200,30 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     // uma falha só na fila de pendências do GPO, mas avisa no retorno.
     console.error(`Falha ao criar pendência de GPO (treinamento ${treino.id}):`, pendenciaError.message);
   }
+
+  // Recalcula se ESSA auditoria ainda tem alguma pendência de assinatura em
+  // aberto (pode haver mais de um colaborador nessa situação) — é o que
+  // decide, junto com tem_ca_divergente, se o botão "Gerar ficha de EPI"
+  // continua aparecendo na listagem (ver GET /api/auditorias e /api/state).
+  const { data: pendenciasAssinaturaAbertas } = await admin
+    .from("gpo_pendencias")
+    .select("id")
+    .eq("auditoria_id", id)
+    .eq("regularizado", false)
+    .eq("assinatura_pendente", true);
+  // Também reconfere se ainda sobra alguma divergência de CA "de verdade"
+  // nesta auditoria (pode haver outros colaboradores/itens além deste) — o
+  // CA que acabou de ser corrigido aqui não conta mais.
+  const fichaPorNomeAtualizada = await carregarFichasPorNome(admin, auditoria.colaboradores || []);
+  const aindaTemCaDivergente = temAlgumaDivergencia(auditoria.respostas, auditoria.colaboradores || [], fichaPorNomeAtualizada);
+
+  await admin
+    .from("auditorias")
+    .update({
+      tem_pendencia_assinatura: (pendenciasAssinaturaAbertas || []).length > 0,
+      tem_ca_divergente: aindaTemCaDivergente,
+    })
+    .eq("id", id);
 
   const resumoItens = itensAlterados.map((it) => `${it.especificacao}: CA -> ${it.ca}`).join("; ") || "—";
   await admin.from("audit_log").insert({
