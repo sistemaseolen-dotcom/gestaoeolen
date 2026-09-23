@@ -572,6 +572,11 @@
       id: row.id, legacyId: row.legacy_id, standard: row.standard, siteId: row.site_id, empresa: row.empresa,
       regional: row.regional || null,
       data: row.data, status: row.status, inspetorNome: row.inspetor_nome, numColaboradores: row.num_colaboradores,
+      // Recalculado no servidor a cada vez que respostas/status são salvos
+      // (ver PATCH /api/auditorias/[id]) — pedido do Diego: com CA "não
+      // confere" numa auditoria concluída, aparece o botão "Gerar ficha de
+      // EPI" na listagem, sem precisar abrir a auditoria pra descobrir.
+      temCaDivergente: !!row.tem_ca_divergente,
       colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null,
       observacaoFinal: row.observacao_final,
       criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
@@ -631,7 +636,15 @@
   function currentRoute() {
     var h = location.hash.replace(/^#\/?/, "");
     var parts = h.split("/").filter(Boolean);
-    return { view: parts[0] || "treinamentos", id: parts[1] || null };
+    // `sub`/`extra` — segmentos extras além de {view, id}, usados pelo fluxo
+    // de "Gerar ficha de EPI" (#/auditorias/:id/ficha-epi[/:colaborador]).
+    // Todo o resto da app continua usando só {view, id}.
+    return {
+      view: parts[0] || "treinamentos",
+      id: parts[1] || null,
+      sub: parts[2] || null,
+      extra: parts[3] ? decodeURIComponent(parts[3]) : null
+    };
   }
 
   function navigate(hash) { location.hash = hash; }
@@ -2287,7 +2300,8 @@
           "<td>" + esc(a.inspetorNome || "—") + "</td>" +
           "<td>" + esc(modalidadeLabel) + "</td>" +
           "<td>" + esc(a.criadoPorNome || "—") + "</td>" +
-          "<td>" + statusPillAuditoria(a.status) + "</td></tr>";
+          "<td>" + statusPillAuditoria(a.status) + "</td>" +
+          "<td>" + fichaEpiBotaoHtml(a) + "</td></tr>";
       }).join("");
       var toolbar =
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="auditoria-q" placeholder="Buscar por site, empresa ou inspetor…" value="' + esc(ui.q) + '"></div>' +
@@ -2304,7 +2318,7 @@
         auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th>",
+          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th><th>Ficha de EPI</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada."
         });
@@ -2315,9 +2329,174 @@
       $("#auditoria-cliente").addEventListener("change", function (e) { ui.cliente = e.target.value; ui.page = 1; draw(); });
       $("#auditoria-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/auditorias/" + row.getAttribute("data-id")); }); });
+      $all("[data-ficha-epi]", main).forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          navigate("#/auditorias/" + btn.getAttribute("data-ficha-epi") + "/ficha-epi");
+        });
+      });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
     }
     draw();
+  }
+
+  // Pedido do Diego: quando uma auditoria concluída tiver CA "não confere"
+  // em algum item, aparece aqui o botão pra iniciar o fluxo de regenerar a
+  // Ficha de EPI (nova ficha, mesmo padrão, com o CA corrigido e assinatura
+  // na tela) — ver #/auditorias/:id/ficha-epi.
+  function fichaEpiBotaoHtml(a) {
+    if (!a.temCaDivergente || a.status !== "CONCLUIDO") return "—";
+    if (!canDo("auditorias", "editar")) return '<span class="pill warn">CA divergente</span>';
+    return '<button type="button" class="btn sm" data-ficha-epi="' + a.id + '">' + ICONS.alert + "Gerar ficha de EPI</button>";
+  }
+
+  /* ================================================================
+     AUDITORIAS — Gerar ficha de EPI (pedido do Diego): depois de uma
+     auditoria concluída achar um CA "não confere", esse fluxo gera uma
+     Ficha de EPI nova (mesmo padrão do formulário) já com o CA corrigido,
+     assinada na tela (com o dedo), item por item — sem precisar imprimir e
+     assinar em papel de novo.
+     Duas telas, ambas fora do drawer (rotas próprias):
+       #/auditorias/:id/ficha-epi                → lista de colaboradores
+         com divergência nesta auditoria (renderFichaEpiColaboradores)
+       #/auditorias/:id/ficha-epi/:nomeColaborador → a ficha completa desse
+         colaborador pra revisar e assinar cada item (renderFichaEpiAssinatura)
+     Dados vêm de GET /api/auditorias/[id]/divergencias-epi; o envio final
+     vai pra POST /api/auditorias/[id]/gerar-ficha-epi.
+     ================================================================ */
+  function renderFichaEpiColaboradores(main, id) {
+    main.innerHTML = '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditoria</button></div></div><div class="hint" style="padding:20px;">Carregando…</div>';
+    $("#back-btn").addEventListener("click", function () { navigate("#/auditorias/" + id); });
+    apiFetch("/api/auditorias/" + id + "/divergencias-epi")
+      .then(function (data) { drawFichaEpiColaboradores(main, id, data); })
+      .catch(function (err) {
+        handleApiError(err);
+        navigate("#/auditorias/" + id);
+      });
+  }
+
+  function drawFichaEpiColaboradores(main, id, data) {
+    var colaboradores = data.colaboradores || [];
+    var body = colaboradores.map(function (c) {
+      var pessoa = c.pessoa || {};
+      return '<tr>' +
+        "<td>" + esc(c.nomeColaborador) + "</td>" +
+        "<td>" + esc(pessoa.cargo || "—") + "</td>" +
+        "<td>" + esc(pessoa.empresaNome || "—") + "</td>" +
+        '<td><span class="pill warn">' + c.qtdItensDivergentes + " item" + (c.qtdItensDivergentes === 1 ? "" : "s") + "</span></td>" +
+        '<td><button type="button" class="btn sm primary" data-nome="' + esc(c.nomeColaborador) + '">Preencher ficha</button></td></tr>';
+    }).join("");
+
+    main.innerHTML =
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Auditoria</button><h1 style="margin-top:6px;">Gerar ficha de EPI</h1>' +
+      '<div class="sub">Colaboradores desta auditoria com CA divergente na Ficha de EPI</div></div></div>' +
+      (colaboradores.length
+        ? '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Colaborador</th><th>Função</th><th>Empresa</th><th>Divergências</th><th></th></tr></thead><tbody>' + body + "</tbody></table></div></div>"
+        : '<div class="panel"><div class="empty-state">' + ICONS.inbox + "<div>Nenhuma divergência de CA pendente nesta auditoria.</div></div></div>");
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/auditorias/" + id); });
+    $all("[data-nome]", main).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        navigate("#/auditorias/" + id + "/ficha-epi/" + encodeURIComponent(btn.getAttribute("data-nome")));
+      });
+    });
+  }
+
+  function renderFichaEpiAssinatura(main, id, nomeColaborador) {
+    main.innerHTML = '<div class="topbar"><div><button class="link-btn" id="back-btn">← Colaboradores</button></div></div><div class="hint" style="padding:20px;">Carregando…</div>';
+    $("#back-btn").addEventListener("click", function () { navigate("#/auditorias/" + id + "/ficha-epi"); });
+    apiFetch("/api/auditorias/" + id + "/divergencias-epi?colaborador=" + encodeURIComponent(nomeColaborador))
+      .then(function (data) {
+        var colab = (data.colaboradores || [])[0];
+        if (!colab) {
+          toast("Esse colaborador não tem (mais) divergência de CA pendente nesta auditoria.", "error");
+          navigate("#/auditorias/" + id + "/ficha-epi");
+          return;
+        }
+        drawFichaEpiAssinatura(main, id, colab);
+      })
+      .catch(function (err) {
+        handleApiError(err);
+        navigate("#/auditorias/" + id + "/ficha-epi");
+      });
+  }
+
+  function drawFichaEpiAssinatura(main, id, colab) {
+    var pessoa = colab.pessoa || {};
+    var itens = colab.itens || [];
+    // Marca por índice se aquele item já foi assinado nesta tela (pointerdown
+    // no canvas) — não basta checar se o PNG é "vazio" no servidor, então a
+    // validação de "assinou todo mundo" acontece aqui, no clique de Finalizar.
+    var assinado = itens.map(function () { return false; });
+
+    var rows = itens.map(function (it, idx) {
+      var caHtml = it.divergente
+        ? '<span class="mono" style="text-decoration:line-through;color:var(--ink-faint);">' + esc(it.ca) + "</span> → " +
+          '<span class="mono" style="font-weight:700;">' + esc(it.caNovo) + "</span>"
+        : '<span class="mono">' + esc(it.ca) + "</span>";
+      return '<tr' + (it.divergente ? ' class="row-divergente"' : "") + '>' +
+        "<td>" + esc(it.especificacao) + (it.divergente ? ' <span class="tag">CA corrigido</span>' : "") + "</td>" +
+        "<td>" + caHtml + "</td>" +
+        '<td><canvas class="assinatura-canvas-sm" id="ficha-epi-sig-' + idx + '" width="360" height="120"></canvas>' +
+        '<div><button type="button" class="btn sm ghost" data-limpar="' + idx + '">Limpar</button></div></td></tr>';
+    }).join("");
+
+    main.innerHTML =
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Colaboradores</button><h1 style="margin-top:6px;">Ficha de EPI — ' + esc(colab.nomeColaborador) + "</h1>" +
+      '<div class="sub">' + esc(pessoa.cargo || "—") + " · " + esc(pessoa.empresaNome || "—") + "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Itens</h3></div><div class="panel-body pad">' +
+      '<div class="hint" style="margin-bottom:10px;">Peça pro colaborador assinar com o dedo (ou o mouse) em cada item, confirmando a entrega/conferência do EPI. Os itens marcados com "CA corrigido" tiveram o número do CA atualizado nesta auditoria; os demais repetem os dados da ficha atual.</div>' +
+      '<div class="table-scroll"><table class="data"><thead><tr><th>Especificação</th><th>CA</th><th style="min-width:220px;">Assinatura</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      "</div></div>" +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;"><button type="button" class="btn primary" id="btn-finalizar-ficha-epi">Finalizar e gerar PDF</button></div>';
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/auditorias/" + id + "/ficha-epi"); });
+
+    var canvases = itens.map(function (it, idx) {
+      var c = document.getElementById("ficha-epi-sig-" + idx);
+      setupSignaturePad(c);
+      c.addEventListener("pointerdown", function () { assinado[idx] = true; });
+      c.addEventListener("touchstart", function () { assinado[idx] = true; });
+      return c;
+    });
+    $all("[data-limpar]", main).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var idx = Number(btn.getAttribute("data-limpar"));
+        canvases[idx].getContext("2d").clearRect(0, 0, canvases[idx].width, canvases[idx].height);
+        assinado[idx] = false;
+      });
+    });
+
+    $("#btn-finalizar-ficha-epi").addEventListener("click", function () {
+      if (assinado.some(function (v) { return !v; })) {
+        toast("Assine todos os itens antes de finalizar.", "error");
+        return;
+      }
+      var btn = $("#btn-finalizar-ficha-epi");
+      btn.disabled = true;
+      btn.textContent = "Gerando…";
+      var body = {
+        nomeColaborador: colab.nomeColaborador,
+        itens: itens.map(function (it, idx) {
+          return {
+            especificacao: it.especificacao,
+            ca: it.divergente ? it.caNovo : it.ca,
+            assinaturaPngBase64: canvases[idx].toDataURL("image/png"),
+            alterado: !!it.divergente
+          };
+        })
+      };
+      apiFetch("/api/auditorias/" + id + "/gerar-ficha-epi", { method: "POST", body: body })
+        .then(function () {
+          toast("Ficha de EPI gerada. Falta subir o PDF no GPO — veja o indicador no Painel.", "success");
+          navigate("#/auditorias/" + id + "/ficha-epi");
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          btn.textContent = "Finalizar e gerar PDF";
+          handleApiError(err);
+        });
+    });
   }
 
   /* ================================================================
@@ -4295,6 +4474,57 @@
     return '<div class="rankbar-list">' + body + "</div>" + legend;
   }
 
+  // Indicador de pendências de GPO (pedido do Diego): fichas de EPI que já
+  // tiveram o CA corrigido e o PDF novo salvo no Controle Eolen (fluxo de
+  // "Gerar ficha de EPI" após auditoria), mas que ainda precisam ser
+  // subidas manualmente no sistema do cliente — o GPO só tem sincronização
+  // de LEITURA (ver src/lib/gpoSync.ts), não existe upload automatizado, daí
+  // essa etapa ficar sob confirmação manual de alguém. Uma linha por ficha
+  // (gpo_pendencias), com um botão "Marcar como atualizado" que fecha essa
+  // pendência assim que alguém subir o PDF lá.
+  function renderGpoPendenciasPanel(el) {
+    if (!el) return;
+    apiFetch("/api/gpo-pendencias?regularizado=false")
+      .then(function (data) { drawGpoPendenciasPanel(el, data.rows || []); })
+      .catch(function () { /* indicador não é crítico — falha silenciosa, sem toast poluindo o Painel */ });
+  }
+
+  function drawGpoPendenciasPanel(el, rows) {
+    if (!rows.length) { el.innerHTML = ""; return; }
+    var podeMarcar = canDo("documentos", "editar");
+    var body = rows.map(function (r) {
+      var itens = (r.itens_alterados || []).map(function (it) { return it.especificacao + " (CA " + it.ca + ")"; }).join(", ") || "—";
+      return '<tr data-pendencia-id="' + r.id + '">' +
+        "<td>" + esc(r.pessoa_nome) + "</td>" +
+        "<td>" + esc(itens) + "</td>" +
+        "<td>" + fmtDateHoraBR(r.criado_em) + "</td>" +
+        "<td>" + (podeMarcar ? '<button type="button" class="btn sm primary" data-marcar-gpo="' + r.id + '">Marcar como atualizado</button>' : '<span class="hint">Aguardando atualização no GPO</span>') + "</td></tr>";
+    }).join("");
+
+    el.innerHTML =
+      '<div class="panel" style="border-color:var(--warning-ink);margin-bottom:16px;">' +
+      '<div class="panel-head"><h3>Pendente de atualizar no GPO</h3>' +
+      '<span class="hint">' + rows.length + " ficha" + (rows.length === 1 ? "" : "s") + " de EPI regenerada" + (rows.length === 1 ? "" : "s") +
+      " ainda não subida" + (rows.length === 1 ? "" : "s") + " no sistema do cliente</span></div>" +
+      '<div class="panel-body pad"><div class="table-scroll"><table class="data"><thead><tr><th>Colaborador</th><th>Itens alterados</th><th>Gerada em</th><th></th></tr></thead><tbody>' + body + "</tbody></table></div></div></div>";
+
+    $all("[data-marcar-gpo]", el).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-marcar-gpo");
+        btn.disabled = true;
+        apiFetch("/api/gpo-pendencias/" + id, { method: "PATCH", body: { regularizado: true } })
+          .then(function () {
+            var row = btn.closest("tr");
+            if (row) row.remove();
+            toast("Marcado como atualizado no GPO.", "success");
+            rows = rows.filter(function (r) { return String(r.id) !== String(id); });
+            if (!rows.length) el.innerHTML = "";
+          })
+          .catch(function (err) { btn.disabled = false; handleApiError(err); });
+      });
+    });
+  }
+
   function renderTreinoOverview(container) {
     var data = computeTreinoOverview();
     var tipoStatusMap = computeGroupStatusMap("tipo");
@@ -4329,6 +4559,7 @@
     }).join("");
 
     container.innerHTML =
+      '<div id="gpo-pendencias-panel"></div>' +
       '<div class="panel"><div class="panel-head"><h3>Equipes por cliente</h3><span class="hint">clique para ver as equipes</span></div><div class="panel-body pad"><div class="client-cards">' + clientCardsHtml() + "</div></div></div>" +
       '<div class="kpi-row">' + headcountKpiHtml + "</div>" +
       '<div class="kpi-row">' + kpiHtml + "</div>" +
@@ -4393,6 +4624,7 @@
         if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); }
       });
     });
+    renderGpoPendenciasPanel($("#gpo-pendencias-panel"));
   }
 
   /* ================================================================
@@ -5561,7 +5793,13 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
-    else if (route.view === "auditorias") route.id === "lista" ? renderAuditoriasList(main) : route.id ? renderAuditoriaDetail(main, route.id) : renderAuditoriasPainel(main);
+    else if (route.view === "auditorias") {
+      if (route.id === "lista") renderAuditoriasList(main);
+      else if (route.id && route.sub === "ficha-epi" && route.extra) renderFichaEpiAssinatura(main, route.id, route.extra);
+      else if (route.id && route.sub === "ficha-epi") renderFichaEpiColaboradores(main, route.id);
+      else if (route.id) renderAuditoriaDetail(main, route.id);
+      else renderAuditoriasPainel(main);
+    }
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id || route.id === "lista") closeDrawer();
   }

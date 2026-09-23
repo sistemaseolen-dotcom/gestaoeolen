@@ -21,7 +21,7 @@ export async function GET() {
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from("auditorias")
-    .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, criado_por_nome, criado_em, atualizado_em, finalizado_em")
+    .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, tem_ca_divergente, criado_por_nome, criado_em, atualizado_em, finalizado_em")
     .order("data", { ascending: false })
     .order("id", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

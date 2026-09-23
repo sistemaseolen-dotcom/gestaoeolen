@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission, requireView } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
+import { carregarFichasPorNome, temAlgumaDivergencia } from "@/lib/epiChecklist";
 
 const BUCKET = "auditorias-anexos";
 const CAMPOS_AUDITORIA = [
@@ -116,6 +117,19 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     } else if (status === "RASCUNHO") {
       patch.finalizado_em = null;
     }
+  }
+
+  // Recalcula `tem_ca_divergente` sempre que `respostas` ou `colaboradores`
+  // mudam (é o que decide se aparece o botão "Gerar ficha de EPI" na
+  // listagem — ver GET acima). Precisa dos valores FINAIS (já mesclados
+  // com o que existia antes), não só do que veio nesta requisição.
+  if (Object.prototype.hasOwnProperty.call(patch, "respostas") || Object.prototype.hasOwnProperty.call(patch, "colaboradores")) {
+    const colaboradoresFinal: string[] = Object.prototype.hasOwnProperty.call(patch, "colaboradores")
+      ? patch.colaboradores
+      : before.colaboradores || [];
+    const respostasFinal = patch.respostas || before.respostas || {};
+    const fichaPorNome = await carregarFichasPorNome(admin, colaboradoresFinal);
+    patch.tem_ca_divergente = temAlgumaDivergencia(respostasFinal, colaboradoresFinal, fichaPorNome);
   }
 
   patch.atualizado_em = new Date().toISOString();

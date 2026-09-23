@@ -46,10 +46,14 @@
   --shadow-md: 0 6px 20px rgba(20, 30, 25, 0.10);
   --shadow-lg: 0 20px 48px rgba(15, 25, 20, 0.22);
 
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-sm: 8px;
+  --radius-md: 13px;
+  --radius-lg: 20px;
 
+  /* A fonte "IBM Plex ..." agora é carregada de verdade (ver os imports de
+     @fontsource/* em layout.tsx) — antes ela só existia aqui como primeira
+     opção e nunca era encontrada, então todo o sistema rodava só com os
+     nomes depois da vírgula (fallback do sistema operacional). */
   --font-display: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
   --font-body: "IBM Plex Sans", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
@@ -148,7 +152,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
-h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: 0.01em; }
+h1, h2, h3, h4 { font-family: var(--font-display); font-weight: 700; margin: 0; text-wrap: balance; letter-spacing: -0.005em; }
 button, input, select, textarea { font-family: inherit; font-size: inherit; color: inherit; }
 a { color: var(--accent); }
 ::selection { background: var(--accent-soft); color: var(--accent-soft-ink); }
@@ -195,12 +199,14 @@ a { color: var(--accent); }
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 9px 10px; border-radius: var(--radius-sm);
+  padding: 9px 10px 9px 8px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border: none; border-left: 3px solid transparent;
   color: var(--ink-soft); text-decoration: none; cursor: pointer;
-  font-size: 13.5px; font-weight: 500; border: none; background: none; text-align: left; width: 100%;
+  font-size: 13.5px; font-weight: 500; background: none; text-align: left; width: 100%;
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
 }
 .nav-item:hover { background: var(--surface-alt); color: var(--ink); }
-.nav-item.active { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 700; }
+.nav-item.active { background: var(--accent-soft); color: var(--accent-soft-ink); font-weight: 700; border-left-color: var(--accent); }
 .nav-item .ic { width: 17px; height: 17px; flex-shrink: 0; }
 .nav-count { margin-left: auto; font-size: 11px; color: var(--ink-faint); font-family: var(--font-mono); }
 .nav-item.active .nav-count { color: var(--accent-soft-ink); }
@@ -212,10 +218,10 @@ a { color: var(--accent); }
 .save-dot.error { background: var(--danger); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 
-main { grid-column: 2; grid-row: 2; min-width: 0; padding: 26px 32px 60px; }
-.topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-.topbar h1 { font-size: 24px; }
-.topbar .sub { color: var(--ink-faint); font-size: 13px; margin-top: 2px; }
+main { grid-column: 2; grid-row: 2; min-width: 0; padding: 28px 34px 60px; }
+.topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.topbar h1 { font-size: 27px; }
+.topbar .sub { color: var(--ink-faint); font-size: 13.5px; margin-top: 3px; }
 
 .readonly-banner {
   background: var(--warning-soft); color: var(--warning-ink);
@@ -228,8 +234,8 @@ main { grid-column: 2; grid-row: 2; min-width: 0; padding: 26px 32px 60px; }
 .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); gap: 12px; margin-bottom: 22px; }
 .kpi {
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md);
-  padding: 14px 16px; box-shadow: var(--shadow-sm);
-  display: flex; flex-direction: column; gap: 6px;
+  padding: 16px 18px; box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; gap: 7px;
   position: relative;
 }
 /* Ícone de sirene no canto do card, só quando o card tem algo vencido (Diego
@@ -243,8 +249,8 @@ main { grid-column: 2; grid-row: 2; min-width: 0; padding: 26px 32px 60px; }
 .kpi[data-status-code], .kpi[data-headcount-nav], .kpi[data-headcount-cargo] { transition: box-shadow .1s ease, transform .1s ease; }
 .kpi[data-status-code]:hover, .kpi[data-headcount-nav]:hover, .kpi[data-headcount-cargo]:hover { box-shadow: var(--shadow-md); transform: translateY(-1px); }
 .kpi[data-status-code]:focus-visible, .kpi[data-headcount-nav]:focus-visible, .kpi[data-headcount-cargo]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-faint); font-weight: 600; }
-.kpi .value { font-family: var(--font-display); font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi .label { font-size: 12.5px; color: var(--ink-soft); font-weight: 600; }
+.kpi .value { font-family: var(--font-display); font-size: 31px; font-weight: 700; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .kpi.warn .value { color: var(--warning-ink); }
 .kpi.danger .value { color: var(--danger-ink); }
 .kpi.ok .value { color: var(--success-ink); }
@@ -273,12 +279,15 @@ main { grid-column: 2; grid-row: 2; min-width: 0; padding: 26px 32px 60px; }
   display: inline-flex; align-items: center; gap: 6px; justify-content: center;
   border-radius: var(--radius-sm); border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--ink); font-weight: 600; font-size: 13px;
-  padding: 8px 13px; cursor: pointer; line-height: 1.2; white-space: nowrap;
-  transition: background .12s ease, border-color .12s ease, transform .05s ease;
+  padding: 9px 14px; cursor: pointer; line-height: 1.2; white-space: nowrap;
+  transition: background .12s ease, border-color .12s ease, box-shadow .12s ease, transform .05s ease;
 }
 .btn:hover { background: var(--surface-alt); }
 .btn:active { transform: translateY(1px); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
+  box-shadow: 0 1px 2px rgba(15, 25, 20, 0.08), 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent);
+}
 .btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, black); }
 .btn.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger-ink); }
 .btn.danger:hover { background: color-mix(in srgb, var(--danger-soft) 70%, var(--danger) 30%); }
@@ -305,11 +314,11 @@ select.filter, input.filter {
 .table-scroll { overflow-x: auto; min-width: 0; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
 table.data th {
-  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint);
-  font-weight: 600; padding: 8px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface);
+  text-align: left; font-size: 12.5px; color: var(--ink-soft);
+  font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface);
   white-space: nowrap;
 }
-table.data td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.data td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
 table.data tbody tr { cursor: pointer; }
 table.data tbody tr:hover { background: var(--surface-alt); }
 table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -369,7 +378,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .field-grid.one { grid-template-columns: 1fr; }
 .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .field.span2 { grid-column: 1 / -1; }
-.field label { font-size: 11.5px; font-weight: 700; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.04em; }
+.field label { font-size: 12.5px; font-weight: 600; color: var(--ink-soft); }
 .field input, .field select, .field textarea {
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface); color: var(--ink); width: 100%;
 }
@@ -377,7 +386,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
 .field textarea { resize: vertical; min-height: 60px; }
-.form-section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); margin: 4px 0 -6px; }
+.form-section-title { font-size: 13.5px; font-weight: 700; color: var(--accent); margin: 4px 0 -6px; }
 
 .section-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; flex-wrap: wrap; }
 .section-tab { padding: 8px 12px; font-size: 12.5px; font-weight: 600; color: var(--ink-faint); background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
@@ -388,7 +397,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 /* ---------- Detail bits ---------- */
 .detail-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 16px; }
 .detail-item { display: flex; flex-direction: column; gap: 2px; }
-.detail-item .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-faint); font-weight: 600; }
+.detail-item .k { font-size: 12px; color: var(--ink-faint); font-weight: 600; }
 .detail-item .v { font-size: 13.5px; word-break: break-word; }
 .field-note { font-size: 10.5px; color: var(--ink-faint); font-style: italic; }
 .field-note:empty { display: none; }
@@ -547,24 +556,51 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
 
-/* ---------------- Autenticação ---------------- */
+/* ---------------- Autenticação ----------------
+   Pedido do Diego: a tela de entrada era um cartão pequeno e genérico, sem
+   nada que lembrasse a Eolen. Virou um layout de duas colunas — um painel
+   com a cor da marca (mesmo verde-petróleo usado no resto do sistema) de um
+   lado, o formulário do outro — mais parecido com um sistema corporativo de
+   verdade do que com um formulário solto no meio da tela. Em telas
+   estreitas (celular, ver @media 860px) o painel de marca encolhe pra uma
+   faixa no topo, pra não empurrar o formulário pra fora da tela. */
 .auth-screen {
-  display: flex; align-items: center; justify-content: center; min-height: 100vh;
-  padding: 24px; background: var(--bg, var(--surface-alt));
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  min-height: 100vh; background: var(--surface);
+}
+.auth-brand-panel {
+  background: var(--accent); color: var(--accent-ink);
+  display: flex; flex-direction: column; justify-content: center; gap: 22px;
+  padding: 48px min(64px, 8vw);
+}
+.auth-brand-panel .brand-mark {
+  width: 52px; height: 52px; border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.98); border: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.auth-brand-panel .brand-mark img { width: 100%; height: 100%; object-fit: contain; padding: 8px; box-sizing: border-box; }
+.auth-brand-panel h1 { font-size: 30px; color: var(--accent-ink); margin: 0; }
+.auth-brand-panel .tagline { font-size: 14.5px; color: color-mix(in srgb, var(--accent-ink) 82%, transparent); max-width: 30ch; line-height: 1.55; margin: 0; }
+.auth-form-panel {
+  display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 .auth-card {
-  width: min(380px, 100%); background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 28px 26px; display: flex; flex-direction: column; gap: 4px;
+  width: min(360px, 100%); display: flex; flex-direction: column; gap: 4px;
 }
-.auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.auth-brand strong { display: block; font-size: 14px; }
-.auth-brand span { display: block; font-size: 11px; color: var(--ink-faint); }
-.auth-card h2 { font-size: 18px; margin: 4px 0 10px; }
-.auth-card form { display: flex; flex-direction: column; gap: 12px; }
-.auth-card .field label { display: block; font-size: 11.5px; font-weight: 600; color: var(--ink-soft); margin-bottom: 4px; }
+.auth-card h2 { font-size: 22px; margin: 0 0 18px; }
+.auth-card form { display: flex; flex-direction: column; gap: 14px; }
+.auth-card .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); margin-bottom: 5px; }
 .auth-error {
   background: var(--danger-soft); color: var(--danger-ink); border-radius: var(--radius-sm);
-  padding: 8px 10px; font-size: 12.5px; margin-bottom: 4px;
+  padding: 9px 11px; font-size: 12.5px; margin-bottom: 6px;
+}
+@media (max-width: 860px) {
+  .auth-screen { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .auth-brand-panel { flex-direction: row; align-items: center; gap: 14px; padding: 20px 24px; }
+  .auth-brand-panel .brand-mark { width: 38px; height: 38px; }
+  .auth-brand-panel h1 { font-size: 18px; }
+  .auth-brand-panel .tagline { display: none; }
+  .auth-form-panel { align-items: flex-start; padding-top: 48px; }
 }
 
 /* ---------------- Usuário logado / logout ---------------- */
@@ -674,6 +710,15 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   width: 100%; max-width: 600px; height: 200px; border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius-sm); background: #fff; touch-action: none; cursor: crosshair;
 }
+
+/* Assinatura por linha (Ficha de EPI regenerada após auditoria — pedido do
+   Diego: cada item da ficha tem sua própria assinatura) — versão pequena
+   pra caber dentro de uma célula da tabela. */
+.assinatura-canvas-sm {
+  width: 100%; max-width: 320px; height: 100px; border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-sm); background: #fff; touch-action: none; cursor: crosshair; display: block; margin-bottom: 4px;
+}
+tr.row-divergente { background: var(--warning-soft); }
 
 /* Combo de pessoa (colaborador da auditoria): campo de busca + lista de
    sugestões. O valor real fica num <input type="hidden"> — este campo de
