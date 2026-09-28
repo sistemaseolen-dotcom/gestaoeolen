@@ -673,6 +673,13 @@
     // pode disparar, sem depender de nenhuma permissão de página.
     navItems.push(["sincronizacao", "Sincronização", ICONS.sync, null]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
+    // Aba "Acesso" — pedido do Diego (28/09/2026): criada por enquanto só
+    // como espaço reservado na barra lateral (mesma posição do admin-only
+    // "Administrador", abaixo dele), sem nenhuma regra de permissão própria
+    // ainda — as regras de quem pode ver/usar o quê aqui serão definidas
+    // depois. Gate temporário: só admin vê, igual ao Administrador, até essa
+    // definição acontecer.
+    if (isAdmin()) navItems.push(["acesso", "Acesso", ICONS.lock, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
       return '<button class="nav-item' + (active ? " active" : "") + '" data-nav="' + it[0] + '">' + it[2] +
@@ -5416,6 +5423,19 @@
     });
   }
 
+  // Tela "Acesso" — pedido do Diego (28/09/2026): criar a aba nova na barra
+  // lateral por enquanto sem nenhuma regra definida ainda ("depois iremos
+  // definir as regras"). Só o espaço reservado + um aviso, pra não parecer
+  // quebrado nem prometer uma função que ainda não existe.
+  function renderAcesso(main) {
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Regras de acesso — em definição</div></div></div>' +
+      '<div class="empty-state" style="padding:60px 20px;text-align:center;">' + ICONS.lock +
+      '<h3 style="margin-top:12px;">Ainda sem regras definidas</h3>' +
+      '<p class="hint">Esta página vai reunir as regras de acesso do sistema. Por enquanto é só um espaço reservado — as regras ainda serão definidas.</p>' +
+      "</div>";
+  }
+
   function renderAdminListas(main) {
     ensureListasSeed();
     uiState.adminListas = uiState.adminListas || { key: LISTAS_META[0].key };
@@ -5916,6 +5936,16 @@
       if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
       route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
       if (!route.id) closeDrawer();
+      return;
+    }
+
+    // Acesso — ver comentário em renderShell(): por enquanto só um espaço
+    // reservado (gate temporário igual ao Administrador), sem regras
+    // próprias ainda.
+    if (route.view === "acesso") {
+      if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
+      renderAcesso(main);
+      closeDrawer();
       return;
     }
 
