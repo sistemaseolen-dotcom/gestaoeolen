@@ -564,6 +564,12 @@
       imei: row.imei, atcVivo: row.atc_vivo, highlineVivo: row.highline_vivo, ihs: row.ihs, winity: row.winity
     };
   }
+  // Total de pessoas em todas as equipes da aba Acesso — usado no número do
+  // menu lateral e ao atualizá-lo sem recarregar a tela inteira, já que a
+  // lista principal da aba lista pessoas, não equipes.
+  function totalAcessoMembros() {
+    return STATE.acessoEquipes.reduce(function (sum, e) { return sum + ((e.membros && e.membros.length) || 0); }, 0);
+  }
   function mapPatrimonioFromApi(row) {
     if (!row) return row;
     return {
@@ -703,7 +709,9 @@
     // operadora/projeto/regional, com dados de acesso à operadora. Mesma
     // regra de permissão de qualquer outra página — "ver" em
     // Administrador → Usuários controla quem vê esta aba (admin sempre vê).
-    if (canView("acesso")) navItems.push(["acesso", "Acesso", ICONS.lock, STATE.acessoEquipes.length]);
+    // O número no menu é a contagem de PESSOAS (não de equipes) — a lista
+    // principal da aba passou a listar pessoas (pedido do Diego, 29/09/2026).
+    if (canView("acesso")) navItems.push(["acesso", "Acesso", ICONS.lock, totalAcessoMembros()]);
     // Sincronização com o GPO — pedido do Diego: antes só o admin tinha
     // acesso (dentro de Administrador), agora todo usuário logado enxerga e
     // pode disparar, sem depender de nenhuma permissão de página.
@@ -5473,17 +5481,33 @@
      projeto/operadora/regional) foi propositalmente deixada pra depois,
      a pedido do próprio Diego.
      ================================================================ */
-  function renderAcessoEquipesList(main) {
+  // Lista principal da aba "Acesso" — pedido do Diego (29/09/2026): mostrar
+  // as PESSOAS (não as equipes) como linha principal, com a equipe de cada
+  // uma ao lado. A equipe (criar/editar/adicionar-remover integrante) segue
+  // existindo exatamente como antes, só que agora se chega nela pelo link
+  // da coluna "Equipe" — clicar no resto da linha edita a pessoa direto.
+  function renderAcessoMembrosList(main) {
     var ui = uiState.acesso;
 
+    function computeFlat() {
+      var all = [];
+      STATE.acessoEquipes.forEach(function (e) {
+        (e.membros || []).forEach(function (m, idx) { all.push({ membro: m, idx: idx, equipe: e }); });
+      });
+      return all;
+    }
+
     function computeFiltered() {
-      var all = STATE.acessoEquipes.slice().sort(function (a, b) { return (a.nomeEquipe || "").localeCompare(b.nomeEquipe || ""); });
-      return all.filter(function (e) {
+      var all = computeFlat().sort(function (a, b) {
+        return (a.membro.nome || "").localeCompare(b.membro.nome || "") || (a.membro.sobrenome || "").localeCompare(b.membro.sobrenome || "");
+      });
+      return all.filter(function (row) {
+        var e = row.equipe;
         if (ui.operadora && e.operadora !== ui.operadora) return false;
         if (ui.projeto && (e.projetos || []).indexOf(ui.projeto) === -1) return false;
         if (ui.regional && (e.regionais || []).indexOf(ui.regional) === -1) return false;
         if (!ui.q) return true;
-        var hay = normalize([e.nomeEquipe, e.empresa, e.atividade, e.contrato].concat(e.projetos || [], e.regionais || []).join(" "));
+        var hay = normalize([row.membro.nome, row.membro.sobrenome, row.membro.funcao, e.nomeEquipe, e.empresa].join(" "));
         return hay.indexOf(normalize(ui.q)) !== -1;
       });
     }
@@ -5496,17 +5520,18 @@
     function drawInto(filtered) {
       var pg = paginate(filtered, ui.page, PAGE_SIZE);
       ui.page = pg.page;
-      var body = pg.items.map(function (e) {
-        return '<tr data-id="' + e.id + '">' +
-          '<td><div class="row-primary">' + esc(e.nomeEquipe) + '</div><div class="row-secondary">' + esc(e.empresa || "—") + '</div></td>' +
+      var body = pg.items.map(function (row) {
+        var m = row.membro, e = row.equipe;
+        return '<tr data-equipe-id="' + e.id + '" data-membro-idx="' + row.idx + '">' +
+          '<td><div class="row-primary">' + esc(m.nome) + (m.sobrenome ? " " + esc(m.sobrenome) : "") + '</div><div class="row-secondary">' + esc(m.funcao || "—") + '</div></td>' +
+          '<td><a href="#/acesso/' + e.id + '" style="font-weight:700;" data-equipe-link>' + esc(e.nomeEquipe) + '</a><div class="row-secondary">' + esc(e.empresa || "—") + '</div></td>' +
           "<td>" + esc(e.operadora || "—") + "</td>" +
           "<td>" + esc((e.projetos || []).join(", ") || "—") + "</td>" +
           "<td>" + esc((e.regionais || []).join(", ") || "—") + "</td>" +
-          '<td class="num">' + e.membros.length + "</td>" +
           "<td>" + statusPillGeneric(e.status) + "</td></tr>";
       }).join("");
       var toolbar =
-        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="acesso-q" placeholder="Buscar por equipe, empresa, contrato…" value="' + esc(ui.q) + '"></div>' +
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="acesso-q" placeholder="Buscar por pessoa, equipe, empresa…" value="' + esc(ui.q) + '"></div>' +
         '<select class="filter" id="acesso-operadora"><option value="">Todas as operadoras</option>' +
         ACESSO_OPERADORAS.map(function (o) { return '<option value="' + esc(o) + '"' + (ui.operadora === o ? " selected" : "") + '>' + esc(o) + "</option>"; }).join("") + "</select>" +
         '<select class="filter" id="acesso-projeto"><option value="">Todos os projetos</option>' +
@@ -5515,21 +5540,28 @@
         ACESSO_REGIONAIS.map(function (r) { return '<option value="' + esc(r) + '"' + (ui.regional === r ? " selected" : "") + '>' + esc(r) + "</option>"; }).join("") + "</select>";
 
       main.innerHTML =
-        '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Equipes de campo por projeto, operadora e regional, com os dados de acesso às operadoras</div></div>' +
-        (canDo("acesso", "criar") ? '<button class="btn primary" id="btn-new-acesso-equipe">' + ICONS.plus + "Nova equipe</button>" : "") + "</div>" +
+        '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Pessoas com acesso liberado, por equipe, projeto, operadora e regional</div></div>' +
+        (canDo("acesso", "criar") ? '<button class="btn primary" id="btn-new-acesso-pessoa">' + ICONS.plus + "Adicionar pessoa</button>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Equipe / Empresa</th><th>Operadora</th><th>Projeto(s)</th><th>Regional(is)</th><th class=\"num\">Integrantes</th><th>Status</th>",
+          headHtml: "<th>Pessoa</th><th>Equipe / Empresa</th><th>Operadora</th><th>Projeto(s)</th><th>Regional(is)</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma equipe encontrada."
+          empty: "Nenhuma pessoa encontrada."
         });
 
-      if ($("#btn-new-acesso-equipe")) $("#btn-new-acesso-equipe").addEventListener("click", function () { openAcessoEquipeForm(null); });
+      if ($("#btn-new-acesso-pessoa")) $("#btn-new-acesso-pessoa").addEventListener("click", function () { openAcessoAdicionarPessoaForm(); });
       $("#acesso-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#acesso-operadora").addEventListener("change", function (e) { ui.operadora = e.target.value; ui.page = 1; draw(); });
       $("#acesso-projeto").addEventListener("change", function (e) { ui.projeto = e.target.value; ui.page = 1; draw(); });
       $("#acesso-regional").addEventListener("change", function (e) { ui.regional = e.target.value; ui.page = 1; draw(); });
-      $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/acesso/" + row.getAttribute("data-id")); }); });
+      $all("[data-equipe-link]", main).forEach(function (a) { a.addEventListener("click", function (ev) { ev.stopPropagation(); }); });
+      $all("tbody tr", main).forEach(function (row) {
+        row.addEventListener("click", function () {
+          var e = byId(STATE.acessoEquipes, Number(row.getAttribute("data-equipe-id")));
+          if (!e) return;
+          openAcessoMembroForm(e, e.membros[Number(row.getAttribute("data-membro-idx"))]);
+        });
+      });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
     }
     draw();
@@ -5705,6 +5737,141 @@
         render();
         toast(isNew ? "Integrante adicionado." : "Integrante atualizado.", "success");
       }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
+  }
+
+  // "+ Adicionar pessoa" (botão principal da lista) — pedido do Diego
+  // (29/09/2026): o fluxo passou a começar pela PESSOA, não pela equipe.
+  // Cadastra a pessoa e, no mesmo formulário, escolhe se ela entra numa
+  // equipe já existente ou se cria uma equipe nova pra ela. Reaproveita os
+  // mesmos campos/abas de openAcessoMembroForm; a diferença é a aba
+  // "Equipe" no começo e o POST duplo (equipe + membro) quando é nova.
+  function openAcessoAdicionarPessoaForm() {
+    var temEquipes = STATE.acessoEquipes.length > 0;
+    var equipesOrdenadas = STATE.acessoEquipes.slice().sort(function (a, b) { return (a.nomeEquipe || "").localeCompare(b.nomeEquipe || ""); });
+    var equipeOpts = equipesOrdenadas.map(function (e) {
+      return '<option value="' + e.id + '">' + esc(e.nomeEquipe) + (e.operadora ? " — " + esc(e.operadora) : "") + "</option>";
+    }).join("");
+    var modoInicial = temEquipes ? "existente" : "nova";
+
+    var html =
+      '<div class="drawer-head"><div><h2>Adicionar pessoa</h2><div class="sub">Cadastre os dados da pessoa e escolha em qual equipe ela vai entrar</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="acesso-pessoa-form">' +
+      '<div class="section-tabs">' +
+      '<button type="button" class="section-tab active" data-tab="equipe">Equipe</button>' +
+      '<button type="button" class="section-tab" data-tab="pessoais">Dados pessoais</button>' +
+      '<button type="button" class="section-tab" data-tab="contato">Contato</button>' +
+      '<button type="button" class="section-tab" data-tab="empresa">Veículo/Empresa</button>' +
+      '<button type="button" class="section-tab" data-tab="credenciais">Credenciais de acesso</button>' +
+      "</div>" +
+      '<div class="tab-pane active" data-pane="equipe"><div class="field-grid">' +
+      '<div class="field span2"><label>Esta pessoa vai entrar em:</label>' +
+      '<label style="display:block;font-weight:400;margin-top:8px;"><input type="radio" name="modoEquipe" value="existente"' + (modoInicial === "existente" ? " checked" : "") + (temEquipes ? "" : " disabled") + '> Uma equipe já existente</label>' +
+      '<label style="display:block;font-weight:400;margin-top:4px;"><input type="radio" name="modoEquipe" value="nova"' + (modoInicial === "nova" ? " checked" : "") + '> Uma equipe nova</label>' +
+      (temEquipes ? "" : '<div class="hint" style="margin-top:6px;">Ainda não há equipes cadastradas — crie a primeira preenchendo os dados abaixo.</div>') +
+      "</div>" +
+      '<div class="field span2" id="acesso-pessoa-equipe-existente" style="display:' + (modoInicial === "existente" ? "block" : "none") + ';">' +
+      '<label>Equipe *</label><select name="equipeIdExistente"><option value="">— Selecione —</option>' + equipeOpts + "</select>" +
+      "</div>" +
+      '<div id="acesso-pessoa-equipe-nova" class="field-grid" style="display:' + (modoInicial === "nova" ? "grid" : "none") + ';grid-column:1/-1;">' +
+      field("Nome da equipe *", "nomeEquipe", "text", null, { span2: true }) +
+      selectField("Operadora *", "operadora", ACESSO_OPERADORAS, "", {}) +
+      field("Atividade", "atividade", "text", null) +
+      checkboxGroupField("Projeto(s)", "projetos", ACESSO_PROJETOS, [], { span2: true }) +
+      checkboxGroupField("Regional(is)", "regionais", ACESSO_REGIONAIS, [], { span2: true }) +
+      field("Empresa", "empresa", "text", null) + field("Contrato", "contrato", "text", null) +
+      field("Validade", "validade", "date", null) + selectField("Status", "status", STATUS_OPTS, "ATIVO", {}) +
+      "</div>" +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="pessoais"><div class="field-grid">' +
+      field("Nome *", "nome", "text", null, { required: true }) + field("Sobrenome", "sobrenome", "text", null) +
+      field("Função", "funcao", "text", null) + field("RG", "rg", "text", null) +
+      field("OE", "oe", "text", null) + field("CPF", "cpf", "text", null) +
+      field("Data de nascimento", "dataNascimento", "date", null) + field("Filiação", "filiacao", "text", null) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="contato"><div class="field-grid">' +
+      field("Telefone particular", "telefoneParticular", "text", null) + field("Telefone Vivo", "telefoneVivo", "text", null) +
+      field("E-mail", "email", "email", null) + field("E-mail corporativo", "emailCorporativo", "email", null) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="empresa"><div class="field-grid">' +
+      field("Veículo", "veiculo", "text", null) + field("CNPJ", "cnpj", "text", null) +
+      field("PIS", "pis", "text", null) + field("SAP", "sap", "text", null) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="credenciais"><div class="field-grid">' +
+      '<div class="field span2"><div class="hint">Credenciais de acesso aos sistemas da operadora — visíveis só a quem tem permissão de ver esta aba.</div></div>' +
+      field("REDECORP", "redecorp", "text", null) + field("SIGITM", "sigitm", "text", null) +
+      field("Senha", "senha", "text", null) + field("VA Access", "vaAccess", "text", null) +
+      field("IMEI", "imei", "text", null) + field("ATC-Vivo", "atcVivo", "text", null) +
+      field("Highline-Vivo", "highlineVivo", "text", null) + field("IHS", "ihs", "text", null) +
+      field("Winity", "winity", "text", null) +
+      "</div></div>" +
+      "</form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="acesso-pessoa-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+    openDrawer(html, { wide: true });
+    setupTabs();
+
+    function syncModoEquipe() {
+      var checked = $('input[name="modoEquipe"]:checked');
+      var modo = checked ? checked.value : modoInicial;
+      $("#acesso-pessoa-equipe-existente").style.display = modo === "existente" ? "block" : "none";
+      $("#acesso-pessoa-equipe-nova").style.display = modo === "nova" ? "grid" : "none";
+    }
+    $all('input[name="modoEquipe"]').forEach(function (r) { r.addEventListener("change", syncModoEquipe); });
+
+    $("#acesso-pessoa-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("acesso", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var modo = (fd.get("modoEquipe") || modoInicial).toString();
+
+      var membroBody = {};
+      ["nome", "sobrenome", "funcao", "rg", "oe", "cpf", "dataNascimento", "filiacao",
+        "telefoneParticular", "telefoneVivo", "email", "emailCorporativo",
+        "veiculo", "cnpj", "pis", "sap",
+        "redecorp", "sigitm", "senha", "vaAccess", "imei", "atcVivo", "highlineVivo", "ihs", "winity"
+      ].forEach(function (k) { membroBody[k] = (fd.get(k) || "").toString().trim(); });
+      if (!membroBody.nome) { toast("Informe o nome da pessoa.", "error"); return; }
+
+      function adicionarNaEquipe(equipe) {
+        apiFetch("/api/acesso-equipes/" + equipe.id + "/membros", { method: "POST", body: membroBody })
+          .then(function (data) {
+            var rec = mapAcessoMembroFromApi(data);
+            equipe.membros.push(rec);
+            closeDrawer();
+            render();
+            renderShellCounts();
+            toast("Pessoa adicionada à equipe " + equipe.nomeEquipe + ".", "success");
+          })
+          .catch(handleApiError);
+      }
+
+      if (modo === "nova") {
+        if (!canDo("acesso", "criar")) { toast("Você não tem permissão para criar equipes.", "error"); return; }
+        var equipeBody = {};
+        ["nomeEquipe", "atividade", "empresa", "contrato", "validade", "status"].forEach(function (k) { equipeBody[k] = (fd.get(k) || "").toString().trim(); });
+        equipeBody.operadora = (fd.get("operadora") || "").toString().trim();
+        equipeBody.projetos = fd.getAll("projetos");
+        equipeBody.regionais = fd.getAll("regionais");
+        if (!equipeBody.nomeEquipe) { toast("Informe o nome da nova equipe.", "error"); return; }
+        if (!equipeBody.operadora) { toast("Selecione a operadora da nova equipe.", "error"); return; }
+
+        apiFetch("/api/acesso-equipes", { method: "POST", body: equipeBody })
+          .then(function (data) {
+            var equipeRec = mapAcessoEquipeFromApi(data);
+            equipeRec.membros = equipeRec.membros || [];
+            STATE.acessoEquipes.push(equipeRec);
+            adicionarNaEquipe(equipeRec);
+          })
+          .catch(handleApiError);
+      } else {
+        var equipeId = Number(fd.get("equipeIdExistente"));
+        var equipe = byId(STATE.acessoEquipes, equipeId);
+        if (!equipe) { toast("Selecione a equipe.", "error"); return; }
+        adicionarNaEquipe(equipe);
+      }
     });
     $("#drawer-close").addEventListener("click", closeDrawer);
     $("#drawer-cancel").addEventListener("click", closeDrawer);
@@ -6205,6 +6372,7 @@
       var countEl = btn.querySelector(".nav-count");
       if (!countEl) return;
       if (key === "equipes") countEl.textContent = countTeamLideres(true);
+      else if (key === "acesso") countEl.textContent = totalAcessoMembros();
       else if (STATE[key]) countEl.textContent = STATE[key].length;
     });
   }
@@ -6258,7 +6426,7 @@
       else if (route.id) renderAuditoriaDetail(main, route.id);
       else renderAuditoriasPainel(main);
     }
-    else if (route.view === "acesso") route.id ? renderAcessoEquipeDetail(main, route.id) : renderAcessoEquipesList(main);
+    else if (route.view === "acesso") route.id ? renderAcessoEquipeDetail(main, route.id) : renderAcessoMembrosList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id || route.id === "lista") closeDrawer();
   }
