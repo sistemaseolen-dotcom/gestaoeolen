@@ -5541,7 +5541,10 @@
 
       main.innerHTML =
         '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Pessoas com acesso liberado, por equipe, projeto, operadora e regional</div></div>' +
-        (canDo("acesso", "criar") ? '<button class="btn primary" id="btn-new-acesso-pessoa">' + ICONS.plus + "Adicionar pessoa</button>" : "") + "</div>" +
+        (canDo("acesso", "criar") ? '<div style="display:flex;gap:8px;">' +
+          '<button class="btn" id="btn-new-acesso-equipe">' + ICONS.plus + "Nova equipe</button>" +
+          '<button class="btn primary" id="btn-new-acesso-pessoa">' + ICONS.plus + "Adicionar pessoa</button>" +
+          "</div>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
           headHtml: "<th>Pessoa</th><th>Equipe / Empresa</th><th>Operadora</th><th>Projeto(s)</th><th>Regional(is)</th><th>Status</th>",
@@ -5550,6 +5553,7 @@
         });
 
       if ($("#btn-new-acesso-pessoa")) $("#btn-new-acesso-pessoa").addEventListener("click", function () { openAcessoAdicionarPessoaForm(); });
+      if ($("#btn-new-acesso-equipe")) $("#btn-new-acesso-equipe").addEventListener("click", function () { openAcessoEquipeForm(null); });
       $("#acesso-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#acesso-operadora").addEventListener("change", function (e) { ui.operadora = e.target.value; ui.page = 1; draw(); });
       $("#acesso-projeto").addEventListener("change", function (e) { ui.projeto = e.target.value; ui.page = 1; draw(); });
@@ -5761,13 +5765,19 @@
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="acesso-pessoa-form">' +
       '<div class="section-tabs">' +
-      '<button type="button" class="section-tab active" data-tab="equipe">Equipe</button>' +
-      '<button type="button" class="section-tab" data-tab="pessoais">Dados pessoais</button>' +
+      '<button type="button" class="section-tab active" data-tab="pessoais">Dados pessoais</button>' +
+      '<button type="button" class="section-tab" data-tab="equipe">Equipe</button>' +
       '<button type="button" class="section-tab" data-tab="contato">Contato</button>' +
       '<button type="button" class="section-tab" data-tab="empresa">Veículo/Empresa</button>' +
       '<button type="button" class="section-tab" data-tab="credenciais">Credenciais de acesso</button>' +
       "</div>" +
-      '<div class="tab-pane active" data-pane="equipe"><div class="field-grid">' +
+      '<div class="tab-pane active" data-pane="pessoais"><div class="field-grid">' +
+      field("Nome *", "nome", "text", null, { required: true }) + field("Sobrenome", "sobrenome", "text", null) +
+      field("Função", "funcao", "text", null) + field("RG", "rg", "text", null) +
+      field("OE", "oe", "text", null) + field("CPF", "cpf", "text", null) +
+      field("Data de nascimento", "dataNascimento", "date", null) + field("Filiação", "filiacao", "text", null) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="equipe"><div class="field-grid">' +
       '<div class="field span2"><label>Esta pessoa vai entrar em:</label>' +
       '<label style="display:block;font-weight:400;margin-top:8px;"><input type="radio" name="modoEquipe" value="existente"' + (modoInicial === "existente" ? " checked" : "") + (temEquipes ? "" : " disabled") + '> Uma equipe já existente</label>' +
       '<label style="display:block;font-weight:400;margin-top:4px;"><input type="radio" name="modoEquipe" value="nova"' + (modoInicial === "nova" ? " checked" : "") + '> Uma equipe nova</label>' +
@@ -5785,12 +5795,6 @@
       field("Empresa", "empresa", "text", null) + field("Contrato", "contrato", "text", null) +
       field("Validade", "validade", "date", null) + selectField("Status", "status", STATUS_OPTS, "ATIVO", {}) +
       "</div>" +
-      "</div></div>" +
-      '<div class="tab-pane" data-pane="pessoais"><div class="field-grid">' +
-      field("Nome *", "nome", "text", null, { required: true }) + field("Sobrenome", "sobrenome", "text", null) +
-      field("Função", "funcao", "text", null) + field("RG", "rg", "text", null) +
-      field("OE", "oe", "text", null) + field("CPF", "cpf", "text", null) +
-      field("Data de nascimento", "dataNascimento", "date", null) + field("Filiação", "filiacao", "text", null) +
       "</div></div>" +
       '<div class="tab-pane" data-pane="contato"><div class="field-grid">' +
       field("Telefone particular", "telefoneParticular", "text", null) + field("Telefone Vivo", "telefoneVivo", "text", null) +
