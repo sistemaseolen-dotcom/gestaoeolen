@@ -97,7 +97,8 @@
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
-    auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } }
+    auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
+    acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -109,7 +110,8 @@
     { key: "empresas", label: "Empresas" },
     { key: "documentos", label: "Treinamentos/documentos" },
     { key: "patrimonio", label: "Patrimônio" },
-    { key: "auditorias", label: "Auditorias" }
+    { key: "auditorias", label: "Auditorias" },
+    { key: "acesso", label: "Acesso" }
   ];
   var ACTIONS = [
     { key: "ver", label: "Ver" },
@@ -143,6 +145,7 @@
     if (canView("empresas")) return "empresas";
     if (canView("patrimonio")) return "patrimonio";
     if (canView("auditorias")) return "auditorias";
+    if (canView("acesso")) return "acesso";
     return null;
   }
 
@@ -535,6 +538,32 @@
       membros: row.membros || []
     };
   }
+  // Acesso — cada âncora (equipe/membro) tem MUITOS campos de credencial;
+  // mapeados 1:1 pra não ter que repetir a lista em três lugares (list,
+  // detail, form) — os forms leem/escrevem direto pelos nomes abaixo.
+  function mapAcessoEquipeFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, nomeEquipe: row.nome_equipe, operadora: row.operadora,
+      projetos: row.projetos || [], regionais: row.regionais || [],
+      atividade: row.atividade, empresa: row.empresa, status: row.status,
+      validade: row.validade, contrato: row.contrato,
+      criadoEm: row.criado_em, atualizadoEm: row.atualizado_em,
+      membros: (row.membros || []).map(mapAcessoMembroFromApi)
+    };
+  }
+  function mapAcessoMembroFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, equipeId: row.equipe_id, funcao: row.funcao, nome: row.nome, sobrenome: row.sobrenome,
+      rg: row.rg, oe: row.oe, cpf: row.cpf, dataNascimento: row.data_nascimento,
+      telefoneParticular: row.telefone_particular, telefoneVivo: row.telefone_vivo,
+      email: row.email, emailCorporativo: row.email_corporativo, filiacao: row.filiacao,
+      veiculo: row.veiculo, cnpj: row.cnpj, pis: row.pis, sap: row.sap,
+      redecorp: row.redecorp, sigitm: row.sigitm, senha: row.senha, vaAccess: row.va_access,
+      imei: row.imei, atcVivo: row.atc_vivo, highlineVivo: row.highline_vivo, ihs: row.ihs, winity: row.winity
+    };
+  }
   function mapPatrimonioFromApi(row) {
     if (!row) return row;
     return {
@@ -616,6 +645,7 @@
         equipes: (data.equipes || []).map(mapEquipeFromApi),
         patrimonios: (data.patrimonios || []).map(mapPatrimonioFromApi),
         auditorias: (data.auditorias || []).map(mapAuditoriaFromApi),
+        acessoEquipes: (data.acessoEquipes || []).map(mapAcessoEquipeFromApi),
         listas: data.listas || {},
         config: data.configuracoes || {}
       };
@@ -633,6 +663,7 @@
       STATE.equipes = data.equipes;
       STATE.patrimonios = data.patrimonios;
       STATE.auditorias = data.auditorias;
+      STATE.acessoEquipes = data.acessoEquipes;
       STATE.listas = data.listas;
       STATE.config = data.config;
       ensureListasSeed();
@@ -668,18 +699,16 @@
     if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
     if (canView("patrimonio")) navItems.push(["patrimonio", "Patrimônio", ICONS.patrimonio, STATE.patrimonios.length]);
     if (canView("auditorias")) navItems.push(["auditorias", "Auditorias", ICONS.auditorias, STATE.auditorias.length]);
+    // Aba "Acesso" (pedido do Diego, 28/09/2026): equipes de campo por
+    // operadora/projeto/regional, com dados de acesso à operadora. Mesma
+    // regra de permissão de qualquer outra página — "ver" em
+    // Administrador → Usuários controla quem vê esta aba (admin sempre vê).
+    if (canView("acesso")) navItems.push(["acesso", "Acesso", ICONS.lock, STATE.acessoEquipes.length]);
     // Sincronização com o GPO — pedido do Diego: antes só o admin tinha
     // acesso (dentro de Administrador), agora todo usuário logado enxerga e
     // pode disparar, sem depender de nenhuma permissão de página.
     navItems.push(["sincronizacao", "Sincronização", ICONS.sync, null]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
-    // Aba "Acesso" — pedido do Diego (28/09/2026): criada por enquanto só
-    // como espaço reservado na barra lateral (mesma posição do admin-only
-    // "Administrador", abaixo dele), sem nenhuma regra de permissão própria
-    // ainda — as regras de quem pode ver/usar o quê aqui serão definidas
-    // depois. Gate temporário: só admin vê, igual ao Administrador, até essa
-    // definição acontecer.
-    if (isAdmin()) navItems.push(["acesso", "Acesso", ICONS.lock, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
       return '<button class="nav-item' + (active ? " active" : "") + '" data-nav="' + it[0] + '">' + it[2] +
@@ -1556,6 +1585,14 @@
     var v = (a && a.regional) || "";
     return AUDITORIA_REGIONAIS.indexOf(v) !== -1 ? v : "";
   }
+
+  // Listas fixas da aba "Acesso" (pedido do Diego, 28/09/2026) — Projeto e
+  // Regional reaproveitam de propósito AUDITORIA_CLIENTES/AUDITORIA_REGIONAIS
+  // (mesmas listas já usadas em Auditorias, confirmado com o Diego), pra não
+  // ter uma terceira variação com grafia diferente em algum canto do app.
+  var ACESSO_PROJETOS = AUDITORIA_CLIENTES;
+  var ACESSO_REGIONAIS = AUDITORIA_REGIONAIS;
+  var ACESSO_OPERADORAS = ["TIM", "CLARO", "VIVO"];
 
   // Pedido do Diego: as fotos novas do checklist (EPI's completos e os 4
   // Prints da auditoria remota) e a regra de ocultar a selfie do inspetor
@@ -4991,7 +5028,7 @@
   // própria tela da pessoa em vez de ir pra lista geral de treinamentos.
   function confirmDelete(kind, id, label, opts) {
     opts = opts || {};
-    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : kind === "auditoria" ? "auditorias" : "documentos";
+    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : kind === "auditoria" ? "auditorias" : kind === "acessoEquipe" ? "acesso" : "documentos";
     if (!canDo(pageKey, "excluir")) { toast("Você não tem permissão para excluir.", "error"); return; }
     var html =
       '<div class="modal-box"><h3>Excluir registro?</h3><p>Tem certeza que deseja excluir <strong>' + esc(label) + '</strong>? Esta ação não pode ser desfeita.</p>' +
@@ -5004,6 +5041,7 @@
         : kind === "empresa" ? "/api/empresas/" + id
         : kind === "patrimonio" ? "/api/patrimonios/" + id
         : kind === "auditoria" ? "/api/auditorias/" + id
+        : kind === "acessoEquipe" ? "/api/acesso-equipes/" + id
         : "/api/treinamentos/" + id;
       apiFetch(endpoint, { method: "DELETE" }).then(function () {
         // Espelha localmente a cascata que o banco já faz no servidor, pra
@@ -5026,6 +5064,8 @@
           STATE.patrimonios = STATE.patrimonios.filter(function (p) { return p.id !== id; });
         } else if (kind === "auditoria") {
           STATE.auditorias = STATE.auditorias.filter(function (a) { return a.id !== id; });
+        } else if (kind === "acessoEquipe") {
+          STATE.acessoEquipes = STATE.acessoEquipes.filter(function (a) { return a.id !== id; });
         }
         closeModal();
         renderShellCounts();
@@ -5423,17 +5463,251 @@
     });
   }
 
-  // Tela "Acesso" — pedido do Diego (28/09/2026): criar a aba nova na barra
-  // lateral por enquanto sem nenhuma regra definida ainda ("depois iremos
-  // definir as regras"). Só o espaço reservado + um aviso, pra não parecer
-  // quebrado nem prometer uma função que ainda não existe.
-  function renderAcesso(main) {
+  /* ================================================================
+     ACESSO — equipes de campo por operadora/projeto/regional, com os
+     dados de cada integrante (inclusive credenciais de acesso aos
+     sistemas da operadora). Pedido do Diego (28/09/2026): página
+     controlada pela mesma matriz de permissões de qualquer outra aba
+     ("ver" em Administrador → Usuários decide quem enxerga). A API
+     externa de consulta (outro sistema buscando equipe por
+     projeto/operadora/regional) foi propositalmente deixada pra depois,
+     a pedido do próprio Diego.
+     ================================================================ */
+  function renderAcessoEquipesList(main) {
+    var ui = uiState.acesso;
+
+    function computeFiltered() {
+      var all = STATE.acessoEquipes.slice().sort(function (a, b) { return (a.nomeEquipe || "").localeCompare(b.nomeEquipe || ""); });
+      return all.filter(function (e) {
+        if (ui.operadora && e.operadora !== ui.operadora) return false;
+        if (ui.projeto && (e.projetos || []).indexOf(ui.projeto) === -1) return false;
+        if (ui.regional && (e.regionais || []).indexOf(ui.regional) === -1) return false;
+        if (!ui.q) return true;
+        var hay = normalize([e.nomeEquipe, e.empresa, e.atividade, e.contrato].concat(e.projetos || [], e.regionais || []).join(" "));
+        return hay.indexOf(normalize(ui.q)) !== -1;
+      });
+    }
+
+    function draw() {
+      var filtered = computeFiltered();
+      withFocusPreserved(function () { drawInto(filtered); });
+    }
+
+    function drawInto(filtered) {
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+      var body = pg.items.map(function (e) {
+        return '<tr data-id="' + e.id + '">' +
+          '<td><div class="row-primary">' + esc(e.nomeEquipe) + '</div><div class="row-secondary">' + esc(e.empresa || "—") + '</div></td>' +
+          "<td>" + esc(e.operadora || "—") + "</td>" +
+          "<td>" + esc((e.projetos || []).join(", ") || "—") + "</td>" +
+          "<td>" + esc((e.regionais || []).join(", ") || "—") + "</td>" +
+          '<td class="num">' + e.membros.length + "</td>" +
+          "<td>" + statusPillGeneric(e.status) + "</td></tr>";
+      }).join("");
+      var toolbar =
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="acesso-q" placeholder="Buscar por equipe, empresa, contrato…" value="' + esc(ui.q) + '"></div>' +
+        '<select class="filter" id="acesso-operadora"><option value="">Todas as operadoras</option>' +
+        ACESSO_OPERADORAS.map(function (o) { return '<option value="' + esc(o) + '"' + (ui.operadora === o ? " selected" : "") + '>' + esc(o) + "</option>"; }).join("") + "</select>" +
+        '<select class="filter" id="acesso-projeto"><option value="">Todos os projetos</option>' +
+        ACESSO_PROJETOS.map(function (p) { return '<option value="' + esc(p) + '"' + (ui.projeto === p ? " selected" : "") + '>' + esc(p) + "</option>"; }).join("") + "</select>" +
+        '<select class="filter" id="acesso-regional"><option value="">Todas as regionais</option>' +
+        ACESSO_REGIONAIS.map(function (r) { return '<option value="' + esc(r) + '"' + (ui.regional === r ? " selected" : "") + '>' + esc(r) + "</option>"; }).join("") + "</select>";
+
+      main.innerHTML =
+        '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Equipes de campo por projeto, operadora e regional, com os dados de acesso às operadoras</div></div>' +
+        (canDo("acesso", "criar") ? '<button class="btn primary" id="btn-new-acesso-equipe">' + ICONS.plus + "Nova equipe</button>" : "") + "</div>" +
+        tableShell({
+          toolbar: toolbar,
+          headHtml: "<th>Equipe / Empresa</th><th>Operadora</th><th>Projeto(s)</th><th>Regional(is)</th><th class=\"num\">Integrantes</th><th>Status</th>",
+          bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+          empty: "Nenhuma equipe encontrada."
+        });
+
+      if ($("#btn-new-acesso-equipe")) $("#btn-new-acesso-equipe").addEventListener("click", function () { openAcessoEquipeForm(null); });
+      $("#acesso-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#acesso-operadora").addEventListener("change", function (e) { ui.operadora = e.target.value; ui.page = 1; draw(); });
+      $("#acesso-projeto").addEventListener("change", function (e) { ui.projeto = e.target.value; ui.page = 1; draw(); });
+      $("#acesso-regional").addEventListener("change", function (e) { ui.regional = e.target.value; ui.page = 1; draw(); });
+      $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/acesso/" + row.getAttribute("data-id")); }); });
+      bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+    }
+    draw();
+  }
+
+  function renderAcessoEquipeDetail(main, id) {
+    var e = byId(STATE.acessoEquipes, id);
+    if (!e) { navigate("#/acesso"); return; }
     main.innerHTML =
-      '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Regras de acesso — em definição</div></div></div>' +
-      '<div class="empty-state" style="padding:60px 20px;text-align:center;">' + ICONS.lock +
-      '<h3 style="margin-top:12px;">Ainda sem regras definidas</h3>' +
-      '<p class="hint">Esta página vai reunir as regras de acesso do sistema. Por enquanto é só um espaço reservado — as regras ainda serão definidas.</p>' +
-      "</div>";
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Acesso</button><h1 style="margin-top:6px;">' + esc(e.nomeEquipe) + "</h1>" +
+      '<div class="sub">' + esc(e.operadora || "—") + " · " + esc((e.projetos || []).join(", ") || "—") + " · " + esc((e.regionais || []).join(", ") || "—") + " · " + statusPillGeneric(e.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("nome_equipe", "Nome da equipe") + fieldNoteHtml("status", "Status") + "</div>" +
+      "</div>" +
+      '<div style="display:flex;gap:8px;">' +
+      (canDo("acesso", "editar") ? '<button class="btn" id="btn-edit-acesso-equipe">Editar</button>' : "") +
+      (canDo("acesso", "excluir") ? '<button class="btn danger" id="btn-del-acesso-equipe">' + ICONS.trash + "Excluir</button>" : "") +
+      "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Dados da equipe</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Operadora", e.operadora, "operadora") + detailItem("Projeto(s)", (e.projetos || []).join(", "), "projetos") +
+      detailItem("Regional(is)", (e.regionais || []).join(", "), "regionais") + detailItem("Atividade", e.atividade, "atividade") +
+      detailItem("Empresa", e.empresa, "empresa") + detailItem("Status", e.status, "status") +
+      detailItem("Validade", e.validade ? fmtDateBR(e.validade) : null, "validade") + detailItem("Contrato", e.contrato, "contrato") +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Integrantes (' + e.membros.length + ')</h3>' +
+      (canDo("acesso", "editar") ? '<button class="btn sm primary" id="btn-add-acesso-membro">' + ICONS.plus + "Adicionar integrante</button>" : "") +
+      '</div><div class="panel-body pad">' +
+      (e.membros.length ? e.membros.map(function (m, idx) {
+        return '<div class="member-row"><div class="avatar-dot">' + esc(initials(m.nome)) + '</div><div class="info" style="cursor:pointer" data-membro="' + idx + '"><div class="name">' + esc(m.nome) + (m.sobrenome ? " " + esc(m.sobrenome) : "") + '</div><div class="role">' + esc(m.funcao || "—") + "</div></div>" +
+          (canDo("acesso", "editar") ? '<button class="btn ghost sm" data-remove-acesso-membro="' + idx + '">' + ICONS.close + "</button>" : "") + "</div>";
+      }).join("") : '<div class="hint">Nenhum integrante cadastrado nesta equipe.</div>') +
+      "</div></div>" +
+      historyPanelHtml("acesso_equipe", e.id);
+    loadHistoryPanel("acesso_equipe", e.id);
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/acesso"); });
+    if ($("#btn-edit-acesso-equipe")) $("#btn-edit-acesso-equipe").addEventListener("click", function () { openAcessoEquipeForm(e); });
+    if ($("#btn-del-acesso-equipe")) $("#btn-del-acesso-equipe").addEventListener("click", function () { confirmDelete("acessoEquipe", e.id, e.nomeEquipe, { after: function () { navigate("#/acesso"); } }); });
+    if ($("#btn-add-acesso-membro")) $("#btn-add-acesso-membro").addEventListener("click", function () { openAcessoMembroForm(e, null); });
+    $all("[data-membro]", main).forEach(function (row) {
+      row.addEventListener("click", function () { openAcessoMembroForm(e, e.membros[Number(row.getAttribute("data-membro"))]); });
+    });
+    $all("[data-remove-acesso-membro]", main).forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (!canDo("acesso", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+        var idx = Number(btn.getAttribute("data-remove-acesso-membro"));
+        var m = e.membros[idx];
+        if (!m) return;
+        apiFetch("/api/acesso-equipes/" + e.id + "/membros/" + m.id, { method: "DELETE" })
+          .then(function () {
+            e.membros.splice(idx, 1);
+            render();
+            toast("Integrante removido.", "success");
+          })
+          .catch(handleApiError);
+      });
+    });
+  }
+
+  function openAcessoEquipeForm(equipe) {
+    var isNew = !equipe;
+    var html =
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Nova equipe" : "Editar equipe") + '</h2><div class="sub">Projeto, operadora e regional definem como essa equipe será encontrada nas consultas de acesso</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="acesso-equipe-form"><div class="field-grid">' +
+      field("Nome da equipe *", "nomeEquipe", "text", equipe, { required: true, span2: true }) +
+      selectField("Operadora *", "operadora", ACESSO_OPERADORAS, equipe ? equipe.operadora : "", { required: true }) +
+      field("Atividade", "atividade", "text", equipe) +
+      checkboxGroupField("Projeto(s)", "projetos", ACESSO_PROJETOS, equipe ? equipe.projetos : [], { span2: true }) +
+      checkboxGroupField("Regional(is)", "regionais", ACESSO_REGIONAIS, equipe ? equipe.regionais : [], { span2: true }) +
+      field("Empresa", "empresa", "text", equipe) + field("Contrato", "contrato", "text", equipe) +
+      field("Validade", "validade", "date", equipe) + selectField("Status", "status", STATUS_OPTS, equipe ? equipe.status : "ATIVO") +
+      "</div></form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="acesso-equipe-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+    openDrawer(html);
+    $("#acesso-equipe-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("acesso", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var body = {};
+      ["nomeEquipe", "atividade", "empresa", "contrato", "validade", "status"].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      body.operadora = (fd.get("operadora") || "").toString().trim();
+      body.projetos = fd.getAll("projetos");
+      body.regionais = fd.getAll("regionais");
+      if (!body.nomeEquipe) { toast("Informe o nome da equipe.", "error"); return; }
+      if (!body.operadora) { toast("Selecione a operadora.", "error"); return; }
+
+      var req = isNew
+        ? apiFetch("/api/acesso-equipes", { method: "POST", body: body })
+        : apiFetch("/api/acesso-equipes/" + equipe.id, { method: "PATCH", body: body });
+
+      req.then(function (data) {
+        var rec = mapAcessoEquipeFromApi(data);
+        if (!isNew) rec.membros = equipe.membros; // PATCH não devolve membros — preserva os já carregados localmente
+        if (isNew) STATE.acessoEquipes.push(rec);
+        else {
+          var idx = STATE.acessoEquipes.findIndex(function (x) { return x.id === rec.id; });
+          if (idx !== -1) STATE.acessoEquipes[idx] = rec;
+        }
+        closeDrawer();
+        render();
+        renderShellCounts();
+        toast(isNew ? "Equipe criada." : "Equipe atualizada.", "success");
+        navigate("#/acesso/" + rec.id);
+      }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
+  }
+
+  function openAcessoMembroForm(equipe, membro) {
+    var isNew = !membro;
+    var html =
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Novo integrante" : "Editar integrante") + '</h2><div class="sub">Equipe: ' + esc(equipe.nomeEquipe) + '</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="acesso-membro-form">' +
+      '<div class="section-tabs">' +
+      '<button type="button" class="section-tab active" data-tab="pessoais">Dados pessoais</button>' +
+      '<button type="button" class="section-tab" data-tab="contato">Contato</button>' +
+      '<button type="button" class="section-tab" data-tab="empresa">Veículo/Empresa</button>' +
+      '<button type="button" class="section-tab" data-tab="credenciais">Credenciais de acesso</button>' +
+      "</div>" +
+      '<div class="tab-pane active" data-pane="pessoais"><div class="field-grid">' +
+      field("Nome *", "nome", "text", membro, { required: true }) + field("Sobrenome", "sobrenome", "text", membro) +
+      field("Função", "funcao", "text", membro) + field("RG", "rg", "text", membro) +
+      field("OE", "oe", "text", membro) + field("CPF", "cpf", "text", membro) +
+      field("Data de nascimento", "dataNascimento", "date", membro) + field("Filiação", "filiacao", "text", membro) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="contato"><div class="field-grid">' +
+      field("Telefone particular", "telefoneParticular", "text", membro) + field("Telefone Vivo", "telefoneVivo", "text", membro) +
+      field("E-mail", "email", "email", membro) + field("E-mail corporativo", "emailCorporativo", "email", membro) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="empresa"><div class="field-grid">' +
+      field("Veículo", "veiculo", "text", membro) + field("CNPJ", "cnpj", "text", membro) +
+      field("PIS", "pis", "text", membro) + field("SAP", "sap", "text", membro) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="credenciais"><div class="field-grid">' +
+      '<div class="field span2"><div class="hint">Credenciais de acesso aos sistemas da operadora — visíveis só a quem tem permissão de ver esta aba.</div></div>' +
+      field("REDECORP", "redecorp", "text", membro) + field("SIGITM", "sigitm", "text", membro) +
+      field("Senha", "senha", "text", membro) + field("VA Access", "vaAccess", "text", membro) +
+      field("IMEI", "imei", "text", membro) + field("ATC-Vivo", "atcVivo", "text", membro) +
+      field("Highline-Vivo", "highlineVivo", "text", membro) + field("IHS", "ihs", "text", membro) +
+      field("Winity", "winity", "text", membro) +
+      "</div></div>" +
+      "</form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="acesso-membro-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+    openDrawer(html, { wide: true });
+    setupTabs();
+    $("#acesso-membro-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("acesso", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var body = {};
+      ["nome", "sobrenome", "funcao", "rg", "oe", "cpf", "dataNascimento", "filiacao",
+        "telefoneParticular", "telefoneVivo", "email", "emailCorporativo",
+        "veiculo", "cnpj", "pis", "sap",
+        "redecorp", "sigitm", "senha", "vaAccess", "imei", "atcVivo", "highlineVivo", "ihs", "winity"
+      ].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      if (!body.nome) { toast("Informe o nome do integrante.", "error"); return; }
+
+      var req = isNew
+        ? apiFetch("/api/acesso-equipes/" + equipe.id + "/membros", { method: "POST", body: body })
+        : apiFetch("/api/acesso-equipes/" + equipe.id + "/membros/" + membro.id, { method: "PATCH", body: body });
+
+      req.then(function (data) {
+        var rec = mapAcessoMembroFromApi(data);
+        if (isNew) equipe.membros.push(rec);
+        else {
+          var idx = equipe.membros.findIndex(function (x) { return x.id === rec.id; });
+          if (idx !== -1) equipe.membros[idx] = rec;
+        }
+        closeDrawer();
+        render();
+        toast(isNew ? "Integrante adicionado." : "Integrante atualizado.", "success");
+      }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
   }
 
   function renderAdminListas(main) {
@@ -5568,6 +5842,19 @@
     var emptyOpt = opts2.allowEmpty ? '<option value="">' + esc(opts2.emptyLabel || "— Selecione —") + "</option>" : "";
     return '<div class="field"><label>' + esc(label) + '</label><select name="' + name + '"' + (opts2.required ? " required" : "") + ">" + emptyOpt +
       opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === current ? " selected" : "") + '>' + esc(o) + "</option>"; }).join("") + "</select></div>";
+  }
+  // Grupo de checkboxes pra multi-seleção (Projeto/Regional da aba Acesso).
+  // `current` é um array; lido de volta no submit via `fd.getAll(name)`.
+  function checkboxGroupField(label, name, options, current, opts) {
+    opts = opts || {};
+    var currentSet = {};
+    (current || []).forEach(function (v) { currentSet[v] = true; });
+    var boxes = options.map(function (o) {
+      return '<label style="display:inline-flex;align-items:center;gap:6px;margin:0 16px 8px 0;font-weight:400;">' +
+        '<input type="checkbox" name="' + esc(name) + '" value="' + esc(o) + '"' + (currentSet[o] ? " checked" : "") + '> ' + esc(o) + "</label>";
+    }).join("");
+    return '<div class="field' + (opts.span2 ? " span2" : "") + '"><label>' + esc(label) + '</label>' +
+      '<div style="display:flex;flex-wrap:wrap;padding-top:2px;">' + boxes + "</div></div>";
   }
   function cargoSelectField(p) {
     var current = p ? (p.cargo || "") : "";
@@ -5939,16 +6226,6 @@
       return;
     }
 
-    // Acesso — ver comentário em renderShell(): por enquanto só um espaço
-    // reservado (gate temporário igual ao Administrador), sem regras
-    // próprias ainda.
-    if (route.view === "acesso") {
-      if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
-      renderAcesso(main);
-      closeDrawer();
-      return;
-    }
-
     // Sincronização: qualquer usuário logado tem acesso (não é admin-only e
     // não faz parte da matriz de permissões por página).
     if (route.view === "sincronizacao") {
@@ -5957,7 +6234,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", auditorias: "auditorias" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", auditorias: "auditorias", acesso: "acesso" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -5981,6 +6258,7 @@
       else if (route.id) renderAuditoriaDetail(main, route.id);
       else renderAuditoriasPainel(main);
     }
+    else if (route.view === "acesso") route.id ? renderAcessoEquipeDetail(main, route.id) : renderAcessoEquipesList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id || route.id === "lista") closeDrawer();
   }
@@ -5995,7 +6273,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], listas: {}, config: {} };
+          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
           render();
           return;
         }
@@ -6007,7 +6285,7 @@
       })
       .catch(function () {
         CURRENT_USER = null;
-        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], listas: {}, config: {} };
+        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
         render();
       });
   }

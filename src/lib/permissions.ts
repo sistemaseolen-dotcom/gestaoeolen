@@ -2,7 +2,12 @@
 // isAdmin, PAGES, ACTIONS). Mantido 1:1 de propósito — qualquer rota nova
 // deve reusar isto, nunca reimplementar a checagem na mão.
 
-export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "auditorias"] as const;
+// "acesso" adicionada a pedido do Diego (28/09/2026): a aba "Acesso" (tabela
+// de equipes de campo com projeto/operadora/regional e credenciais de acesso
+// às operadoras) — só quem tiver "ver" nessa página vê a aba/dados; "criar"/
+// "editar"/"excluir" controlam o cadastro das equipes e seus membros, no
+// mesmo padrão de qualquer outra página daqui.
+export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "auditorias", "acesso"] as const;
 export type Page = (typeof PAGES)[number];
 
 export const ACTIONS = ["ver", "criar", "editar", "excluir"] as const;

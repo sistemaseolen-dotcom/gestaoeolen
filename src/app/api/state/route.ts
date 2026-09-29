@@ -40,8 +40,12 @@ export async function GET() {
   // em especial: um técnico de campo (acesso só a Auditorias) não precisa
   // baixar o cadastro inteiro de pessoas/empresas/treinamentos no celular.
   const podeAuditorias = canView(gate.user, "auditorias");
+  // Acesso guarda dados sensíveis (CPF e até senha de sistema de operadora)
+  // — só busca do banco quando o usuário logado tem permissão "ver" nessa
+  // página, mesmo padrão já usado acima para Auditorias.
+  const podeAcesso = canView(gate.user, "acesso");
 
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
     fetchAllRows(admin, "pessoas"),
     fetchAllRows(admin, "empresas"),
     fetchAllRows(admin, "treinamentos"),
@@ -56,9 +60,11 @@ export async function GET() {
           .order("data", { ascending: false })
       : Promise.resolve({ data: [] as any[], error: null as any }),
     admin.from("configuracoes").select("chave, valor"),
+    podeAcesso ? fetchAllRows(admin, "acesso_equipes") : Promise.resolve({ data: [] as any[], error: null as any }),
+    podeAcesso ? fetchAllRows(admin, "acesso_membros") : Promise.resolve({ data: [] as any[], error: null as any }),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -84,6 +90,17 @@ export async function GET() {
   const config: Record<string, any> = {};
   for (const row of configuracoes.data || []) config[row.chave] = row.valor;
 
+  const membrosPorAcessoEquipe = new Map<number, any[]>();
+  for (const m of acessoMembros.data || []) {
+    const list = membrosPorAcessoEquipe.get(m.equipe_id) || [];
+    list.push(m);
+    membrosPorAcessoEquipe.set(m.equipe_id, list);
+  }
+  const acessoEquipesComMembros = (acessoEquipes.data || []).map((e) => ({
+    ...e,
+    membros: membrosPorAcessoEquipe.get(e.id) || [],
+  }));
+
   return NextResponse.json({
     pessoas: pessoas.data,
     empresas: empresas.data,
@@ -93,5 +110,6 @@ export async function GET() {
     auditorias: auditorias.data,
     listas,
     configuracoes: config,
+    acessoEquipes: acessoEquipesComMembros,
   });
 }
