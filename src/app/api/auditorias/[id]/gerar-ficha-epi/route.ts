@@ -133,7 +133,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       funcao: pessoa.cargo,
       itens: itensPdf,
     });
-    pdfBuffer = resultado.buffer;
+    pdfBuffer = Buffer.from(resultado.buffer);
   } catch (err: any) {
     console.error(`Falha ao gerar PDF da Ficha de EPI (treinamento ${treino.id}):`, err?.stack || err);
     return NextResponse.json({ error: `Falha ao gerar o PDF: ${err?.message || err}` }, { status: 500 });
