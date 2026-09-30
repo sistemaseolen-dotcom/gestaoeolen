@@ -1036,7 +1036,7 @@
       (trs.length ? '<div class="table-scroll"><table class="data"><thead><tr><th>Item</th><th>Categoria</th><th>Vencimento</th><th>Status</th><th>Anexo</th><th>Ações</th></tr></thead><tbody>' +
         trs.map(function (t) {
           var st = trainingStatus(t);
-          return '<tr data-tr="' + t.id + '"><td class="row-primary">' + esc(t.tipo) + '</td><td><span class="tag">' + esc(t.categoria) + '</span></td><td class="mono">' + fmtDateBR(t.vencimento) + '</td><td>' + pill(st) + '</td><td>' + (t.arquivoPath ? ICONS.paperclip : "—") + '</td><td class="row-actions">' +
+          return '<tr data-tr="' + t.id + '"><td class="row-primary">' + esc(t.tipo) + '</td><td><span class="tag">' + esc(t.categoria) + '</span></td><td class="mono">' + fmtDateBR(t.vencimento) + '</td><td>' + pill(st) + '</td><td>' + (t.arquivoPath ? '<a href="#" data-tr-download="' + t.id + '">' + esc(t.arquivoNome || "Baixar") + "</a>" : "—") + '</td><td class="row-actions">' +
             (canDo("documentos", "editar") ? '<button class="btn ghost sm" title="Editar" data-tr-edit="' + t.id + '">' + ICONS.edit + '</button><button class="btn ghost sm" title="Anexar arquivo" data-tr-attach="' + t.id + '">' + ICONS.paperclip + "</button>" : "") +
             (canDo("documentos", "excluir") ? '<button class="btn ghost sm" title="Excluir" data-tr-del="' + t.id + '">' + ICONS.trash + "</button>" : "") +
             "</td></tr>";
@@ -1064,6 +1064,13 @@
         ev.stopPropagation();
         var tr = byId(STATE.treinamentos, btn.getAttribute("data-tr-del"));
         if (tr) confirmDelete("treinamento", tr.id, tr.tipo + " — " + tr.pessoaNome, { after: function () { render(); } });
+      });
+    });
+    $all("[data-tr-download]", main).forEach(function (a) {
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        baixarAnexo(a.getAttribute("data-tr-download"));
       });
     });
     var quickAttachInput = $("#tr-quick-attach-input", main);
@@ -4864,7 +4871,7 @@
       "</div>" + (t.observacao ? '<div class="detail-item" style="margin-top:12px;"><span class="k">Observação</span><span class="v">' + esc(t.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") +
       '<div style="margin-top:16px;">' +
       (t.arquivoPath
-        ? '<button type="button" class="file-chip" id="btn-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Ver anexo") + "</button>"
+        ? '<button type="button" class="file-chip" id="btn-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Baixar anexo") + "</button>"
         : '<div class="hint">Nenhum arquivo anexado a este registro.</div>') +
       (t.tipo === "FICHA DE EPI" && t.arquivoPath
         ? '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
@@ -4878,7 +4885,7 @@
     $("#back-btn").addEventListener("click", function () { navigate("#/treinamentos"); });
     if ($("#btn-edit-tr")) $("#btn-edit-tr").addEventListener("click", function () { openTreinamentoForm(t, null); });
     if ($("#btn-del-tr")) $("#btn-del-tr").addEventListener("click", function () { confirmDelete("treinamento", t.id, t.tipo + " — " + t.pessoaNome); });
-    if ($("#btn-ver-anexo")) $("#btn-ver-anexo").addEventListener("click", function () { openAnexo(t.id); });
+    if ($("#btn-ver-anexo")) $("#btn-ver-anexo").addEventListener("click", function () { baixarAnexo(t.id); });
     if ($("#btn-reler-epi")) {
       $("#btn-reler-epi").addEventListener("click", function () {
         var btn = $("#btn-reler-epi");
@@ -4914,12 +4921,26 @@
   }
 
   // Anexos não ficam mais embutidos como data URI no registro — o Storage é
-  // privado, então toda visualização passa por um link assinado de 60s
+  // privado, então todo download passa por um link assinado de 60s
   // (GET /api/treinamentos/:id/arquivo). Sem cache: se o link expirar antes
   // de ser aberto, é só clicar de novo.
-  function openAnexo(id) {
+  //
+  // Baixa direto (sem abrir aba nova) — pedido do Diego (30/09/2026): antes
+  // isso abria o arquivo numa aba nova via window.open, e dependendo do
+  // navegador/tipo de arquivo era preciso um clique extra ali dentro pra
+  // salvar. Um <a> temporário com download aciona o "Salvar como" do
+  // navegador direto na página atual.
+  function baixarAnexo(id) {
     apiFetch("/api/treinamentos/" + id + "/arquivo")
-      .then(function (data) { window.open(data.url, "_blank", "noopener"); })
+      .then(function (data) {
+        var a = document.createElement("a");
+        a.href = data.url;
+        a.download = data.nome || "arquivo";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      })
       .catch(handleApiError);
   }
 
@@ -4943,7 +4964,7 @@
       '<div class="field"><label>Situação (se sem vencimento)</label><select name="situacaoOriginal"><option value="">—</option><option value="VALIDO"' + (t && t.situacaoOriginal === "VALIDO" ? " selected" : "") + '>Válido</option><option value="RENOVAR"' + (t && t.situacaoOriginal === "RENOVAR" ? " selected" : "") + '>Renovar</option><option value="VENCIDO"' + (t && t.situacaoOriginal === "VENCIDO" ? " selected" : "") + '>Vencido</option></select></div>' +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(t ? t.observacao : "") + "</textarea></div>" +
       '<div class="field span2"><label>Arquivo anexado</label>' +
-      (t && t.arquivoPath ? '<div style="margin-bottom:8px;"><button type="button" class="file-chip" id="tr-form-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Ver anexo") + '</button> <label style="margin-left:8px;"><input type="checkbox" name="removerArquivo"> remover anexo</label></div>' : "") +
+      (t && t.arquivoPath ? '<div style="margin-bottom:8px;"><button type="button" class="file-chip" id="tr-form-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Baixar anexo") + '</button> <label style="margin-left:8px;"><input type="checkbox" name="removerArquivo"> remover anexo</label></div>' : "") +
       '<label class="dropzone" id="dropzone"><input type="file" name="arquivo" id="tr-file-input">' + ICONS.upload + '<div id="dropzone-label">Clique para anexar um arquivo (PDF, imagem ou documento)</div></label>' +
       "</div>" +
       "</div></form>" +
@@ -4961,7 +4982,7 @@
       var f = this.files[0];
       $("#dropzone-label").textContent = f ? f.name : "Clique para anexar um arquivo (PDF, imagem ou documento)";
     });
-    if ($("#tr-form-ver-anexo")) $("#tr-form-ver-anexo").addEventListener("click", function () { openAnexo(t.id); });
+    if ($("#tr-form-ver-anexo")) $("#tr-form-ver-anexo").addEventListener("click", function () { baixarAnexo(t.id); });
 
     $("#tr-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
