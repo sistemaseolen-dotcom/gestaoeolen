@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { requirePermission, requireView } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import * as storage from "@/lib/magaluStorage";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
 import { carregarFichasPorNome, temAlgumaDivergencia } from "@/lib/epiChecklist";
 
-const BUCKET = "auditorias-anexos";
 const CAMPOS_AUDITORIA = [
   "site_id", "empresa", "regional", "data", "standard", "status", "inspetor_nome",
   "num_colaboradores", "observacao_final", "modalidade",
@@ -41,10 +41,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   let fotosComUrl = fotos || [];
   if (fotosComUrl.length) {
-    const { data: signed } = await admin.storage
-      .from(BUCKET)
-      .createSignedUrls(fotosComUrl.map((f) => f.arquivo_path), 300);
-    const urlPorPath = new Map((signed || []).map((s) => [s.path, s.signedUrl]));
+    const signedUrls = await Promise.all(
+      fotosComUrl.map((f) => storage.createSignedUrl(f.arquivo_path, 300))
+    );
+    const urlPorPath = new Map(fotosComUrl.map((f, i) => [f.arquivo_path, signedUrls[i].url]));
     fotosComUrl = fotosComUrl.map((f) => ({ ...f, url: urlPorPath.get(f.arquivo_path) || null }));
   }
 
@@ -164,7 +164,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
 
   const { data: fotos } = await admin.from("auditoria_fotos").select("arquivo_path").eq("auditoria_id", id);
   if (fotos && fotos.length) {
-    await admin.storage.from(BUCKET).remove(fotos.map((f) => f.arquivo_path));
+    await storage.removeFiles(fotos.map((f) => f.arquivo_path));
   }
 
   const { error: deleteError } = await admin.from("auditorias").delete().eq("id", id);

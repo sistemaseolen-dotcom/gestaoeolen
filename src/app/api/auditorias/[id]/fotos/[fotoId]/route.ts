@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-const BUCKET = "auditorias-anexos";
+import * as storage from "@/lib/magaluStorage";
 
 export async function DELETE(_req: Request, { params }: { params: { id: string; fotoId: string } }) {
   const gate = await requirePermission("auditorias", "editar");
@@ -24,7 +23,7 @@ export async function DELETE(_req: Request, { params }: { params: { id: string; 
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
   if (!foto) return NextResponse.json({ error: "Foto não encontrada." }, { status: 404 });
 
-  await admin.storage.from(BUCKET).remove([foto.arquivo_path]);
+  await storage.removeFiles([foto.arquivo_path]);
   const { error: deleteError } = await admin.from("auditoria_fotos").delete().eq("id", fotoId);
   if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
 

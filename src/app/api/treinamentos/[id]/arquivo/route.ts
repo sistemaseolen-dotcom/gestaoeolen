@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import * as storage from "@/lib/magaluStorage";
 import { auditDiffFields } from "@/lib/audit";
 import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5MB — mesmo limite validado no cliente da versão antiga.
-const BUCKET = "treinamentos-anexos";
 
 // Mantém só caracteres seguros no nome do arquivo dentro do path do bucket
 // (o nome original, sem sanitizar, continua guardado em arquivo_nome para
@@ -41,14 +41,16 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "Nenhum arquivo anexado." }, { status: 404 });
   }
 
-  const { data: signed, error: signError } = await admin.storage
-    .from(BUCKET)
-    .createSignedUrl(treino.arquivo_path, 60, { download: treino.arquivo_nome || true });
-  if (signError || !signed) {
-    return NextResponse.json({ error: signError?.message || "Falha ao gerar link do anexo." }, { status: 500 });
+  const { url, error: signError } = await storage.createSignedUrl(
+    treino.arquivo_path,
+    60,
+    treino.arquivo_nome || true
+  );
+  if (signError || !url) {
+    return NextResponse.json({ error: signError || "Falha ao gerar link do anexo." }, { status: 500 });
   }
 
-  return NextResponse.json({ url: signed.signedUrl, nome: treino.arquivo_nome });
+  return NextResponse.json({ url, nome: treino.arquivo_nome });
 }
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
@@ -95,22 +97,19 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // novo. Best-effort — se a remoção falhar, seguimos mesmo assim (upsert
   // false garante que não sobrescrevemos silenciosamente nada no bucket).
   if (before.arquivo_path) {
-    const { error: removeError } = await admin.storage.from(BUCKET).remove([before.arquivo_path]);
+    const { error: removeError } = await storage.removeFiles([before.arquivo_path]);
     if (removeError) {
-      console.error(`Falha ao remover anexo anterior ${before.arquivo_path}:`, removeError.message);
+      console.error(`Falha ao remover anexo anterior ${before.arquivo_path}:`, removeError);
     }
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const path = `${id}/${Date.now()}-${sanitizeFilename(originalName)}`;
+  const path = `${storage.pessoaFolder(before.pessoa_id, before.pessoa_nome)}/${id}-${Date.now()}-${sanitizeFilename(originalName)}`;
   const contentType = file.type || "application/octet-stream";
 
-  const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, buffer, {
-    contentType,
-    upsert: false,
-  });
+  const { error: uploadError } = await storage.uploadFile(path, buffer, contentType);
   if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    return NextResponse.json({ error: uploadError }, { status: 500 });
   }
 
   const { data: after, error: updateError } = await admin
@@ -186,9 +185,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: "Nenhum arquivo para remover." }, { status: 404 });
   }
 
-  const { error: removeError } = await admin.storage.from(BUCKET).remove([before.arquivo_path]);
+  const { error: removeError } = await storage.removeFiles([before.arquivo_path]);
   if (removeError) {
-    console.error(`Falha ao remover anexo ${before.arquivo_path}:`, removeError.message);
+    console.error(`Falha ao remover anexo ${before.arquivo_path}:`, removeError);
   }
 
   const { data: after, error: updateError } = await admin

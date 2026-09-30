@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import * as storage from "@/lib/magaluStorage";
 import { carregarFichasPorNome, normalizarEspecTexto, soDigitos, temAlgumaDivergencia } from "@/lib/epiChecklist";
 import { gerarFichaEpiPdf, type ItemFichaGerada } from "@/lib/gerarFichaEpiPdf";
 import { ASSINATURA_PLACEHOLDER_BASE64 } from "@/lib/assinaturaPlaceholder";
-
-const BUCKET = "treinamentos-anexos";
 
 // Mês/ano de fabricação, ex.: "01/2026" — mesmo formato usado no formulário
 // real (ver gerarFichaEpiPdf.ts).
@@ -125,7 +124,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   let pdfBuffer: Buffer;
   try {
-    pdfBuffer = await gerarFichaEpiPdf({
+    const resultado = await gerarFichaEpiPdf({
       pessoaNome: pessoa.nome,
       cpf: pessoa.cpf,
       empresaNome: pessoa.empresa_nome,
@@ -134,6 +133,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       funcao: pessoa.cargo,
       itens: itensPdf,
     });
+    pdfBuffer = resultado.buffer;
   } catch (err: any) {
     console.error(`Falha ao gerar PDF da Ficha de EPI (treinamento ${treino.id}):`, err?.stack || err);
     return NextResponse.json({ error: `Falha ao gerar o PDF: ${err?.message || err}` }, { status: 500 });
@@ -142,19 +142,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // Substitui o anexo — mesmo padrão de POST /api/treinamentos/[id]/arquivo:
   // remove o antigo (best-effort) antes de subir o novo.
   if (treino.arquivo_path) {
-    const { error: removeError } = await admin.storage.from(BUCKET).remove([treino.arquivo_path]);
+    const { error: removeError } = await storage.removeFiles([treino.arquivo_path]);
     if (removeError) {
-      console.error(`Falha ao remover Ficha de EPI anterior ${treino.arquivo_path}:`, removeError.message);
+      console.error(`Falha ao remover Ficha de EPI anterior ${treino.arquivo_path}:`, removeError);
     }
   }
   const novoNome = `Ficha de EPI - ${pessoa.nome} - regenerada.pdf`;
-  const novoPath = `${treino.id}/${Date.now()}-ficha-epi-regenerada.pdf`;
-  const { error: uploadError } = await admin.storage.from(BUCKET).upload(novoPath, pdfBuffer, {
-    contentType: "application/pdf",
-    upsert: false,
-  });
+  const novoPath = `${storage.pessoaFolder(pessoa.id, pessoa.nome)}/${treino.id}-${Date.now()}-ficha-epi-regenerada.pdf`;
+  const { error: uploadError } = await storage.uploadFile(novoPath, pdfBuffer, "application/pdf");
   if (uploadError) {
-    return NextResponse.json({ error: `Falha ao salvar o novo PDF: ${uploadError.message}` }, { status: 500 });
+    return NextResponse.json({ error: `Falha ao salvar o novo PDF: ${uploadError}` }, { status: 500 });
   }
 
   const epiItensNovos = itensPdf.map((it) => ({

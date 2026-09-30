@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import * as storage from "@/lib/magaluStorage";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
 
 const CAMPOS_TREINAMENTO = [
@@ -117,11 +118,9 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
   // delete da linha mesmo assim — o registro no banco é o que importa mais,
   // um arquivo órfão no bucket não quebra nada.
   if (treinamento.arquivo_path) {
-    const { error: storageError } = await admin.storage
-      .from("treinamentos-anexos")
-      .remove([treinamento.arquivo_path]);
+    const { error: storageError } = await storage.removeFiles([treinamento.arquivo_path]);
     if (storageError) {
-      console.error(`Falha ao remover anexo ${treinamento.arquivo_path} do storage:`, storageError.message);
+      console.error(`Falha ao remover anexo ${treinamento.arquivo_path} do storage:`, storageError);
     }
   }
 

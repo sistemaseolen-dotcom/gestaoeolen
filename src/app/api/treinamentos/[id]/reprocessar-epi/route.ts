@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import * as storage from "@/lib/magaluStorage";
 import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
-
-const BUCKET = "treinamentos-anexos";
 
 // Refaz a leitura por OCR do PDF que JÁ está anexado neste registro de
 // "FICHA DE EPI" — sem precisar reenviar o arquivo.
@@ -47,14 +46,13 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
 
   let resultado: { ok: true; itens: unknown } | { ok: false; motivo: string };
   try {
-    const { data: fileBlob, error: downloadError } = await admin.storage.from(BUCKET).download(treino.arquivo_path);
-    if (downloadError || !fileBlob) {
+    const { data: buffer, error: downloadError } = await storage.downloadFile(treino.arquivo_path);
+    if (downloadError || !buffer) {
       return NextResponse.json(
-        { error: downloadError?.message || "Falha ao baixar o arquivo anexado do Storage." },
+        { error: downloadError || "Falha ao baixar o arquivo anexado do Storage." },
         { status: 500 }
       );
     }
-    const buffer = Buffer.from(await fileBlob.arrayBuffer());
     resultado = await extrairItensFichaEpi(buffer);
   } catch (err: any) {
     console.error(`Falha ao reprocessar OCR da Ficha de EPI (treinamento ${id}):`, err?.stack || err);

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import * as storage from "@/lib/magaluStorage";
 
-const BUCKET = "auditorias-anexos";
 const MAX_BYTES = 8 * 1024 * 1024; // 8MB — fotos de celular com marca d'água já embutida
 const SLOT_KEY_REGEX = /^[a-z0-9_]+$/;
 
@@ -60,13 +60,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .eq("slot_key", slotKey)
     .maybeSingle();
 
-  const path = `${auditoriaId}/${slotKey}${extensaoDe(originalName, file.type)}`;
+  const path = `${storage.auditoriaFolder(auditoriaId)}/${slotKey}${extensaoDe(originalName, file.type)}`;
   const buffer = Buffer.from(await file.arrayBuffer());
-  const { error: uploadError } = await admin.storage.from(BUCKET).upload(path, buffer, {
-    contentType: file.type || "image/jpeg",
-    upsert: true,
-  });
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
+  const { error: uploadError } = await storage.uploadFile(path, buffer, file.type || "image/jpeg");
+  if (uploadError) return NextResponse.json({ error: uploadError }, { status: 500 });
 
   let row;
   if (existente) {
@@ -88,6 +85,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     row = data;
   }
 
-  const { data: signed } = await admin.storage.from(BUCKET).createSignedUrl(path, 300);
-  return NextResponse.json({ ...row, url: signed?.signedUrl || null });
+  const { url: signedUrl } = await storage.createSignedUrl(path, 300);
+  return NextResponse.json({ ...row, url: signedUrl || null });
 }
