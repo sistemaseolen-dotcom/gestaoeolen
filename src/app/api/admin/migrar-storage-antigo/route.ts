@@ -27,7 +27,7 @@ export const maxDuration = 60;
 
 const OLD_BUCKET_FOTOS = "auditorias-anexos";
 const OLD_BUCKET_DOCS = "treinamentos-anexos";
-const TIME_BUDGET_MS = 35_000;
+const TIME_BUDGET_MS = 40_000;
 
 function contentTypeFromPath(path: string): string {
   const ext = (path.split(".").pop() || "").toLowerCase();
@@ -84,8 +84,8 @@ export async function GET() {
   // ida-e-volta de rede (download/upload), não CPU, então paralelizar ajuda
   // bastante a processar mais dentro do orçamento de tempo da função.
   async function processa(item: Item): Promise<"ok" | "migrado" | { faltando: typeof faltando[number] }> {
-    const jaNoMagalu = await storage.downloadFile(item.path);
-    if (jaNoMagalu.data) return "ok";
+    const jaNoMagalu = await storage.fileExists(item.path);
+    if (jaNoMagalu) return "ok";
 
     const { data: oldData, error: oldError } = await admin.storage.from(item.oldBucket).download(item.path);
     if (oldError || !oldData) {

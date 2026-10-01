@@ -18,6 +18,7 @@
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -109,6 +110,19 @@ export async function removeFiles(paths: string[]): Promise<{ error: string | nu
     return { error: null };
   } catch (err: any) {
     return { error: err?.message || String(err) };
+  }
+}
+
+// Confere só se o arquivo existe no Magalu, sem baixar o conteúdo (HEAD, não
+// GET) — bem mais rápido/leve que downloadFile quando só precisamos saber se
+// já está lá (ex.: na migração do storage antigo, pra decidir se pula ou
+// copia cada item).
+export async function fileExists(path: string): Promise<boolean> {
+  try {
+    await client().send(new HeadObjectCommand({ Bucket: bucketName(), Key: path }));
+    return true;
+  } catch {
+    return false;
   }
 }
 
