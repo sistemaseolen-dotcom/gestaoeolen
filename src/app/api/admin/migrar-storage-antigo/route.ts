@@ -27,7 +27,7 @@ export const maxDuration = 60;
 
 const OLD_BUCKET_FOTOS = "auditorias-anexos";
 const OLD_BUCKET_DOCS = "treinamentos-anexos";
-const TIME_BUDGET_MS = 50_000;
+const TIME_BUDGET_MS = 35_000;
 
 function contentTypeFromPath(path: string): string {
   const ext = (path.split(".").pop() || "").toLowerCase();
@@ -101,7 +101,7 @@ export async function GET() {
     return "migrado";
   }
 
-  const CONCURRENCY = 12;
+  const CONCURRENCY = 8;
   for (let i = 0; i < itens.length; i += CONCURRENCY) {
     if (Date.now() - startedAt > TIME_BUDGET_MS) {
       concluido = false;
