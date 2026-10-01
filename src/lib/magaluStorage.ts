@@ -53,22 +53,28 @@ function client(): S3Client {
 }
 
 // Organização de pastas dentro do bucket (pedido do Diego, 30/09/2026):
-//   seguranca/<pessoaId>-<nome-sanitizado>/...  — documentos/treinamentos de
+//   seguranca/<pessoaId>-<nome-sanitizado>/...   — documentos/treinamentos de
 //     cada pessoa (inclusive Ficha de EPI), uma pasta por pessoa.
-//   auditorias/<auditoriaId>/...                — fotos (e outros anexos)
-//     de cada auditoria.
-export function pessoaFolder(pessoaId: number | string, pessoaNome: string): string {
-  const nomeSanitizado = (pessoaNome || "")
+//   auditorias/<auditoriaId>-<site-sanitizado>/... — fotos (e outros anexos)
+//     de cada auditoria (pedido do Diego, 01/10/2026: incluir o nome do
+//     site na pasta, não só o número da auditoria).
+function sanitizaNome(nome: string): string {
+  return (nome || "")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "") // remove acentos
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
+}
+
+export function pessoaFolder(pessoaId: number | string, pessoaNome: string): string {
+  const nomeSanitizado = sanitizaNome(pessoaNome);
   return `seguranca/${pessoaId}${nomeSanitizado ? "-" + nomeSanitizado : ""}`;
 }
 
-export function auditoriaFolder(auditoriaId: number | string): string {
-  return `auditorias/${auditoriaId}`;
+export function auditoriaFolder(auditoriaId: number | string, siteId?: string | null): string {
+  const siteSanitizado = sanitizaNome(siteId || "");
+  return `auditorias/${auditoriaId}${siteSanitizado ? "-" + siteSanitizado : ""}`;
 }
 
 function bucketName(): string {

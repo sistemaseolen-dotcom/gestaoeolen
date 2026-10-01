@@ -49,7 +49,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const admin = supabaseAdmin();
 
-  const { data: auditoria, error: auditoriaError } = await admin.from("auditorias").select("id").eq("id", auditoriaId).maybeSingle();
+  const { data: auditoria, error: auditoriaError } = await admin.from("auditorias").select("id, site_id").eq("id", auditoriaId).maybeSingle();
   if (auditoriaError) return NextResponse.json({ error: auditoriaError.message }, { status: 500 });
   if (!auditoria) return NextResponse.json({ error: "Auditoria não encontrada." }, { status: 404 });
 
@@ -60,7 +60,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .eq("slot_key", slotKey)
     .maybeSingle();
 
-  const path = `${storage.auditoriaFolder(auditoriaId)}/${slotKey}${extensaoDe(originalName, file.type)}`;
+  const path = `${storage.auditoriaFolder(auditoriaId, auditoria.site_id)}/${slotKey}${extensaoDe(originalName, file.type)}`;
   const buffer = Buffer.from(await file.arrayBuffer());
   const { error: uploadError } = await storage.uploadFile(path, buffer, file.type || "image/jpeg");
   if (uploadError) return NextResponse.json({ error: uploadError }, { status: 500 });
