@@ -45,12 +45,13 @@ export async function GET() {
   // página, mesmo padrão já usado acima para Auditorias.
   const podeAcesso = canView(gate.user, "acesso");
 
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
     fetchAllRows(admin, "pessoas"),
     fetchAllRows(admin, "empresas"),
     fetchAllRows(admin, "treinamentos"),
     fetchAllRows(admin, "equipes"),
     fetchAllRows(admin, "equipe_membros"),
+    fetchAllRows(admin, "equipe_calibracoes"),
     fetchAllRows(admin, "listas_opcoes"),
     fetchAllRows(admin, "patrimonios"),
     podeAuditorias
@@ -64,7 +65,7 @@ export async function GET() {
     podeAcesso ? fetchAllRows(admin, "acesso_membros") : Promise.resolve({ data: [] as any[], error: null as any }),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, listasOpcoes, patrimonios, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -76,9 +77,19 @@ export async function GET() {
     list.push({ pessoaId: m.pessoa_id, pessoaNome: m.pessoa_nome, cargo: m.cargo });
     membrosPorEquipe.set(m.equipe_id, list);
   }
+  const calibracoesPorEquipe = new Map<number, any[]>();
+  for (const c of equipeCalibracoes.data || []) {
+    const list = calibracoesPorEquipe.get(c.equipe_id) || [];
+    list.push(c);
+    calibracoesPorEquipe.set(c.equipe_id, list);
+  }
+  for (const list of calibracoesPorEquipe.values()) {
+    list.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  }
   const equipesComMembros = (equipes.data || []).map((e) => ({
     ...e,
     membros: membrosPorEquipe.get(e.id) || [],
+    calibracoes: calibracoesPorEquipe.get(e.id) || [],
   }));
 
   const listas: Record<string, string[]> = { cargo: [], tipoPessoa: [], statusPessoa: [], projeto: [] };

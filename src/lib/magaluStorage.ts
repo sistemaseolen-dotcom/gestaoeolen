@@ -77,6 +77,14 @@ export function auditoriaFolder(auditoriaId: number | string, siteId?: string | 
   return `auditorias/${auditoriaId}${siteSanitizado ? "-" + siteSanitizado : ""}`;
 }
 
+// calibracao/<equipeId>-<nome-sanitizado>/... — anexos de calibração de
+// equipamentos (pedido do Diego, 01/10/2026), uma pasta por EQUIPE (não por
+// equipamento) — mesmo padrão das duas pastas acima.
+export function calibracaoFolder(equipeId: number | string, equipeNome: string): string {
+  const nomeSanitizado = sanitizaNome(equipeNome);
+  return `calibracao/${equipeId}${nomeSanitizado ? "-" + nomeSanitizado : ""}`;
+}
+
 function bucketName(): string {
   const bucket = process.env.MAGALU_S3_BUCKET;
   if (!bucket) {

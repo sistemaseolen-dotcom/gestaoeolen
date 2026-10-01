@@ -9,6 +9,16 @@ const CAMPOS_EQUIPE = [
 
 const STATUS_VALIDOS = ["ATIVO", "INATIVO"] as const;
 
+// Lista fixa de equipamentos que toda equipe começa com, na aba "Calibração
+// de equipamentos" (pedido do Diego, 01/10/2026) — por ora só estes 3; se
+// precisar virar uma lista editável depois, dá pra evoluir sem quebrar o que
+// já existe.
+const EQUIPAMENTOS_CALIBRACAO = [
+  { equipamento: "Multímetro", sort_order: 1 },
+  { equipamento: "Alicate amperímetro", sort_order: 2 },
+  { equipamento: "Inclinômetro", sort_order: 3 },
+] as const;
+
 // Resolve team_lider_id -> nome atual da pessoa, para manter team_lider como
 // cache denormalizado (mesmo comportamento do app.js antigo, que gravava o
 // nome do líder junto da equipe em vez de só o id). Se teamLiderId não for
@@ -80,7 +90,20 @@ export async function POST(req: Request) {
     usuario: gate.user,
   });
 
-  // Inclui membros:[] para bater com o formato de GET /api/state, que
-  // sempre traz a equipe já com seus membros carregados.
-  return NextResponse.json({ ...data, membros: [] }, { status: 201 });
+  // Toda equipe nova já nasce com os 3 equipamentos de calibração
+  // pendentes (sem data/status/anexo ainda) — best-effort: se isso falhar
+  // por algum motivo, a equipe em si já foi criada com sucesso acima, e dá
+  // pra tentar de novo depois (ex.: recriando via SQL direto no Supabase).
+  const { data: calibData, error: calibError } = await supabaseAdmin()
+    .from("equipe_calibracoes")
+    .insert(EQUIPAMENTOS_CALIBRACAO.map((eq) => ({ equipe_id: data.id, ...eq })))
+    .select();
+  if (calibError) {
+    console.error(`Falha ao criar calibrações iniciais da equipe ${data.id}:`, calibError.message);
+  }
+
+  // Inclui membros:[] e calibracoes:[...] para bater com o formato de
+  // GET /api/state, que sempre traz a equipe já com membros/calibrações
+  // carregados.
+  return NextResponse.json({ ...data, membros: [], calibracoes: calibData || [] }, { status: 201 });
 }

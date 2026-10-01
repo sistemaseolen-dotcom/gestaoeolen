@@ -336,6 +336,14 @@
     else if (status === "FÉRIAS" || status === "CRESCIMENTO") cls = "warn";
     return '<span class="pill ' + cls + '">' + esc(status || "—") + "</span>";
   }
+  // Status de calibração é sempre manual (marcado por alguém), não calculado
+  // a partir da data — pedido do Diego: por ora é só OK/IRREGULAR; sem nada
+  // marcado ainda, mostra "Pendente".
+  function calibracaoStatusPill(status) {
+    if (status === "OK") return '<span class="pill ok">OK</span>';
+    if (status === "IRREGULAR") return '<span class="pill danger">Irregular</span>';
+    return '<span class="pill neutral">Pendente</span>';
+  }
   function distinctStatuses(list) {
     var set = {}, out = [];
     (list || []).forEach(function (x) {
@@ -535,7 +543,19 @@
     return {
       id: row.id, nome: row.nome, regional: row.regional, projeto: row.projeto, operadora: row.operadora,
       status: row.status, teamLiderId: row.team_lider_id, teamLider: row.team_lider,
-      membros: row.membros || []
+      membros: row.membros || [],
+      calibracoes: (row.calibracoes || []).map(mapCalibracaoFromApi).sort(function (a, b) { return (a.sortOrder || 0) - (b.sortOrder || 0); })
+    };
+  }
+  // Calibração de equipamentos (pedido do Diego, 01/10/2026) — uma linha fixa
+  // por equipamento dentro de cada equipe (Multímetro, Alicate amperímetro,
+  // Inclinômetro), com data/status/anexo editáveis.
+  function mapCalibracaoFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, equipeId: row.equipe_id, equipamento: row.equipamento, sortOrder: row.sort_order,
+      dataCalibracao: row.data_calibracao, status: row.status,
+      arquivoPath: row.arquivo_path, arquivoNome: row.arquivo_nome
     };
   }
   // Acesso — cada âncora (equipe/membro) tem MUITOS campos de credencial;
@@ -3733,6 +3753,15 @@
           (canDo("equipes", "editar") ? '<button class="btn ghost sm" data-remove-membro="' + idx + '">' + ICONS.close + "</button>" : "") + "</div>";
       }).join("") : '<div class="hint">Nenhum membro cadastrado nesta equipe.</div>') +
       "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Calibração de equipamentos</h3></div><div class="panel-body">' +
+      ((e.calibracoes && e.calibracoes.length) ? '<div class="table-scroll"><table class="data"><thead><tr><th>Equipamento</th><th>Data calibração</th><th>Status</th><th>Anexo</th><th>Ações</th></tr></thead><tbody>' +
+        e.calibracoes.map(function (c) {
+          return '<tr data-calib="' + c.id + '"><td class="row-primary">' + esc(c.equipamento) + '</td><td class="mono">' + fmtDateBR(c.dataCalibracao) + '</td><td>' + calibracaoStatusPill(c.status) + '</td><td>' + (c.arquivoPath ? '<a href="#" data-calib-download="' + c.id + '">' + esc(c.arquivoNome || "Baixar") + "</a>" : "—") + '</td><td class="row-actions">' +
+            (canDo("equipes", "editar") ? '<button class="btn ghost sm" title="Editar" data-calib-edit="' + c.id + '">' + ICONS.edit + '</button><button class="btn ghost sm" title="Anexar arquivo" data-calib-attach="' + c.id + '">' + ICONS.paperclip + "</button>" : "") +
+            "</td></tr>";
+        }).join("") + "</tbody></table></div>" : '<div class="empty-state" style="padding:20px;">Nenhum equipamento cadastrado.</div>') +
+      "</div></div>" +
+      '<input type="file" id="calib-quick-attach-input" style="display:none">' +
       historyPanelHtml("equipe", e.id);
     loadHistoryPanel("equipe", e.id);
 
@@ -3755,6 +3784,110 @@
           })
           .catch(handleApiError);
       });
+    });
+    $all("[data-calib-edit]", main).forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var c = byId(e.calibracoes, btn.getAttribute("data-calib-edit"));
+        if (c) openCalibracaoForm(e, c);
+      });
+    });
+    $all("[data-calib-download]", main).forEach(function (a) {
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        baixarAnexoCalibracao(e.id, a.getAttribute("data-calib-download"));
+      });
+    });
+    var calibQuickAttachInput = $("#calib-quick-attach-input", main);
+    var calibQuickAttachTargetId = null;
+    $all("[data-calib-attach]", main).forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (!canDo("equipes", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+        calibQuickAttachTargetId = btn.getAttribute("data-calib-attach");
+        calibQuickAttachInput.value = "";
+        calibQuickAttachInput.click();
+      });
+    });
+    if (calibQuickAttachInput) {
+      calibQuickAttachInput.addEventListener("change", function () {
+        var file = calibQuickAttachInput.files[0];
+        if (!file || !calibQuickAttachTargetId) return;
+        if (file.size > 5 * 1024 * 1024) { toast("Arquivo muito grande (máx. 5MB).", "error"); return; }
+        var c = byId(e.calibracoes, calibQuickAttachTargetId);
+        if (!c) return;
+        var fd = new FormData();
+        fd.append("file", file);
+        apiFetch("/api/equipes/" + e.id + "/calibracoes/" + c.id + "/arquivo", { method: "POST", body: fd, isFormData: true })
+          .then(function (data) {
+            var updated = mapCalibracaoFromApi(data);
+            var idx = e.calibracoes.findIndex(function (x) { return x.id === updated.id; });
+            if (idx !== -1) e.calibracoes[idx] = updated;
+            render();
+            toast("Anexo adicionado.", "success");
+          })
+          .catch(handleApiError);
+      });
+    }
+  }
+
+  // Modal simples de edição de uma linha de calibração (data + status +
+  // anexo) — não tem "item" pra escolher (os 3 equipamentos já vêm fixos
+  // desde a criação da equipe), então não precisa do fluxo de picker usado
+  // em Treinamentos.
+  function openCalibracaoForm(equipe, c) {
+    var html =
+      '<div class="modal-box"><h3>' + esc(c.equipamento) + '</h3><p class="hint">Calibração de equipamento — ' + esc(equipe.nome) + '</p>' +
+      '<form id="calib-form" class="field-grid one">' +
+      '<div class="field"><label>Data da calibração</label><input type="date" name="dataCalibracao" value="' + esc(c.dataCalibracao || "") + '"></div>' +
+      '<div class="field"><label>Status</label><select name="status"><option value="">— Selecione —</option><option value="OK"' + (c.status === "OK" ? " selected" : "") + '>OK</option><option value="IRREGULAR"' + (c.status === "IRREGULAR" ? " selected" : "") + '>Irregular</option></select></div>' +
+      '<div class="field"><label>Anexo</label>' +
+      (c.arquivoPath ? '<div style="margin-bottom:8px;"><button type="button" class="file-chip" id="calib-form-ver-anexo">' + ICONS.file + esc(c.arquivoNome || "Baixar anexo") + "</button></div>" : "") +
+      '<label class="dropzone" id="calib-dropzone"><input type="file" name="arquivo" id="calib-file-input">' + ICONS.upload + '<div id="calib-dropzone-label">Clique para anexar um arquivo</div></label>' +
+      "</div>" +
+      '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="submit" class="btn primary">' + ICONS.check + "Salvar</button></div>" +
+      "</form></div>";
+    openModal(html);
+    if ($("#calib-form-ver-anexo")) $("#calib-form-ver-anexo").addEventListener("click", function () { baixarAnexoCalibracao(equipe.id, c.id); });
+    $("#calib-file-input").addEventListener("change", function () {
+      var f = this.files[0];
+      $("#calib-dropzone-label").textContent = f ? f.name : "Clique para anexar um arquivo";
+    });
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#calib-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("equipes", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var fileInput = $("#calib-file-input");
+      var newFile = fileInput.files[0];
+      if (newFile && newFile.size > 5 * 1024 * 1024) { toast("Arquivo muito grande (máx. 5MB).", "error"); return; }
+
+      var body = {
+        dataCalibracao: emptyToNull((fd.get("dataCalibracao") || "").toString()),
+        status: (fd.get("status") || "").toString() || null
+      };
+
+      apiFetch("/api/equipes/" + equipe.id + "/calibracoes/" + c.id, { method: "PATCH", body: body })
+        .then(function (data) {
+          var rec = mapCalibracaoFromApi(data);
+          var attachStep = newFile
+            ? (function () {
+                var upFd = new FormData();
+                upFd.append("file", newFile);
+                return apiFetch("/api/equipes/" + equipe.id + "/calibracoes/" + c.id + "/arquivo", { method: "POST", body: upFd, isFormData: true })
+                  .then(function (afterFile) { rec = mapCalibracaoFromApi(afterFile); });
+              })()
+            : Promise.resolve();
+          return attachStep.then(function () {
+            var idx = equipe.calibracoes.findIndex(function (x) { return x.id === rec.id; });
+            if (idx !== -1) equipe.calibracoes[idx] = rec;
+            closeModal();
+            render();
+            toast("Calibração atualizada.", "success");
+          });
+        })
+        .catch(handleApiError);
     });
   }
 
@@ -4932,6 +5065,19 @@
   // navegador direto na página atual.
   function baixarAnexo(id) {
     apiFetch("/api/treinamentos/" + id + "/arquivo")
+      .then(function (data) {
+        var a = document.createElement("a");
+        a.href = data.url;
+        a.download = data.nome || "arquivo";
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      })
+      .catch(handleApiError);
+  }
+  function baixarAnexoCalibracao(equipeId, calibId) {
+    apiFetch("/api/equipes/" + equipeId + "/calibracoes/" + calibId + "/arquivo")
       .then(function (data) {
         var a = document.createElement("a");
         a.href = data.url;
