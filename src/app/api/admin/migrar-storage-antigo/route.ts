@@ -191,7 +191,7 @@ export async function GET() {
     return "corrigido";
   }
 
-  const CONCURRENCY = 8;
+  const CONCURRENCY = 12;
   for (let i = 0; i < itens.length; i += CONCURRENCY) {
     if (Date.now() - startedAt > TIME_BUDGET_MS) {
       concluido = false;
