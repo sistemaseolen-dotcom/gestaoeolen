@@ -356,14 +356,17 @@
     return "Pendente";
   }
   // Calibração de equipamentos: pedido do Diego (01/10/2026) é que todo esse
-  // bloco do Painel considere só as equipes ATIVAS. Diferente da "Regra do
-  // Diego" de teamLideresAtivos() (que define "equipe ativa" pelo Team Líder
-  // ativo, usada nos gráficos de headcount/cliente) — aqui usamos direto o
-  // campo status da própria equipe (ATIVO/INATIVO, editável no cadastro da
-  // equipe), porque calibração é sobre o equipamento da equipe em si, não
-  // sobre quem está empregado.
+  // bloco do Painel considere só as equipes ATIVAS. Corrigido em 01/10/2026
+  // (os números não batiam com o resto do Painel: o campo status da própria
+  // equipe marcava 156 "ATIVO" contra as 113 do badge "Equipes" do menu) —
+  // agora usa a MESMA "Regra do Diego" do resto da tela (teamLideresAtivos):
+  // uma equipe só conta como ativa se o Team Líder dela (e.teamLiderId) for
+  // uma pessoa ativa com cargo TEAM LIDER, e não o campo status da equipe.
   function equipesAtivasCalibracao() {
-    return (STATE.equipes || []).filter(function (e) { return e.status === "ATIVO"; });
+    return (STATE.equipes || []).filter(function (e) {
+      var p = e.teamLiderId ? byId(STATE.pessoas, e.teamLiderId) : null;
+      return !!p && isTeamLider(p) && p.status === "ATIVO";
+    });
   }
   // Resumo geral de Calibração de equipamentos, somando as equipes ativas —
   // vai no final do Painel (pedido do Diego, 01/10/2026, corrigindo o lugar:
