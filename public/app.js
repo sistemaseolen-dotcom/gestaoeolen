@@ -40,6 +40,9 @@
   // "GERENTE") continuam aparecendo normalmente no cadastro de Pessoas, mas
   // não entram em nenhum gráfico/KPI do Painel.
   var CARGOS_PAINEL = ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE", "TEC. SEGURANÇA"];
+  // Os 3 equipamentos de Calibração, na ordem em que aparecem em toda equipe
+  // (mesma ordem do sort_order criado no banco — ver sql_calibracao_equipamentos.sql).
+  var EQUIPAMENTOS_CALIBRACAO_ORDEM = ["Multímetro", "Alicate amperímetro", "Inclinômetro"];
   // Documentos/treinamentos obrigatórios: gerados automaticamente (como pendentes) toda vez
   // que uma pessoa é cadastrada com um dos cargos acima.
   var DOCS_OBRIGATORIOS_CARGO = [
@@ -343,6 +346,220 @@
     if (status === "OK") return '<span class="pill ok">OK</span>';
     if (status === "IRREGULAR") return '<span class="pill danger">Irregular</span>';
     return '<span class="pill neutral">Pendente</span>';
+  }
+  // Mesmo rótulo de calibracaoStatusPill, só que em texto puro — usado nas
+  // exportações de Excel/copiar tabela dos drawers de calibração (não pode
+  // ter HTML).
+  function calibracaoStatusPillLabel(status) {
+    if (status === "OK") return "OK";
+    if (status === "IRREGULAR") return "Irregular";
+    return "Pendente";
+  }
+  // Calibração de equipamentos: pedido do Diego (01/10/2026) é que todo esse
+  // bloco do Painel considere só as equipes ATIVAS. Diferente da "Regra do
+  // Diego" de teamLideresAtivos() (que define "equipe ativa" pelo Team Líder
+  // ativo, usada nos gráficos de headcount/cliente) — aqui usamos direto o
+  // campo status da própria equipe (ATIVO/INATIVO, editável no cadastro da
+  // equipe), porque calibração é sobre o equipamento da equipe em si, não
+  // sobre quem está empregado.
+  function equipesAtivasCalibracao() {
+    return (STATE.equipes || []).filter(function (e) { return e.status === "ATIVO"; });
+  }
+  // Resumo geral de Calibração de equipamentos, somando as equipes ativas —
+  // vai no final do Painel (pedido do Diego, 01/10/2026, corrigindo o lugar:
+  // não é por equipe, é um card geral igual aos outros do Painel). Mesmo
+  // componente .kpi-row/.kpi já usado no resto desta tela (headcountKpiHtml/
+  // kpiHtml em renderTreinoOverview).
+  function calibracaoOverviewKpiHtml() {
+    var ok = 0, irregular = 0, pendente = 0, total = 0;
+    equipesAtivasCalibracao().forEach(function (e) {
+      (e.calibracoes || []).forEach(function (c) {
+        total++;
+        if (c.status === "OK") ok++;
+        else if (c.status === "IRREGULAR") irregular++;
+        else pendente++;
+      });
+    });
+    var pct = total ? Math.round((ok / total) * 100) : null;
+    var kpis = [
+      ["OK", ok, "ok"],
+      ["Irregular", irregular, "danger"],
+      ["Pendente", pendente, "neutral"],
+      ["Conformidade", pct === null ? "—" : pct + "%", "info"]
+    ];
+    return '<div class="kpi-row">' + kpis.map(function (k) {
+      return '<div class="kpi ' + k[2] + '"><span class="label">' + k[0] + '</span><span class="value tabular">' + k[1] + "</span></div>";
+    }).join("") + "</div>";
+  }
+  // Calibração por equipamento: uma barra por item (Multímetro / Alicate
+  // amperímetro / Inclinômetro), 3 cores (OK/Irregular/Pendente), somando as
+  // equipes ativas — pedido do Diego: "preciso de informações dos 3
+  // equipamentos" (não só o total somado dos 3).
+  function calibracaoPorEquipamentoMap() {
+    var map = {};
+    EQUIPAMENTOS_CALIBRACAO_ORDEM.forEach(function (nome) { map[nome] = { ok: 0, irregular: 0, pendente: 0 }; });
+    equipesAtivasCalibracao().forEach(function (e) {
+      (e.calibracoes || []).forEach(function (c) {
+        if (!map[c.equipamento]) map[c.equipamento] = { ok: 0, irregular: 0, pendente: 0 };
+        if (c.status === "OK") map[c.equipamento].ok++;
+        else if (c.status === "IRREGULAR") map[c.equipamento].irregular++;
+        else map[c.equipamento].pendente++;
+      });
+    });
+    return map;
+  }
+  function calibracaoEquipamentoItemsForStatus(equipamento, statusKey) {
+    return equipesAtivasCalibracao().filter(function (e) {
+      var c = (e.calibracoes || []).filter(function (x) { return x.equipamento === equipamento; })[0];
+      if (!c) return false;
+      var key = c.status === "OK" ? "ok" : c.status === "IRREGULAR" ? "irregular" : "pendente";
+      return !statusKey || key === statusKey;
+    }).slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
+  }
+  function calibracaoPorEquipamentoHtml() {
+    var map = calibracaoPorEquipamentoMap();
+    var rows = EQUIPAMENTOS_CALIBRACAO_ORDEM.map(function (nome) {
+      var r = map[nome] || { ok: 0, irregular: 0, pendente: 0 };
+      return { nome: nome, ok: r.ok, irregular: r.irregular, pendente: r.pendente, total: r.ok + r.irregular + r.pendente };
+    });
+    var max = Math.max.apply(null, rows.map(function (r) { return r.total; }).concat([1]));
+    var body = rows.map(function (r) {
+      var pct = r.total ? Math.max(6, Math.round((r.total / max) * 100)) : 0;
+      var visibleCount = (r.ok ? 1 : 0) + (r.irregular ? 1 : 0) + (r.pendente ? 1 : 0);
+      var minPx = Math.max(26, visibleCount * 26);
+      function seg(key, cls, n, label) {
+        if (!n) return "";
+        return '<div class="rankbar-seg ' + cls + '" style="flex-grow:' + n + '" data-calib-eq-bar="' + key + '" data-tip-title="' + esc(r.nome) + " — " + label + '" data-tip-sub="' + n + " equipe" + (n !== 1 ? "s" : "") + '"><span>' + n + "</span></div>";
+      }
+      var tip = r.ok + " OK · " + r.irregular + " irregular" + (r.irregular !== 1 ? "es" : "") + " · " + r.pendente + " pendente" + (r.pendente !== 1 ? "s" : "");
+      return '<div class="rankbar-row" tabindex="0" data-calib-eq="' + esc(r.nome) + '" data-tip-title="' + esc(r.nome) + '" data-tip-sub="' + esc(tip) + '">' +
+        '<div class="rankbar-label">' + esc(r.nome) + '</div>' +
+        '<div class="rankbar-track"><div class="rankbar-fill" style="width:max(' + pct + '%, ' + minPx + 'px);">' +
+        seg("ok", "ok", r.ok, "OK") +
+        seg("irregular", "danger", r.irregular, "Irregular") +
+        seg("pendente", "neutral", r.pendente, "Pendente") +
+        "</div></div>" +
+        '<div class="rankbar-total">' + r.total + "</div>" +
+        "</div>";
+    }).join("");
+    var legend = '<div class="legend-row">' +
+      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ok"></span>OK</span>' +
+      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch danger"></span>Irregular</span>' +
+      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch neutral"></span>Pendente</span>' +
+      "</div>";
+    return '<div class="rankbar-list">' + body + "</div>" + legend;
+  }
+  function openCalibracaoEquipamentoDrawer(equipamento, statusKey) {
+    var list = calibracaoEquipamentoItemsForStatus(equipamento, statusKey);
+    var statusLabel = statusKey === "ok" ? "OK" : statusKey === "irregular" ? "Irregular" : statusKey === "pendente" ? "Pendente" : null;
+    var rowsHtml = list.map(function (e) {
+      var c = (e.calibracoes || []).filter(function (x) { return x.equipamento === equipamento; })[0];
+      return '<tr data-equipe="' + e.id + '"><td class="row-primary">' + esc(e.nome || "—") + '</td><td>' + esc(e.regional || "—") + '</td><td>' + calibracaoStatusPill(c ? c.status : null) + "</td></tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: equipamento + (statusLabel ? " — " + statusLabel : ""),
+      subtitle: list.length + " equipe" + (list.length !== 1 ? "s" : ""),
+      theadHtml: "<th>Equipe</th><th>Regional</th><th>Status</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Equipe", "Regional", "Status"],
+      exportRows: list.map(function (e) {
+        var c = (e.calibracoes || []).filter(function (x) { return x.equipamento === equipamento; })[0];
+        return [e.nome || "", e.regional || "", c ? calibracaoStatusPillLabel(c.status) : "Pendente"];
+      }),
+      onRowBind: function (root) {
+        $all("[data-equipe]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/equipes/" + row.getAttribute("data-equipe")); });
+        });
+      }
+    });
+  }
+  // Status "geral" de uma equipe para o gráfico por regional: "ok" só quando
+  // os 3 equipamentos estiverem OK (confirmado com o Diego); qualquer
+  // Irregular ou Pendente entre os 3 já conta como "Não OK".
+  function calibracaoTeamBucket(e) {
+    var itens = e.calibracoes || [];
+    if (itens.length && itens.every(function (c) { return c.status === "OK"; })) return "ok";
+    return "naoOk";
+  }
+  function calibracaoPorRegionalMap() {
+    var map = {};
+    equipesAtivasCalibracao().forEach(function (e) {
+      var reg = normReg(e.regional);
+      if (!map[reg]) map[reg] = { ok: 0, naoOk: 0 };
+      map[reg][calibracaoTeamBucket(e)]++;
+    });
+    return map;
+  }
+  function calibracaoEquipesForRegionalBucket(regional, bucket) {
+    return equipesAtivasCalibracao().filter(function (e) {
+      if (normReg(e.regional) !== regional) return false;
+      if (bucket) return calibracaoTeamBucket(e) === bucket;
+      return true;
+    }).slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
+  }
+  function calibracaoPorRegionalHtml() {
+    var map = calibracaoPorRegionalMap();
+    var rows = Object.keys(map).map(function (reg) {
+      var r = map[reg];
+      return { reg: reg, ok: r.ok, naoOk: r.naoOk, total: r.ok + r.naoOk };
+    }).filter(function (r) { return r.total > 0; });
+    rows.sort(function (a, b) { return b.total - a.total; });
+    if (!rows.length) return '<div class="empty-state" style="padding:20px;">Nenhum dado encontrado.</div>';
+    var max = rows[0].total || 1;
+    var body = rows.map(function (r) {
+      var pct = Math.max(6, Math.round((r.total / max) * 100));
+      var visibleCount = (r.ok ? 1 : 0) + (r.naoOk ? 1 : 0);
+      var minPx = Math.max(26, visibleCount * 26);
+      function seg(key, cls, n, label) {
+        if (!n) return "";
+        return '<div class="rankbar-seg ' + cls + '" style="flex-grow:' + n + '" data-calib-reg-bar="' + key + '" data-tip-title="' + esc(r.reg) + " — " + label + '" data-tip-sub="' + n + " equipe" + (n !== 1 ? "s" : "") + '"><span>' + n + "</span></div>";
+      }
+      var tip = r.ok + " OK · " + r.naoOk + " não OK";
+      return '<div class="rankbar-row" tabindex="0" data-calib-reg="' + esc(r.reg) + '" data-tip-title="' + esc(r.reg) + '" data-tip-sub="' + esc(tip) + '">' +
+        '<div class="rankbar-label">' + esc(r.reg) + '</div>' +
+        '<div class="rankbar-track"><div class="rankbar-fill" style="width:max(' + pct + '%, ' + minPx + 'px);">' +
+        seg("ok", "ok", r.ok, "OK") +
+        seg("naoOk", "danger", r.naoOk, "Não OK") +
+        "</div></div>" +
+        '<div class="rankbar-total">' + r.total + "</div>" +
+        "</div>";
+    }).join("");
+    var legend = '<div class="legend-row">' +
+      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ok"></span>OK (os 3 equipamentos OK)</span>' +
+      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch danger"></span>Não OK (irregular ou pendente)</span>' +
+      "</div>";
+    return '<div class="rankbar-list">' + body + "</div>" + legend;
+  }
+  function openCalibracaoRegionalDrawer(regional, bucket) {
+    var list = calibracaoEquipesForRegionalBucket(regional, bucket);
+    var bucketLabel = bucket === "ok" ? "OK" : bucket === "naoOk" ? "Não OK" : null;
+    function equipPill(e, nome) {
+      var c = (e.calibracoes || []).filter(function (x) { return x.equipamento === nome; })[0];
+      return calibracaoStatusPill(c ? c.status : null);
+    }
+    var rowsHtml = list.map(function (e) {
+      return '<tr data-equipe="' + e.id + '"><td class="row-primary">' + esc(e.nome || "—") + "</td>" +
+        EQUIPAMENTOS_CALIBRACAO_ORDEM.map(function (nome) { return "<td>" + equipPill(e, nome) + "</td>"; }).join("") +
+        "</tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: regional + (bucketLabel ? " — " + bucketLabel : "") + " — Calibração",
+      subtitle: list.length + " equipe" + (list.length !== 1 ? "s" : ""),
+      theadHtml: "<th>Equipe</th>" + EQUIPAMENTOS_CALIBRACAO_ORDEM.map(function (nome) { return "<th>" + esc(nome) + "</th>"; }).join(""),
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Equipe"].concat(EQUIPAMENTOS_CALIBRACAO_ORDEM),
+      exportRows: list.map(function (e) {
+        return [e.nome || ""].concat(EQUIPAMENTOS_CALIBRACAO_ORDEM.map(function (nome) {
+          var c = (e.calibracoes || []).filter(function (x) { return x.equipamento === nome; })[0];
+          return c ? calibracaoStatusPillLabel(c.status) : "Pendente";
+        }));
+      }),
+      onRowBind: function (root) {
+        $all("[data-equipe]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/equipes/" + row.getAttribute("data-equipe")); });
+        });
+      }
+    });
   }
   function distinctStatuses(list) {
     var set = {}, out = [];
@@ -4911,11 +5128,12 @@
       '<div class="panel"><div class="panel-head"><h3>Pendências por item</h3><span class="hint">clique numa linha para ver as pessoas</span></div><div class="panel-body pad">' + statusBarsHtml(tipoStatusMap, "tipo") + "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Pendências por regional</h3><span class="hint">clique numa linha para ver as pessoas</span></div><div class="panel-body pad">' + statusBarsHtml(regionalStatusMap, "regional") + "</div></div>" +
       "</div>" +
-      '<div class="viz-grid-3">' +
+      '<div class="viz-grid">' +
       '<div class="panel"><div class="panel-head"><h3>Equipes ativas por regional</h3><span class="hint">clique para ver as equipes</span></div><div class="panel-body pad">' + equipesRegionalStackedBarsHtml() + "</div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Pessoas ativas por regional</h3><span class="hint">clique para ver as pessoas</span></div><div class="panel-body pad">' + simpleBarsHtml(pessoasAtivasPorRegional(), "pessoas") + "</div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Técnicos ativos por regional</h3><span class="hint">clique para ver as pessoas</span></div><div class="panel-body pad">' + simpleBarsHtml(pessoasAtivasPorRegional("TÉCNICO"), "tecnicos") + "</div></div>" +
-      "</div>";
+      '<div class="panel"><div class="panel-head"><h3>Equipes por regional — Calibração</h3><span class="hint">clique para ver as equipes</span></div><div class="panel-body pad">' + calibracaoPorRegionalHtml() + "</div></div>" +
+      "</div>" +
+      '<div class="panel"><div class="panel-head"><h3>Calibração por equipamento</h3><span class="hint">clique numa barra para ver as equipes</span></div><div class="panel-body pad">' + calibracaoPorEquipamentoHtml() + "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Calibração de equipamentos</h3><span class="hint">soma das equipes ativas</span></div><div class="panel-body pad">' + calibracaoOverviewKpiHtml() + "</div></div>";
 
     bindTooltips(container);
     $all("[data-group-bar]", container).forEach(function (el) {
@@ -4963,6 +5181,24 @@
     });
     $all("[data-cliente]", container).forEach(function (el) {
       el.addEventListener("click", function () { openEquipesClienteDrawer(el.getAttribute("data-cliente"), el.getAttribute("data-cliente-nome")); });
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); }
+      });
+    });
+    $all("[data-calib-reg]", container).forEach(function (el) {
+      el.addEventListener("click", function (ev) {
+        var segEl = ev.target.closest("[data-calib-reg-bar]");
+        openCalibracaoRegionalDrawer(el.getAttribute("data-calib-reg"), segEl ? segEl.getAttribute("data-calib-reg-bar") : null);
+      });
+      el.addEventListener("keydown", function (ev) {
+        if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); }
+      });
+    });
+    $all("[data-calib-eq]", container).forEach(function (el) {
+      el.addEventListener("click", function (ev) {
+        var segEl = ev.target.closest("[data-calib-eq-bar]");
+        openCalibracaoEquipamentoDrawer(el.getAttribute("data-calib-eq"), segEl ? segEl.getAttribute("data-calib-eq-bar") : null);
+      });
       el.addEventListener("keydown", function (ev) {
         if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); }
       });

@@ -255,6 +255,7 @@ main { grid-column: 2; grid-row: 2; min-width: 0; padding: 28px 34px 60px; }
 .kpi.danger .value { color: var(--danger-ink); }
 .kpi.ok .value { color: var(--success-ink); }
 .kpi.info .value { color: var(--accent-soft-ink); }
+.kpi.neutral .value { color: var(--neutral-ink); }
 .kpi.alert-blink { animation: kpiAlertBlink 1.6s ease-in-out infinite; border-color: var(--danger); }
 @keyframes kpiAlertBlink {
   0%, 100% { background: var(--surface); box-shadow: var(--shadow-sm); }
@@ -478,6 +479,7 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .rankbar-seg span { font-size: 10.5px; font-weight: 700; color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,0.3); white-space: nowrap; }
 .rankbar-seg.danger { background: var(--danger); }
 .rankbar-seg.warn { background: var(--warning); }
+.rankbar-seg.ok { background: var(--success); }
 .rankbar-seg.neutral { background: var(--border-strong); }
 .rankbar-seg.neutral span { text-shadow: none; color: var(--surface); }
 .rankbar-seg.accent { background: var(--accent); }
