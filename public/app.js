@@ -5825,6 +5825,18 @@
       }).catch(function (err) { handleApiError(err); return []; });
     }
 
+    // Importação dos ARQUIVOS de Treinamentos/Documentos que ainda só
+    // existem no GPO (pedido do Diego, 01/10/2026) — ver importarDocumentosGpo()
+    // em src/lib/gpoSync.ts. Admin-only (igual à migração de storage antigo)
+    // porque é uma ferramenta de uso único/pesada, não parte do dia a dia.
+    var importDocsHtml = isAdmin()
+      ? '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
+        "<p>Importa os arquivos (PDFs) de Treinamentos/Documentos que ainda estão só no GPO — só preenche o que aqui ainda está sem anexo; nunca substitui um arquivo já enviado manualmente. Pode levar bastante tempo (milhares de arquivos) — precisa ficar com esta tela aberta até terminar.</p>" +
+        '<button class="btn" id="btn-import-docs-gpo" style="margin-top:10px;">' + ICONS.sync + "Importar documentos do GPO</button>" +
+        '<span id="import-docs-status" class="hint" style="margin-left:12px;"></span>' +
+        "</div>"
+      : "";
+
     main.innerHTML =
       '<div class="topbar"><div><h1>Sincronização</h1><div class="sub">Traz os dados mais recentes do GPO pro Controle Eolen</div></div></div>' +
       '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
@@ -5833,8 +5845,64 @@
       '<button class="btn primary" id="btn-sync-now" style="margin-top:10px;">' + ICONS.sync + "Sincronizar agora</button>" +
       '<span id="sync-now-status" class="hint" style="margin-left:12px;"></span>' +
       "</div>" +
+      importDocsHtml +
       '<div id="admin-sync-body"></div>';
     draw();
+
+    if ($("#btn-import-docs-gpo")) {
+      var importBtn = $("#btn-import-docs-gpo");
+      var importStatusEl = $("#import-docs-status");
+      var importPollTimer = null;
+      var importTotals = { importados: 0, erros: 0 };
+      importBtn.addEventListener("click", function () {
+        importBtn.disabled = true;
+        importTotals = { importados: 0, erros: 0 };
+        importStatusEl.textContent = "Importando… isso pode demorar vários minutos (milhares de arquivos).";
+        // Se os mesmos candidatos ficarem travados (sempre dando erro — ex.:
+        // arquivo que o GPO não serve mais) por algumas rodadas seguidas sem
+        // nenhum progresso novo, para em vez de ficar tentando pra sempre.
+        var ultimoCandidatos = null;
+        var rodadasSemProgresso = 0;
+
+        function passo() {
+          apiFetch("/api/admin/importar-documentos-gpo").then(function (resp) {
+            if (!$("#btn-import-docs-gpo")) return; // saiu da página — para de repetir
+            if (resp && resp.error) throw new Error(resp.error);
+            importTotals.importados += resp.importados || 0;
+            importTotals.erros += (resp.erros || []).length;
+            importStatusEl.textContent = "Importados até agora: " + importTotals.importados + (importTotals.erros ? " (" + importTotals.erros + " com erro)" : "") + "…";
+
+            if (resp && resp.concluido && resp.candidatos === 0) {
+              importBtn.disabled = false;
+              importStatusEl.textContent = "";
+              toast("Importação concluída: " + importTotals.importados + " arquivo(s) trazido(s) do GPO" + (importTotals.erros ? ", " + importTotals.erros + " com erro" : "") + ".", importTotals.erros ? "info" : "success");
+              return;
+            }
+
+            if (resp && (resp.importados || 0) === 0 && resp.candidatos === ultimoCandidatos) {
+              rodadasSemProgresso++;
+            } else {
+              rodadasSemProgresso = 0;
+            }
+            ultimoCandidatos = resp ? resp.candidatos : ultimoCandidatos;
+
+            if (rodadasSemProgresso >= 3) {
+              importBtn.disabled = false;
+              importStatusEl.textContent = "";
+              toast("Importação parada: " + importTotals.erros + " arquivo(s) continuam dando erro (veja os logs). " + importTotals.importados + " foram importados com sucesso.", "error");
+              return;
+            }
+
+            importPollTimer = setTimeout(passo, 500);
+          }).catch(function (err) {
+            importBtn.disabled = false;
+            importStatusEl.textContent = "";
+            handleApiError(err);
+          });
+        }
+        passo();
+      });
+    }
 
     $("#btn-sync-now").addEventListener("click", function () {
       var btn = $("#btn-sync-now");

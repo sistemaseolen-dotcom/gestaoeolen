@@ -23,6 +23,7 @@
 // não deste código; vale reportar ao fornecedor (RBA Soluções).
 
 import { supabaseAdmin } from "./supabaseAdmin";
+import * as storage from "./magaluStorage";
 
 const GPO_BASE = process.env.GPO_API_BASE || "https://apigpoeollen.rbasolucoes.com.br:8148/v1";
 const GPO_QS = `idcliente=${process.env.GPO_IDCLIENTE || "1"}&idusuario=${process.env.GPO_IDUSUARIO || "22"}&idloja=${process.env.GPO_IDLOJA || "1"}`;
@@ -417,20 +418,26 @@ export async function syncEquipes(): Promise<SyncResumo["equipes"]> {
 
 /* ---------------- Treinamentos ---------------- */
 
-export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
-  const rows = await gpoFetch(`/pessoa/treinamentogeral?busca=&${GPO_QS}&deletado=0`);
-  const admin = supabaseAdmin();
+type TreinamentoRow = {
+  pessoa_id: number; pessoa_nome: string; tipo: string; categoria: "documento" | "treinamento";
+  situacao_original: string | null; vencimento: string | null; data_emissao: string | null; legacyId: number;
+};
 
-  const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
+// Busca e normaliza `/pessoa/treinamentogeral`, com o MESMO dedup usado por
+// syncTreinamentos (mantém só o mais recente por pessoa+tipo) — extraído pra
+// função própria pra ser reaproveitado por importarDocumentosGpo() também:
+// o `legacyId` (= idtreinamento do GPO) do item "vencedor" de cada
+// (pessoa_id, tipo) é exatamente o id da pasta, dentro do bucket de anexos do
+// GPO, que contém o arquivo vigente hoje pra aquele documento — ver comentário
+// grande em importarDocumentosGpo() mais abaixo.
+async function fetchTreinamentosFinal(
+  idsValidos: Set<number>
+): Promise<{ final: TreinamentoRow[]; totalOriginal: number; parsedCount: number; tiposDesconhecidos: string[]; orfaos: number }> {
+  const rows = await gpoFetch(`/pessoa/treinamentogeral?busca=&${GPO_QS}&deletado=0`);
 
   const tiposDesconhecidos = new Set<string>();
   let orfaos = 0;
-
-  type Row = {
-    pessoa_id: number; pessoa_nome: string; tipo: string; categoria: "documento" | "treinamento";
-    situacao_original: string | null; vencimento: string | null; data_emissao: string | null; legacyId: number;
-  };
-  const parsed: Row[] = [];
+  const parsed: TreinamentoRow[] = [];
 
   for (const r of rows) {
     const tipo = normTipo(r.descricao);
@@ -450,13 +457,13 @@ export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
   }
 
   // Dedup: mantém o mais recente por (pessoa_id, tipo).
-  const groups = new Map<string, Row[]>();
+  const groups = new Map<string, TreinamentoRow[]>();
   for (const row of parsed) {
     const key = `${row.pessoa_id}::${row.tipo}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(row);
   }
-  const final: Row[] = [];
+  const final: TreinamentoRow[] = [];
   for (const items of groups.values()) {
     items.sort((a, b) => {
       const ea = a.data_emissao || ""; const eb = b.data_emissao || "";
@@ -467,6 +474,14 @@ export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
     });
     final.push(items[0]);
   }
+
+  return { final, totalOriginal: rows.length, parsedCount: parsed.length, tiposDesconhecidos: Array.from(tiposDesconhecidos), orfaos };
+}
+
+export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
+  const admin = supabaseAdmin();
+  const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
+  const { final, totalOriginal, parsedCount, tiposDesconhecidos, orfaos } = await fetchTreinamentosFinal(idsValidos);
 
   const payload = final.map((r) => ({
     pessoa_id: r.pessoa_id,
@@ -503,12 +518,203 @@ export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
   }
 
   return {
-    totalOriginal: rows.length,
+    totalOriginal,
     totalFinal: payload.length,
-    duplicadosRemovidos: parsed.length - final.length,
-    tiposDesconhecidos: Array.from(tiposDesconhecidos),
+    duplicadosRemovidos: parsedCount - final.length,
+    tiposDesconhecidos,
     orfaos,
   };
+}
+
+/* ---------------- Importação dos arquivos de Treinamentos/Documentos ----------------
+   Pedido do Diego (01/10/2026): "subir todas as documentações que estão no
+   GPO e colocar em nosso sistema" — syncTreinamentos() acima só traz os
+   DADOS (tipo, vencimento, data de emissão); os ARQUIVOS em si (PDFs
+   escaneados) nunca entraram nessa sincronização porque a API usada ali
+   (/pessoa/treinamentogeral) não devolve isso.
+
+   Só que o GPO guarda esses arquivos num bucket S3 próprio dele
+   (appeolen.s3.sa-east-1.amazonaws.com) que, igual à API do GPO, está
+   público/sem autenticação (mesma falha do sistema antigo, não é nada deste
+   código) — confirmado abrindo a tela "Documentos" do GPO e olhando as
+   chamadas de rede que ela faz: ela lista e baixa os arquivos direto desse
+   bucket, sem nenhum header de autenticação.
+
+   Cada arquivo fica em "treinamentos/<idpessoa>/<idtreinamento>/<nome do
+   arquivo>" — e <idtreinamento> é exatamente o campo `idtreinamento` que já
+   usamos (como `legacyId`) em fetchTreinamentosFinal() pra decidir qual é o
+   registro "vencedor" de cada (pessoa, tipo) depois do dedup. Isso quer
+   dizer que dá pra casar cada arquivo do bucket com a linha certa da nossa
+   tabela `treinamentos` sem nenhuma heurística de nome: um arquivo cujo
+   <idtreinamento> não é o vencedor de nenhum (pessoa,tipo) é uma versão
+   antiga/substituída (ex.: um NR35 vencido que já foi renovado) e é ignorado
+   de propósito — o vencedor é o mesmo registro que já está em `treinamentos`
+   hoje.
+
+   Só processa treinamentos que AINDA NÃO têm arquivo (arquivo_path nulo) —
+   pedido do Diego: nunca sobrescrever um anexo que já tenha sido subido
+   manualmente aqui no Controle Eolen. Por isso é seguro chamar de novo
+   quantas vezes precisar (idempotente) — cada chamada só processa o que
+   ainda falta, dentro do orçamento de tempo, e quem chamou decide se chama
+   de novo (ver app.js: mesmo padrão de polling já usado pela Sincronização,
+   só que disparando esta rota em vez de /api/sync/gpo/step). */
+
+const GPO_S3_BASE = "https://appeolen.s3.sa-east-1.amazonaws.com";
+const IMPORTAR_DOCS_TIME_BUDGET_MS = 48_000;
+const IMPORTAR_DOCS_CONCURRENCY = 16;
+
+function unescapeXmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function contentTypeFromExt(nome: string): string {
+  const ext = (nome.split(".").pop() || "").toLowerCase();
+  if (ext === "pdf") return "application/pdf";
+  if (ext === "png") return "image/png";
+  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
+  if (ext === "webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+function sanitizeFilenameImport(name: string): string {
+  return name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+}
+
+// Lista TODAS as chaves sob um prefixo do bucket do GPO (paginado por
+// continuation-token, igual à API REST padrão do S3) — o bucket aceita
+// list-type=2 sem nenhuma autenticação (ver comentário grande acima).
+async function listGpoS3Keys(prefix: string): Promise<string[]> {
+  const keys: string[] = [];
+  let token: string | null = null;
+  for (;;) {
+    const url: string = `${GPO_S3_BASE}/?list-type=2&prefix=${encodeURIComponent(prefix)}&max-keys=1000${token ? `&continuation-token=${encodeURIComponent(token)}` : ""}`;
+    const res: Response = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`Falha ao listar arquivos do GPO (${res.status}) em ${prefix}`);
+    const text: string = await res.text();
+    for (const m of text.matchAll(/<Key>([^<]+)<\/Key>/g)) keys.push(unescapeXmlEntities(m[1]));
+    const truncado: boolean = /<IsTruncated>true<\/IsTruncated>/.test(text);
+    const tokenMatch: RegExpMatchArray | null = text.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
+    token = truncado && tokenMatch ? tokenMatch[1] : null;
+    if (!token) break;
+  }
+  return keys;
+}
+
+// Busca id+cpf de TODAS as pessoas (paginado, igual fetchAllIds) — precisamos
+// do cpf pra montar a pasta Nome+CPF de cada uma (ver magaluStorage.ts).
+async function fetchPessoasCpfMap(admin: ReturnType<typeof supabaseAdmin>): Promise<Map<number, string | null>> {
+  const pageSize = 1000;
+  let from = 0;
+  const map = new Map<number, string | null>();
+  for (;;) {
+    const { data, error } = await admin.from("pessoas").select("id, cpf").range(from, from + pageSize - 1);
+    if (error) throw new Error(`Falha ao carregar CPFs de pessoas: ${error.message}`);
+    (data || []).forEach((r: any) => map.set(r.id, r.cpf ?? null));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return map;
+}
+
+export type ImportarDocumentosResumo = {
+  concluido: boolean;
+  candidatos: number; // quantos arquivos do GPO casaram com um treinamento nosso ainda sem anexo
+  processados: number; // quantos desses foram de fato tentados nesta chamada
+  importados: number;
+  erros: { arquivo: string; motivo: string }[];
+};
+
+export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo> {
+  const startedAt = Date.now();
+  const admin = supabaseAdmin();
+
+  const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
+  const { final } = await fetchTreinamentosFinal(idsValidos);
+
+  // idtreinamento (vencedor) -> tipo, só dos que realmente "ganharam" o
+  // dedup — um arquivo cujo idtreinamento não aparece aqui é uma versão
+  // antiga/substituída e é ignorado de propósito (ver comentário grande
+  // acima do arquivo).
+  const vencedorPorIdTreinamento = new Map<number, { pessoaId: number; tipo: string }>();
+  for (const r of final) vencedorPorIdTreinamento.set(r.legacyId, { pessoaId: r.pessoa_id, tipo: r.tipo });
+
+  // Só os treinamentos que ainda não têm arquivo — pedido do Diego: nunca
+  // sobrescrever o que já foi anexado manualmente.
+  const { data: semArquivo, error: semArquivoError } = await admin
+    .from("treinamentos")
+    .select("id, pessoa_id, pessoa_nome, tipo")
+    .is("arquivo_path", null);
+  if (semArquivoError) throw new Error(`Falha ao ler treinamentos sem anexo: ${semArquivoError.message}`);
+
+  const candidatoPorChave = new Map<string, { id: number; pessoa_id: number; pessoa_nome: string }>();
+  (semArquivo || []).forEach((t: any) => candidatoPorChave.set(`${t.pessoa_id}::${t.tipo}`, t));
+
+  const cpfPorPessoa = await fetchPessoasCpfMap(admin);
+
+  const keys = await listGpoS3Keys("treinamentos/");
+
+  type Fila = { key: string; candidato: { id: number; pessoa_id: number; pessoa_nome: string }; nomeArquivo: string };
+  const fila: Fila[] = [];
+  const usados = new Set<number>(); // candidato.id já enfileirado (defesa extra — não deveria repetir)
+
+  const KEY_RE = /^treinamentos\/(\d+)\/(\d+)\/(.+)$/;
+  for (const key of keys) {
+    const m = KEY_RE.exec(key);
+    if (!m) continue;
+    const idTreinamento = Number(m[2]);
+    const nomeArquivo = m[3];
+    const vencedor = vencedorPorIdTreinamento.get(idTreinamento);
+    if (!vencedor) continue; // versão antiga/substituída, ou pessoa/tipo que não existe mais
+    const candidato = candidatoPorChave.get(`${vencedor.pessoaId}::${vencedor.tipo}`);
+    if (!candidato || usados.has(candidato.id)) continue;
+    usados.add(candidato.id);
+    fila.push({ key, candidato, nomeArquivo });
+  }
+
+  let processados = 0;
+  let importados = 0;
+  const erros: { arquivo: string; motivo: string }[] = [];
+
+  async function processaUm(item: Fila): Promise<void> {
+    processados++;
+    try {
+      const url = `${GPO_S3_BASE}/${item.key.split("/").map(encodeURIComponent).join("/")}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) { erros.push({ arquivo: item.nomeArquivo, motivo: `GPO respondeu ${res.status}` }); return; }
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const contentType = res.headers.get("content-type") || contentTypeFromExt(item.nomeArquivo);
+
+      const cpf = cpfPorPessoa.get(item.candidato.pessoa_id) ?? null;
+      const path = `${storage.pessoaFolder(item.candidato.pessoa_id, item.candidato.pessoa_nome, cpf)}/${item.candidato.id}-${Date.now()}-${sanitizeFilenameImport(item.nomeArquivo)}`;
+
+      const { error: uploadError } = await storage.uploadFile(path, buffer, contentType);
+      if (uploadError) { erros.push({ arquivo: item.nomeArquivo, motivo: `Falha ao subir: ${uploadError}` }); return; }
+
+      const { error: updateError } = await admin
+        .from("treinamentos")
+        .update({ arquivo_path: path, arquivo_nome: item.nomeArquivo })
+        .eq("id", item.candidato.id);
+      if (updateError) { erros.push({ arquivo: item.nomeArquivo, motivo: `Falha ao atualizar banco: ${updateError.message}` }); return; }
+
+      importados++;
+    } catch (err: any) {
+      erros.push({ arquivo: item.nomeArquivo, motivo: err?.message || String(err) });
+    }
+  }
+
+  let concluido = true;
+  for (let i = 0; i < fila.length; i += IMPORTAR_DOCS_CONCURRENCY) {
+    if (Date.now() - startedAt > IMPORTAR_DOCS_TIME_BUDGET_MS) { concluido = false; break; }
+    const lote = fila.slice(i, i + IMPORTAR_DOCS_CONCURRENCY);
+    await Promise.all(lote.map(processaUm));
+  }
+
+  return { concluido, candidatos: fila.length, processados, importados, erros };
 }
 
 /* ---------------- Patrimônio ---------------- */
