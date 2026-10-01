@@ -54,8 +54,12 @@ export async function finalizarFichaEpiAssinada(
       console.error(`Falha ao remover Ficha de EPI anterior ${treino.arquivo_path}:`, removeError);
     }
   }
+  // Busca o CPF pra montar a pasta no padrão Nome+CPF (pedido do Diego) —
+  // `treinamentos` só guarda pessoa_id/pessoa_nome (denormalizado), não cpf.
+  const { data: pessoaCpfRow } = await admin.from("pessoas").select("cpf").eq("id", treino.pessoa_id).maybeSingle();
+
   const novoNome = `Ficha de EPI - ${input.pessoaNome} - assinada (Docsales).pdf`;
-  const novoPath = `${storage.pessoaFolder(treino.pessoa_id, treino.pessoa_nome)}/${treino.id}-${Date.now()}-ficha-epi-assinada-docsales.pdf`;
+  const novoPath = `${storage.pessoaFolder(treino.pessoa_id, treino.pessoa_nome, pessoaCpfRow?.cpf)}/${treino.id}-${Date.now()}-ficha-epi-assinada-docsales.pdf`;
   const { error: uploadError } = await storage.uploadFile(novoPath, input.pdfBuffer, "application/pdf");
   if (uploadError) throw new Error(`Falha ao salvar o PDF assinado: ${uploadError}`);
 

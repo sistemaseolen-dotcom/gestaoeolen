@@ -148,7 +148,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
   const novoNome = `Ficha de EPI - ${pessoa.nome} - regenerada.pdf`;
-  const novoPath = `${storage.pessoaFolder(pessoa.id, pessoa.nome)}/${treino.id}-${Date.now()}-ficha-epi-regenerada.pdf`;
+  const novoPath = `${storage.pessoaFolder(pessoa.id, pessoa.nome, pessoa.cpf)}/${treino.id}-${Date.now()}-ficha-epi-regenerada.pdf`;
   const { error: uploadError } = await storage.uploadFile(novoPath, pdfBuffer, "application/pdf");
   if (uploadError) {
     return NextResponse.json({ error: `Falha ao salvar o novo PDF: ${uploadError}` }, { status: 500 });

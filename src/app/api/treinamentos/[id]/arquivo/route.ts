@@ -103,8 +103,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     }
   }
 
+  // Busca o CPF pra montar a pasta no padrão Nome+CPF (pedido do Diego) —
+  // `treinamentos` só guarda pessoa_id/pessoa_nome (denormalizado), não cpf.
+  const { data: pessoaCpfRow } = await admin.from("pessoas").select("cpf").eq("id", before.pessoa_id).maybeSingle();
+
   const buffer = Buffer.from(await file.arrayBuffer());
-  const path = `${storage.pessoaFolder(before.pessoa_id, before.pessoa_nome)}/${id}-${Date.now()}-${sanitizeFilename(originalName)}`;
+  const path = `${storage.pessoaFolder(before.pessoa_id, before.pessoa_nome, pessoaCpfRow?.cpf)}/${id}-${Date.now()}-${sanitizeFilename(originalName)}`;
   const contentType = file.type || "application/octet-stream";
 
   const { error: uploadError } = await storage.uploadFile(path, buffer, contentType);

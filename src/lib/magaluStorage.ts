@@ -67,9 +67,21 @@ function sanitizaNome(nome: string): string {
     .toLowerCase();
 }
 
-export function pessoaFolder(pessoaId: number | string, pessoaNome: string): string {
-  const nomeSanitizado = sanitizaNome(pessoaNome);
-  return `seguranca/${pessoaId}${nomeSanitizado ? "-" + nomeSanitizado : ""}`;
+function soDigitos(v: string | null | undefined): string {
+  return (v || "").replace(/\D+/g, "");
+}
+
+// Pedido do Diego (01/10/2026): a pasta de cada pessoa deve ser Nome+CPF (em
+// vez de id+Nome como era antes) — assim ele consegue localizar a pasta de
+// alguém pelo CPF, não só pelo id interno. O CPF é passado por quem chama
+// (nem toda chamada já tinha essa coluna à mão antes desta mudança — ver os
+// call sites). Quando a pessoa não tem CPF cadastrado (raro, mas acontece em
+// registros antigos/migrados), cai pro id interno no lugar do CPF, só pra
+// garantir que a pasta continue única mesmo sem CPF.
+export function pessoaFolder(pessoaId: number | string, pessoaNome: string, cpf?: string | null): string {
+  const nomeSanitizado = sanitizaNome(pessoaNome) || String(pessoaId);
+  const cpfDigitos = soDigitos(cpf) || String(pessoaId);
+  return `seguranca/${nomeSanitizado}-${cpfDigitos}`;
 }
 
 export function auditoriaFolder(auditoriaId: number | string, siteId?: string | null): string {
