@@ -78,33 +78,43 @@ export async function GET() {
   const faltando: { kind: string; id: number; path: string; contexto: string }[] = [];
   let concluido = true;
 
-  for (const item of itens) {
-    if (Date.now() - startedAt > TIME_BUDGET_MS) {
-      concluido = false;
-      break;
-    }
-    verificados++;
-
+  // Processa um item: confere se já está no Magalu e, se não estiver, copia
+  // do bucket antigo do Supabase. Isolado numa função pra poder rodar várias
+  // chamadas em paralelo (ver CONCURRENCY abaixo) — o gargalo aqui é
+  // ida-e-volta de rede (download/upload), não CPU, então paralelizar ajuda
+  // bastante a processar mais dentro do orçamento de tempo da função.
+  async function processa(item: Item): Promise<"ok" | "migrado" | { faltando: typeof faltando[number] }> {
     const jaNoMagalu = await storage.downloadFile(item.path);
-    if (jaNoMagalu.data) {
-      jaOk++;
-      continue;
-    }
+    if (jaNoMagalu.data) return "ok";
 
     const { data: oldData, error: oldError } = await admin.storage.from(item.oldBucket).download(item.path);
     if (oldError || !oldData) {
-      faltando.push({ kind: item.kind, id: item.id, path: item.path, contexto: item.contexto });
-      continue;
+      return { faltando: { kind: item.kind, id: item.id, path: item.path, contexto: item.contexto } };
     }
 
     const buffer = Buffer.from(await oldData.arrayBuffer());
     const contentType = oldData.type && oldData.type !== "application/octet-stream" ? oldData.type : contentTypeFromPath(item.path);
     const { error: uploadError } = await storage.uploadFile(item.path, buffer, contentType);
     if (uploadError) {
-      faltando.push({ kind: item.kind, id: item.id, path: item.path, contexto: item.contexto + " (erro ao subir: " + uploadError + ")" });
-      continue;
+      return { faltando: { kind: item.kind, id: item.id, path: item.path, contexto: item.contexto + " (erro ao subir: " + uploadError + ")" } };
     }
-    migrados++;
+    return "migrado";
+  }
+
+  const CONCURRENCY = 12;
+  for (let i = 0; i < itens.length; i += CONCURRENCY) {
+    if (Date.now() - startedAt > TIME_BUDGET_MS) {
+      concluido = false;
+      break;
+    }
+    const lote = itens.slice(i, i + CONCURRENCY);
+    const resultados = await Promise.all(lote.map(processa));
+    for (const r of resultados) {
+      verificados++;
+      if (r === "ok") jaOk++;
+      else if (r === "migrado") migrados++;
+      else faltando.push(r.faltando);
+    }
   }
 
   return NextResponse.json({
