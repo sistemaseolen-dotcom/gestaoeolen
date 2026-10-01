@@ -4857,7 +4857,7 @@
     var st = trainingStatus(t);
     var pessoa = t.pessoaId ? byId(STATE.pessoas, t.pessoaId) : null;
     main.innerHTML =
-      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Painel</button><h1 style="margin-top:6px;">' + esc(t.tipo) + "</h1>" +
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← ' + esc(pessoa ? pessoa.nome : "Painel") + '</button><h1 style="margin-top:6px;">' + esc(t.tipo) + "</h1>" +
       '<div class="sub">' + esc(t.pessoaNome) + " · " + pill(st) + "</div>" +
       '<div class="header-field-notes">' + fieldNoteHtml("tipo", "Tipo") + "</div>" +
       "</div>" +
@@ -4882,7 +4882,7 @@
       "</div></div></div>" +
       historyPanelHtml("treinamento", t.id);
     loadHistoryPanel("treinamento", t.id);
-    $("#back-btn").addEventListener("click", function () { navigate("#/treinamentos"); });
+    $("#back-btn").addEventListener("click", function () { navigate(pessoa ? "#/pessoas/" + pessoa.id : "#/treinamentos"); });
     if ($("#btn-edit-tr")) $("#btn-edit-tr").addEventListener("click", function () { openTreinamentoForm(t, null); });
     if ($("#btn-del-tr")) $("#btn-del-tr").addEventListener("click", function () { confirmDelete("treinamento", t.id, t.tipo + " — " + t.pessoaNome); });
     if ($("#btn-ver-anexo")) $("#btn-ver-anexo").addEventListener("click", function () { baixarAnexo(t.id); });
