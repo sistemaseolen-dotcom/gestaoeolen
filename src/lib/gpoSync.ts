@@ -636,12 +636,19 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
   const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
   const { final } = await fetchTreinamentosFinal(idsValidos);
 
-  // idtreinamento (vencedor) -> tipo, só dos que realmente "ganharam" o
-  // dedup — um arquivo cujo idtreinamento não aparece aqui é uma versão
-  // antiga/substituída e é ignorado de propósito (ver comentário grande
-  // acima do arquivo).
-  const vencedorPorIdTreinamento = new Map<number, { pessoaId: number; tipo: string }>();
-  for (const r of final) vencedorPorIdTreinamento.set(r.legacyId, { pessoaId: r.pessoa_id, tipo: r.tipo });
+  // (idpessoa, idtreinamento) do vencedor -> tipo, só dos que realmente
+  // "ganharam" o dedup — um arquivo cujo (idpessoa, idtreinamento) não
+  // aparece aqui é uma versão antiga/substituída e é ignorado de propósito
+  // (ver comentário grande acima do arquivo).
+  //
+  // IMPORTANTE: idtreinamento NÃO é um id global — é um contador por pessoa
+  // (por isso o bucket do GPO guarda o idpessoa como pasta separada antes
+  // dele: "treinamentos/<idpessoa>/<idtreinamento>/arquivo.pdf"). Casar só
+  // por idtreinamento (sem o idpessoa) colide entre pessoas diferentes que
+  // têm o mesmo número de sequência e zera quase todos os casamentos —
+  // por isso a chave aqui tem que ser composta.
+  const vencedorPorChaveTreinamento = new Map<string, { pessoaId: number; tipo: string }>();
+  for (const r of final) vencedorPorChaveTreinamento.set(`${r.pessoa_id}::${r.legacyId}`, { pessoaId: r.pessoa_id, tipo: r.tipo });
 
   // Só os treinamentos que ainda não têm arquivo — pedido do Diego: nunca
   // sobrescrever o que já foi anexado manualmente.
@@ -666,9 +673,10 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
   for (const key of keys) {
     const m = KEY_RE.exec(key);
     if (!m) continue;
+    const idPessoaPasta = Number(m[1]);
     const idTreinamento = Number(m[2]);
     const nomeArquivo = m[3];
-    const vencedor = vencedorPorIdTreinamento.get(idTreinamento);
+    const vencedor = vencedorPorChaveTreinamento.get(`${idPessoaPasta}::${idTreinamento}`);
     if (!vencedor) continue; // versão antiga/substituída, ou pessoa/tipo que não existe mais
     const candidato = candidatoPorChave.get(`${vencedor.pessoaId}::${vencedor.tipo}`);
     if (!candidato || usados.has(candidato.id)) continue;
