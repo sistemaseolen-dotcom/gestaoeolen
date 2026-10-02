@@ -961,6 +961,89 @@ export async function syncPatrimoniosHistoricoPagina(
   };
 }
 
+/* ---------------- Veículos (Gestão de Frotas) ----------------
+   Pedido do Diego (02/10/2026): trazer os contratos de locação de veículos
+   do GPO ("Gestão de Frotas > Veículos") — só dados, sem arquivo.
+
+   DIFERENTE de toda sincronização acima: aqui é o PRÓPRIO NAVEGADOR (tela de
+   Sincronização, botão "Importar veículos do GPO") que busca os dados no
+   GPO, não este servidor. Motivo medido na prática: o endpoint do GPO
+   (/v1/veiculosnovo) é extremamente lento — mesmo o status mais rápido já
+   testado (EM USO, só 91 registros) levou 90-110s, e os outros (SUBSTITUÍDO,
+   DEVOLVIDO) ficaram mais de 10 minutos pendentes numa única chamada. Isso
+   estoura de longe os 60s do plano Hobby da Vercel (maxDuration), e não dá
+   pra "paginar" port status porque nem um status sozinho cabe no limite.
+   Confirmado que o GPO permite fetch() direto de outra origem (CORS aberto,
+   igual à API inteira — sem autenticação), então a busca lenta roda no
+   navegador de quem está com a tela aberta (mesma tolerância que o próprio
+   GPO já exige: "o sistema do GPO está bem lento, mas carrega depois de um
+   tempo") e só os resultados já prontos (um array JSON) chegam até aqui,
+   pra um upsert rápido — isso sim cabe tranquilo em 60s.
+   Ver POST /api/admin/importar-veiculos-gpo (recebe os registros já
+   buscados) e o botão em app.js (renderSincronizacao) que dispara um fetch
+   por vez, em sequência, pros 4 status (EM USO, SUBSTITUÍDO, DEVOLVIDO,
+   INATIVO) — "TODOS" existe no GPO mas é só a soma dos outros 4 (e ainda
+   mais lento), por isso não é usado aqui. */
+export async function upsertVeiculosFromGpo(rows: any[]): Promise<{ total: number }> {
+  if (!Array.isArray(rows) || rows.length === 0) return { total: 0 };
+
+  const admin = supabaseAdmin();
+
+  // Resolve o condutor (texto livre + CPF vindos do GPO) pra um pessoa_id já
+  // cadastrado em `pessoas`, por igualdade de CPF (o GPO manda o CPF já
+  // formatado do mesmo jeito em ambos os cadastros — pessoa e veículo — por
+  // vir do mesmo sistema de origem). É heurística: sem CPF batendo, o
+  // registro continua sendo importado mesmo assim, só sem o vínculo.
+  const { data: pessoasRows } = await admin.from("pessoas").select("id, cpf");
+  const pessoaPorCpf = new Map<string, number>();
+  (pessoasRows || []).forEach((p: any) => {
+    const cpf = normStr(p.cpf);
+    if (cpf && !pessoaPorCpf.has(cpf)) pessoaPorCpf.set(cpf, p.id);
+  });
+
+  const payload = rows
+    .map((r: any) => {
+      const cpf = normStr(r.cpf);
+      return {
+        legacy_id: normNum(r.id),
+        contrato: normStr(r.contrato),
+        locadora: normUpper(r.locadora),
+        placa: normUpper(r.placa),
+        condutor_pessoa_id: cpf ? pessoaPorCpf.get(cpf) ?? null : null,
+        condutor_nome: normUpper(r.condutor || r.nome),
+        cpf,
+        cnh: normStr(r.cnh),
+        status: normUpper(r.status),
+        km_retirada: normNum(r.kmretirada),
+        km_atual: normNum(r.kmatual),
+        km_devolucao: normNum(r.kmdevolucao),
+        km_veiculo: normNum(r.kmveiculo),
+        km_contrato: normNum(r.kmcontrato),
+        km_revisao_realizada: normNum(r.kmrevisaorealizada),
+        proxima_revisao_km: normStr(r.proximarevisaokm),
+        observacao: normStr(r.observacao),
+        projeto: normUpper(r.projeto),
+        regional: normUpper(r.regional),
+        // "coodenador" é o nome de campo (com o erro de digitação) que o
+        // próprio GPO usa — só aqui na leitura; na nossa tabela a coluna
+        // chama-se, corretamente, "coordenador".
+        coordenador: normUpper(r.coodenador),
+        data_contrato: normDate(r.datacontrato),
+        data_retirada: normDate(r.dataretirada),
+        data_devolucao: normDate(r.datadevolucao),
+        origem: "gpo",
+      };
+    })
+    .filter((v) => v.legacy_id !== null);
+
+  for (const batch of chunk(payload, 500)) {
+    const { error } = await admin.from("veiculos").upsert(batch, { onConflict: "legacy_id" });
+    if (error) throw new Error(`Falha ao importar veículos: ${error.message}`);
+  }
+
+  return { total: payload.length };
+}
+
 /* ---------------- Orquestração ----------------
    A orquestração (ordem das etapas, encadeamento entre elas, log de
    progresso) mudou de lugar — ver src/lib/gpoSyncSteps.ts.

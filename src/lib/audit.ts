@@ -5,7 +5,7 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import type { UsuarioRow } from "./permissions";
 
-export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "auditoria" | "configuracao" | "acesso_equipe";
+export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "veiculo" | "auditoria" | "configuracao" | "acesso_equipe";
 
 // Rótulos amigáveis por campo, por entidade — espelha FIELD_LABELS do app.js.
 export const FIELD_LABELS: Record<string, Record<string, string>> = {
@@ -39,6 +39,15 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
   patrimonio: {
     codigo: "Código", tipo: "Tipo", modelo: "Modelo", serie: "Série", valor: "Valor",
     status: "Status", responsavel_nome: "Responsável",
+  },
+  veiculo: {
+    placa: "Placa", contrato: "Contrato", locadora: "Locadora", status: "Status",
+    condutor_nome: "Condutor", cpf: "CPF", cnh: "CNH", projeto: "Projeto", regional: "Regional",
+    coordenador: "Coordenador", km_retirada: "KM retirada", km_atual: "KM atual",
+    km_devolucao: "KM devolução", km_veiculo: "KM veículo", km_contrato: "KM contrato",
+    km_revisao_realizada: "KM revisão realizada", proxima_revisao_km: "Próxima revisão (KM)",
+    data_contrato: "Data do contrato", data_retirada: "Data de retirada", data_devolucao: "Data de devolução",
+    observacao: "Observação",
   },
   auditoria: {
     site_id: "Site ID", empresa: "Empresa", regional: "Regional", data: "Data", standard: "Padrão", status: "Status",

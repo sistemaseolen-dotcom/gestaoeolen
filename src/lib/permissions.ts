@@ -7,7 +7,10 @@
 // às operadoras) — só quem tiver "ver" nessa página vê a aba/dados; "criar"/
 // "editar"/"excluir" controlam o cadastro das equipes e seus membros, no
 // mesmo padrão de qualquer outra página daqui.
-export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "auditorias", "acesso"] as const;
+// "veiculos" adicionada a pedido do Diego (02/10/2026): a aba "Gestão de
+// Frotas" (contratos de locação de veículos sincronizados do GPO, mais
+// cadastro/edição/exclusão manual) — mesmo padrão de "patrimonio".
+export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "veiculos", "auditorias", "acesso"] as const;
 export type Page = (typeof PAGES)[number];
 
 export const ACTIONS = ["ver", "criar", "editar", "excluir"] as const;

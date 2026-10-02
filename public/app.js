@@ -87,6 +87,7 @@
     history: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>',
     edit: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>',
     patrimonio: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>',
+    veiculos: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm14 0a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM3 17V9.5a1 1 0 0 1 .3-.7l2.5-2.5A2 2 0 0 1 7.2 5.6h9.6a2 2 0 0 1 1.4.6l2.5 2.5a1 1 0 0 1 .3.7V17"/><path d="M5 11h14"/></svg>',
     auditorias: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V3"/><path d="m9 12 2 2 4-4"/><path d="M8 17h8"/></svg>',
     camera: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
     sync: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.36"/><path d="M3 12a9 9 0 0 1 15.5-6.36"/><polyline points="21 3 21 9 15 9"/><polyline points="3 21 3 15 9 15"/></svg>'
@@ -100,6 +101,7 @@
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
+    veiculos: { q: "", status: "", page: 1 },
     auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
     acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
   };
@@ -113,6 +115,7 @@
     { key: "empresas", label: "Empresas" },
     { key: "documentos", label: "Treinamentos/documentos" },
     { key: "patrimonio", label: "Patrimônio" },
+    { key: "veiculos", label: "Gestão de Frotas" },
     { key: "auditorias", label: "Auditorias" },
     { key: "acesso", label: "Acesso" }
   ];
@@ -147,6 +150,7 @@
     if (canView("equipes")) return "equipes";
     if (canView("empresas")) return "empresas";
     if (canView("patrimonio")) return "patrimonio";
+    if (canView("veiculos")) return "veiculos";
     if (canView("auditorias")) return "auditorias";
     if (canView("acesso")) return "acesso";
     return null;
@@ -825,6 +829,21 @@
       observacao: row.observacao, origem: row.origem, usuarioNome: row.usuario_nome
     };
   }
+  // "Gestão de Frotas" (pedido do Diego, 02/10/2026) — contratos de locação
+  // de veículos, sincronizados do GPO (legacyId preenchido) ou cadastrados
+  // direto aqui (legacyId null), mesmo padrão de mapPatrimonioFromApi.
+  function mapVeiculoFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, legacyId: row.legacy_id, contrato: row.contrato, locadora: row.locadora, placa: row.placa,
+      condutorPessoaId: row.condutor_pessoa_id, condutorNome: row.condutor_nome, cpf: row.cpf, cnh: row.cnh,
+      status: row.status, kmRetirada: row.km_retirada, kmAtual: row.km_atual, kmDevolucao: row.km_devolucao,
+      kmVeiculo: row.km_veiculo, kmContrato: row.km_contrato, kmRevisaoRealizada: row.km_revisao_realizada,
+      proximaRevisaoKm: row.proxima_revisao_km, observacao: row.observacao, projeto: row.projeto,
+      regional: row.regional, coordenador: row.coordenador, dataContrato: row.data_contrato,
+      dataRetirada: row.data_retirada, dataDevolucao: row.data_devolucao, origem: row.origem
+    };
+  }
   function mapTreinamentoFromApi(row) {
     if (!row) return row;
     return {
@@ -890,6 +909,7 @@
         treinamentos: (data.treinamentos || []).map(mapTreinamentoFromApi),
         equipes: (data.equipes || []).map(mapEquipeFromApi),
         patrimonios: (data.patrimonios || []).map(mapPatrimonioFromApi),
+        veiculos: (data.veiculos || []).map(mapVeiculoFromApi),
         auditorias: (data.auditorias || []).map(mapAuditoriaFromApi),
         acessoEquipes: (data.acessoEquipes || []).map(mapAcessoEquipeFromApi),
         listas: data.listas || {},
@@ -908,6 +928,7 @@
       STATE.treinamentos = data.treinamentos;
       STATE.equipes = data.equipes;
       STATE.patrimonios = data.patrimonios;
+      STATE.veiculos = data.veiculos;
       STATE.auditorias = data.auditorias;
       STATE.acessoEquipes = data.acessoEquipes;
       STATE.listas = data.listas;
@@ -944,6 +965,7 @@
     if (canView("equipes")) navItems.push(["equipes", "Equipes", ICONS.equipes, countTeamLideres(true)]);
     if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
     if (canView("patrimonio")) navItems.push(["patrimonio", "Patrimônio", ICONS.patrimonio, STATE.patrimonios.length]);
+    if (canView("veiculos")) navItems.push(["veiculos", "Gestão de Frotas", ICONS.veiculos, STATE.veiculos.length]);
     if (canView("auditorias")) navItems.push(["auditorias", "Auditorias", ICONS.auditorias, STATE.auditorias.length]);
     // Aba "Acesso" (pedido do Diego, 28/09/2026): equipes de campo por
     // operadora/projeto/regional, com dados de acesso à operadora. Mesma
@@ -1780,6 +1802,191 @@
         renderShellCounts();
         toast(isNew ? "Item criado." : "Item atualizado.", "success");
         if (isNew) navigate("#/patrimonio/" + rec.id);
+      }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
+  }
+
+  /* ---------------- Gestão de Frotas (Veículos) ----------------
+     Pedido do Diego (02/10/2026): contratos de locação de veículos — vêm do
+     GPO a cada importação (upsert por legacy_id — ver gpoSync.ts/
+     upsertVeiculosFromGpo), mas também podem ser criados/editados/excluídos
+     direto aqui, mesmo padrão de "patrimonio". É só dado, sem arquivo. */
+  var VEICULO_STATUS_OPTS = ["EM USO", "SUBSTITUÍDO", "DEVOLVIDO", "INATIVO"];
+
+  function statusPillVeiculo(status) {
+    var cls = "neutral";
+    if (status === "EM USO") cls = "ok";
+    else if (status === "SUBSTITUÍDO") cls = "warn";
+    else if (status === "INATIVO" || status === "DEVOLVIDO") cls = "danger";
+    return '<span class="pill ' + cls + '">' + esc(status || "—") + "</span>";
+  }
+
+  function renderVeiculosList(main) {
+    var ui = uiState.veiculos;
+
+    function computeFiltered() {
+      var all = STATE.veiculos.slice().sort(function (a, b) { return (a.placa || "").localeCompare(b.placa || ""); });
+      return all.filter(function (v) {
+        if (ui.status && v.status !== ui.status) return false;
+        if (!ui.q) return true;
+        var hay = normalize([v.placa, v.contrato, v.locadora, v.condutorNome, v.projeto].join(" "));
+        return hay.indexOf(normalize(ui.q)) !== -1;
+      });
+    }
+
+    function draw() {
+      var filtered = computeFiltered();
+      withFocusPreserved(function () { drawInto(filtered); });
+    }
+
+    function drawInto(filtered) {
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+      var body = pg.items.map(function (v) {
+        return '<tr data-id="' + v.id + '">' +
+          '<td class="mono">' + esc(v.placa || "—") + "</td>" +
+          "<td>" + esc(v.condutorNome || "—") + "</td>" +
+          "<td>" + esc(v.contrato || "—") + "</td>" +
+          "<td>" + esc(v.locadora || "—") + "</td>" +
+          "<td>" + esc(v.projeto || "—") + "</td>" +
+          "<td>" + esc(v.regional || "—") + "</td>" +
+          "<td>" + statusPillVeiculo(v.status) + "</td></tr>";
+      }).join("");
+      var toolbar =
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="veiculo-q" placeholder="Buscar por placa, contrato, locadora, condutor ou projeto…" value="' + esc(ui.q) + '"></div>' +
+        '<select class="filter" id="veiculo-status"><option value="">Todos os status</option>' +
+        VEICULO_STATUS_OPTS.map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
+
+      main.innerHTML =
+        '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos de locação de veículos sincronizados do GPO, com edição, criação e exclusão manual</div></div>' +
+        (canDo("veiculos", "criar") ? '<button class="btn primary" id="btn-new-veiculo">' + ICONS.plus + "Novo veículo</button>" : "") + "</div>" +
+        tableShell({
+          toolbar: toolbar,
+          headHtml: "<th>Placa</th><th>Condutor</th><th>Contrato</th><th>Locadora</th><th>Projeto</th><th>Regional</th><th>Status</th>",
+          bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+          empty: "Nenhum veículo encontrado."
+        });
+
+      if ($("#btn-new-veiculo")) $("#btn-new-veiculo").addEventListener("click", function () { openVeiculoForm(null); });
+      $("#veiculo-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#veiculo-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
+      $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/veiculos/" + row.getAttribute("data-id")); }); });
+      bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+    }
+    draw();
+  }
+
+  function renderVeiculoDetail(main, id) {
+    var v = byId(STATE.veiculos, id);
+    if (!v) { navigate("#/veiculos"); return; }
+    main.innerHTML =
+      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Gestão de Frotas</button><h1 style="margin-top:6px;">' + esc(v.placa || v.contrato || ("Veículo " + v.id)) + "</h1>" +
+      '<div class="sub">' + esc(v.locadora || "—") + (v.contrato ? " · Contrato " + esc(v.contrato) : "") + " · " + statusPillVeiculo(v.status) + "</div>" +
+      '<div class="header-field-notes">' + fieldNoteHtml("placa", "Placa") + fieldNoteHtml("status", "Status") + fieldNoteHtml("condutor_nome", "Condutor") + "</div>" +
+      "</div>" +
+      '<div style="display:flex;gap:8px;">' +
+      (canDo("veiculos", "editar") ? '<button class="btn" id="btn-edit-veiculo">Editar</button>' : "") +
+      (canDo("veiculos", "excluir") ? '<button class="btn danger" id="btn-del-veiculo">' + ICONS.trash + "Excluir</button>" : "") +
+      "</div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Contrato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Placa", v.placa, "placa") + detailItem("Contrato", v.contrato, "contrato") +
+      detailItem("Locadora", v.locadora, "locadora") + detailItem("Status", v.status, "status") +
+      detailItem("Data do contrato", fmtDateBR(v.dataContrato), "data_contrato") + detailItem("Data de retirada", fmtDateBR(v.dataRetirada), "data_retirada") +
+      detailItem("Data de devolução", fmtDateBR(v.dataDevolucao), "data_devolucao") +
+      detailItem("Projeto", v.projeto, "projeto") + detailItem("Regional", v.regional, "regional") + detailItem("Coordenador", v.coordenador, "coordenador") +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Condutor</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Condutor", v.condutorNome, "condutor_nome") + detailItem("CPF", v.cpf, "cpf") + detailItem("CNH", v.cnh, "cnh") +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Quilometragem</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("KM retirada", v.kmRetirada, "km_retirada") + detailItem("KM atual", v.kmAtual, "km_atual") +
+      detailItem("KM devolução", v.kmDevolucao, "km_devolucao") + detailItem("KM veículo", v.kmVeiculo, "km_veiculo") +
+      detailItem("KM contrato", v.kmContrato, "km_contrato") + detailItem("KM revisão realizada", v.kmRevisaoRealizada, "km_revisao_realizada") +
+      detailItem("Próxima revisão (KM)", v.proximaRevisaoKm, "proxima_revisao_km") +
+      "</div></div></div>" +
+      (v.observacao ? '<div class="panel"><div class="panel-head"><h3>Observação</h3></div><div class="panel-body pad">' + esc(v.observacao) + "</div></div>" : "") +
+      historyPanelHtml("veiculo", v.id);
+    loadHistoryPanel("veiculo", v.id);
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/veiculos"); });
+    if ($("#btn-edit-veiculo")) $("#btn-edit-veiculo").addEventListener("click", function () { openVeiculoForm(v); });
+    if ($("#btn-del-veiculo")) $("#btn-del-veiculo").addEventListener("click", function () { confirmDelete("veiculo", v.id, v.placa || v.contrato || ("Veículo " + v.id), { after: function () { navigate("#/veiculos"); } }); });
+  }
+
+  // Condutor é opcionalmente vinculado a uma pessoa já cadastrada (mesmo
+  // padrão do select de responsável em Patrimônio), mas nome/CPF/CNH
+  // continuam sendo campos de texto independentes — o condutor do GPO nem
+  // sempre bate 1:1 com uma pessoa já cadastrada aqui.
+  function veiculoCondutorSelectHtml(v) {
+    var pessoasOpts = STATE.pessoas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome); })
+      .map(function (pe) { return '<option value="' + pe.id + '"' + (v && v.condutorPessoaId === pe.id ? " selected" : "") + '>' + esc(pe.nome) + (pe.cargo ? " — " + esc(pe.cargo) : "") + "</option>"; }).join("");
+    return '<div class="field"><label>Vincular a uma pessoa cadastrada (opcional)</label><select name="condutorPessoaId"><option value="">— Nenhuma —</option>' + pessoasOpts + "</select></div>";
+  }
+
+  function openVeiculoForm(v) {
+    var isNew = !v;
+    var html =
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Novo veículo" : "Editar veículo") + '</h2><div class="sub">Contrato de locação — placa, contrato, condutor e quilometragem</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="veiculo-form"><div class="field-grid">' +
+      field("Placa", "placa", "text", v) +
+      field("Contrato", "contrato", "text", v) +
+      field("Locadora", "locadora", "text", v) +
+      selectField("Status", "status", VEICULO_STATUS_OPTS, v ? v.status : "", { allowEmpty: true, emptyLabel: "— Selecione —" }) +
+      veiculoCondutorSelectHtml(v) +
+      field("Nome do condutor", "condutorNome", "text", v) +
+      field("CPF", "cpf", "text", v) +
+      field("CNH", "cnh", "text", v) +
+      field("Projeto", "projeto", "text", v) +
+      field("Regional", "regional", "text", v) +
+      field("Coordenador", "coordenador", "text", v) +
+      field("Data do contrato", "dataContrato", "date", v) +
+      field("Data de retirada", "dataRetirada", "date", v) +
+      field("Data de devolução", "dataDevolucao", "date", v) +
+      field("KM retirada", "kmRetirada", "number", v) +
+      field("KM atual", "kmAtual", "number", v) +
+      field("KM devolução", "kmDevolucao", "number", v) +
+      field("KM veículo", "kmVeiculo", "number", v) +
+      field("KM contrato", "kmContrato", "number", v) +
+      field("KM revisão realizada", "kmRevisaoRealizada", "number", v) +
+      field("Próxima revisão (KM)", "proximaRevisaoKm", "text", v) +
+      '<div class="field span2"><label>Observação</label><input type="text" name="observacao" value="' + esc(v && v.observacao || "") + '"></div>' +
+      (v && v.legacyId != null ? '<div class="hint span2" style="margin-top:4px;">Este veículo também existe no GPO — os campos sincronizados voltam a valer o que estiver lá na próxima importação, caso continuem diferentes.</div>' : "") +
+      "</div></form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="veiculo-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+    openDrawer(html);
+    $("#veiculo-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("veiculos", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var body = {};
+      ["placa", "locadora", "status", "condutorNome", "projeto", "regional", "coordenador"].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim().toUpperCase(); });
+      ["contrato", "cpf", "cnh", "proximaRevisaoKm", "observacao", "dataContrato", "dataRetirada", "dataDevolucao"].forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      ["kmRetirada", "kmAtual", "kmDevolucao", "kmVeiculo", "kmContrato", "kmRevisaoRealizada"].forEach(function (k) {
+        var raw = (fd.get(k) || "").toString().trim();
+        body[k] = raw ? Number(raw) : null;
+      });
+      var condVal = fd.get("condutorPessoaId");
+      body.condutorPessoaId = condVal ? Number(condVal) : null;
+
+      var req = isNew
+        ? apiFetch("/api/veiculos", { method: "POST", body: body })
+        : apiFetch("/api/veiculos/" + v.id, { method: "PATCH", body: body });
+
+      req.then(function (data) {
+        var rec = mapVeiculoFromApi(data);
+        if (isNew) STATE.veiculos.push(rec);
+        else {
+          var idx = STATE.veiculos.findIndex(function (x) { return x.id === rec.id; });
+          if (idx !== -1) STATE.veiculos[idx] = rec;
+        }
+        closeDrawer();
+        render();
+        renderShellCounts();
+        toast(isNew ? "Veículo criado." : "Veículo atualizado.", "success");
+        if (isNew) navigate("#/veiculos/" + rec.id);
       }).catch(handleApiError);
     });
     $("#drawer-close").addEventListener("click", closeDrawer);
@@ -5442,7 +5649,7 @@
   // própria tela da pessoa em vez de ir pra lista geral de treinamentos.
   function confirmDelete(kind, id, label, opts) {
     opts = opts || {};
-    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : kind === "auditoria" ? "auditorias" : kind === "acessoEquipe" ? "acesso" : "documentos";
+    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : kind === "veiculo" ? "veiculos" : kind === "auditoria" ? "auditorias" : kind === "acessoEquipe" ? "acesso" : "documentos";
     if (!canDo(pageKey, "excluir")) { toast("Você não tem permissão para excluir.", "error"); return; }
     var html =
       '<div class="modal-box"><h3>Excluir registro?</h3><p>Tem certeza que deseja excluir <strong>' + esc(label) + '</strong>? Esta ação não pode ser desfeita.</p>' +
@@ -5454,6 +5661,7 @@
         : kind === "equipe" ? "/api/equipes/" + id
         : kind === "empresa" ? "/api/empresas/" + id
         : kind === "patrimonio" ? "/api/patrimonios/" + id
+        : kind === "veiculo" ? "/api/veiculos/" + id
         : kind === "auditoria" ? "/api/auditorias/" + id
         : kind === "acessoEquipe" ? "/api/acesso-equipes/" + id
         : "/api/treinamentos/" + id;
@@ -5476,6 +5684,8 @@
           STATE.treinamentos = STATE.treinamentos.filter(function (t) { return t.id !== id; });
         } else if (kind === "patrimonio") {
           STATE.patrimonios = STATE.patrimonios.filter(function (p) { return p.id !== id; });
+        } else if (kind === "veiculo") {
+          STATE.veiculos = STATE.veiculos.filter(function (v) { return v.id !== id; });
         } else if (kind === "auditoria") {
           STATE.auditorias = STATE.auditorias.filter(function (a) { return a.id !== id; });
         } else if (kind === "acessoEquipe") {
@@ -5659,7 +5869,7 @@
   function renderAdminLog(main) {
     uiState.adminLog = uiState.adminLog || { q: "", entidade: "", page: 1 };
     var ui = uiState.adminLog;
-    var entidadeLabels = { pessoa: "Pessoa", equipe: "Equipe", empresa: "Empresa", treinamento: "Documento", usuario: "Usuário", lista: "Lista", patrimonio: "Patrimônio", auditoria: "Auditoria", configuracao: "Configuração" };
+    var entidadeLabels = { pessoa: "Pessoa", equipe: "Equipe", empresa: "Empresa", treinamento: "Documento", usuario: "Usuário", lista: "Lista", patrimonio: "Patrimônio", veiculo: "Veículo", auditoria: "Auditoria", configuracao: "Configuração" };
 
     function fetchLog(page, pageSize) {
       var params = "?page=" + page + "&pageSize=" + pageSize;
@@ -5837,6 +6047,24 @@
         "</div>"
       : "";
 
+    // Importação dos VEÍCULOS/contratos do GPO ("Gestão de Frotas", pedido
+    // do Diego, 02/10/2026) — ver o comentário grande acima de
+    // upsertVeiculosFromGpo() em src/lib/gpoSync.ts: diferente de toda
+    // sincronização acima, aqui é O PRÓPRIO NAVEGADOR que busca cada status
+    // direto no GPO (fetch() cross-origin, confirmado que funciona — a API
+    // do GPO não tem restrição de CORS, igual já sabíamos que não tem
+    // autenticação), porque o endpoint /v1/veiculosnovo é lento demais
+    // (minutos) pra caber nos 60s de uma função serverless. Só depois de
+    // cada status voltar é que os registros já prontos são mandados pra cá
+    // (POST /api/admin/importar-veiculos-gpo), pra um upsert rápido.
+    var importVeiculosHtml = isAdmin()
+      ? '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
+        "<p>Importa os veículos/contratos de locação da aba \"Gestão de Frotas\" do GPO — cria, atualiza ou atualiza os já existentes (por placa/contrato). O GPO é bem lento pra devolver essa lista (pode levar vários minutos por status) — precisa ficar com esta tela aberta até terminar.</p>" +
+        '<button class="btn" id="btn-import-veiculos-gpo" style="margin-top:10px;">' + ICONS.sync + "Importar veículos do GPO</button>" +
+        '<span id="import-veiculos-status" class="hint" style="margin-left:12px;"></span>' +
+        "</div>"
+      : "";
+
     main.innerHTML =
       '<div class="topbar"><div><h1>Sincronização</h1><div class="sub">Traz os dados mais recentes do GPO pro Controle Eolen</div></div></div>' +
       '<div class="panel" style="padding:16px;margin-bottom:16px;">' +
@@ -5846,8 +6074,63 @@
       '<span id="sync-now-status" class="hint" style="margin-left:12px;"></span>' +
       "</div>" +
       importDocsHtml +
+      importVeiculosHtml +
       '<div id="admin-sync-body"></div>';
     draw();
+
+    if ($("#btn-import-veiculos-gpo")) {
+      var veicBtn = $("#btn-import-veiculos-gpo");
+      var veicStatusEl = $("#import-veiculos-status");
+      // Mesmos valores padrão usados pelo servidor (GPO_IDCLIENTE/IDUSUARIO/
+      // IDLOJA em gpoSync.ts) — aqui é fixo porque quem busca é o próprio
+      // navegador, sem acesso às variáveis de ambiente do servidor.
+      var GPO_VEICULOS_BASE = "https://apigpoeollen.rbasolucoes.com.br:8148/v1/veiculosnovo?busca=&idcliente=1&idusuario=22&idloja=1&deletado=0";
+      // "TODOS" existe no GPO mas é só a soma destes 4 (e ainda mais lento) —
+      // buscar por status, um de cada vez, é o que faz isso ser resumível.
+      var VEIC_STATUSES = ["EM USO", "SUBSTITUÍDO", "DEVOLVIDO", "INATIVO"];
+
+      veicBtn.addEventListener("click", function () {
+        veicBtn.disabled = true;
+        var totalImportado = 0;
+        var idx = 0;
+
+        function passoStatus() {
+          if (idx >= VEIC_STATUSES.length) {
+            veicBtn.disabled = false;
+            veicStatusEl.textContent = "";
+            toast("Importação de veículos concluída: " + totalImportado + " registro(s) trazido(s) do GPO.", "success");
+            refreshState().then(render);
+            return;
+          }
+          var status = VEIC_STATUSES[idx];
+          veicStatusEl.textContent = "Buscando no GPO: " + status + "… (pode levar vários minutos, aguarde)";
+
+          fetch(GPO_VEICULOS_BASE + "&statusveic=" + encodeURIComponent(status))
+            .then(function (r) {
+              if (!r.ok) throw new Error("GPO respondeu " + r.status + " para o status " + status);
+              return r.json();
+            })
+            .then(function (registros) {
+              if (!$("#btn-import-veiculos-gpo")) return; // saiu da página — para de repetir
+              veicStatusEl.textContent = "Importando " + (registros || []).length + " registro(s) de " + status + "…";
+              return apiFetch("/api/admin/importar-veiculos-gpo", { method: "POST", body: { status: status, registros: registros || [] } });
+            })
+            .then(function (resp) {
+              if (!$("#btn-import-veiculos-gpo")) return;
+              if (resp && resp.error) throw new Error(resp.error);
+              totalImportado += (resp && resp.total) || 0;
+              idx++;
+              passoStatus();
+            })
+            .catch(function (err) {
+              veicBtn.disabled = false;
+              veicStatusEl.textContent = "";
+              handleApiError(err);
+            });
+        }
+        passoStatus();
+      });
+    }
 
     if ($("#btn-import-docs-gpo")) {
       var importBtn = $("#btn-import-docs-gpo");
@@ -6880,7 +7163,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", auditorias: "auditorias", acesso: "acesso" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -6897,6 +7180,7 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
+    else if (route.view === "veiculos") route.id ? renderVeiculoDetail(main, route.id) : renderVeiculosList(main);
     else if (route.view === "auditorias") {
       if (route.id === "lista") renderAuditoriasList(main);
       else if (route.id && route.sub === "ficha-epi" && route.extra) renderFichaEpiAssinatura(main, route.id, route.extra);
@@ -6919,7 +7203,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
+          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
           render();
           return;
         }
@@ -6931,7 +7215,7 @@
       })
       .catch(function () {
         CURRENT_USER = null;
-        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
+        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
         render();
       });
   }
