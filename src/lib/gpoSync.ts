@@ -176,6 +176,22 @@ const TIPO_FIX_MAP: Record<string, string> = {
   "TERMO DE CONSCENTIMENTO": "TERMO DE CONSENTIMENTO",
   "INTEGRAÇÃO SEGURANÇA": "INTEGRAÇÃO DE SEGURANÇA",
   "NR20 - INFLAMÁVEIS E COMBUSTIVEIS": "NR20 - INFLAMÁVEIS E COMBUSTÍVEIS",
+  // "NR07" (achado em 02/10/2026, pedido do Diego: "tudo que está no GPO
+  // precisa estar no Controle Eolen") — a NR-07 da legislação trabalhista É o
+  // PCMSO; o GPO só loga esse mesmo documento às vezes com a descrição
+  // "PCMSO" e às vezes com "NR07" (são pastas/idtreinamento diferentes pra
+  // mesma pessoa). Sem este mapeamento, "NR07" caía direto em
+  // tiposDesconhecidos e a linha era descartada inteira — nem o treinamento
+  // nem o arquivo (quando existia) chegavam a entrar no Controle Eolen.
+  // Mapeando pro mesmo tipo "PCMSO", o dedup por (pessoa_id, tipo) que já
+  // existe em fetchTreinamentosFinal passa a escolher sozinho, entre a
+  // entrada "PCMSO" e a "NR07" de cada pessoa, a que tiver a data de emissão
+  // mais recente — ou seja, sempre o PCMSO mais atual da pessoa, venha ele
+  // rotulado como "PCMSO" ou como "NR07" no GPO. Verificado manualmente: das
+  // 38 pessoas com "NR07" no GPO, só 2 têm arquivo de fato anexado (as outras
+  // 36 são só o registro do treinamento, sem PDF) — em nenhum dos 2 casos
+  // isso troca um arquivo já mais novo por um mais antigo.
+  "NR07": "PCMSO",
 };
 
 function normTipo(raw: any): string | null {
