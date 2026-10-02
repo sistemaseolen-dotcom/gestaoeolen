@@ -567,13 +567,25 @@ export async function syncTreinamentos(): Promise<SyncResumo["treinamentos"]> {
    de propósito — o vencedor é o mesmo registro que já está em `treinamentos`
    hoje.
 
-   Só processa treinamentos que AINDA NÃO têm arquivo (arquivo_path nulo) —
-   pedido do Diego: nunca sobrescrever um anexo que já tenha sido subido
-   manualmente aqui no Controle Eolen. Por isso é seguro chamar de novo
-   quantas vezes precisar (idempotente) — cada chamada só processa o que
-   ainda falta, dentro do orçamento de tempo, e quem chamou decide se chama
-   de novo (ver app.js: mesmo padrão de polling já usado pela Sincronização,
-   só que disparando esta rota em vez de /api/sync/gpo/step). */
+   ATUALIZADO em 02/10/2026, pedido do Diego ("pra ficar claro de uma vez por
+   todas, todos os documentos que estão hoje no GPO precisam estar no
+   Controle Eolen" + "se estiver com um documento mais antigo, isso precisa
+   ser substituído, urgente"): processa TODOS os treinamentos, não só os sem
+   anexo — o anexo (e a data que aparece junto dele, já mantida em dia pelo
+   syncTreinamentos() de cima) sempre têm que refletir o que está vigente no
+   GPO hoje. Se já existir um arquivo aqui mas o GPO tiver um mais recente
+   pra aquele (pessoa, tipo) — outro nome de arquivo na mesma pasta
+   vencedora, pelo LastModified do S3 — o antigo é removido do nosso storage
+   e substituído. Isso revoga a regra anterior ("nunca sobrescrever anexo
+   já subido") especificamente pra arquivos de origem GPO: o GPO passou a
+   ser tratado como fonte da verdade também pra qual é a versão vigente do
+   arquivo, não só pelos dados (vencimento/data de emissão).
+   Continua idempotente e seguro de chamar de novo quantas vezes precisar —
+   em regime (sem nada novo no GPO) toda comparação dá "já está igual" e a
+   fila fica vazia; cada chamada só processa o que mudou, dentro do
+   orçamento de tempo, e quem chamou decide se chama de novo (ver app.js:
+   mesmo padrão de polling já usado pela Sincronização, só que disparando
+   esta rota em vez de /api/sync/gpo/step). */
 
 const GPO_S3_BASE = "https://appeolen.s3.sa-east-1.amazonaws.com";
 const IMPORTAR_DOCS_TIME_BUDGET_MS = 48_000;
@@ -601,24 +613,34 @@ function sanitizeFilenameImport(name: string): string {
   return name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 }
 
-// Lista TODAS as chaves sob um prefixo do bucket do GPO (paginado por
-// continuation-token, igual à API REST padrão do S3) — o bucket aceita
-// list-type=2 sem nenhuma autenticação (ver comentário grande acima).
-async function listGpoS3Keys(prefix: string): Promise<string[]> {
-  const keys: string[] = [];
+// Lista TODAS as chaves sob um prefixo do bucket do GPO, junto com a data de
+// modificação de cada uma — paginado por continuation-token, igual à API
+// REST padrão do S3 (o bucket aceita list-type=2 sem nenhuma autenticação,
+// ver comentário grande acima). A data de modificação é usada em
+// importarDocumentosGpo() pra decidir, quando uma mesma pasta tem mais de um
+// arquivo (o GPO reemite um documento sem apagar a versão anterior), qual
+// deles é o mais recente de verdade.
+async function listGpoS3Keys(prefix: string): Promise<{ key: string; lastModified: string }[]> {
+  const items: { key: string; lastModified: string }[] = [];
   let token: string | null = null;
   for (;;) {
     const url: string = `${GPO_S3_BASE}/?list-type=2&prefix=${encodeURIComponent(prefix)}&max-keys=1000${token ? `&continuation-token=${encodeURIComponent(token)}` : ""}`;
     const res: Response = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`Falha ao listar arquivos do GPO (${res.status}) em ${prefix}`);
     const text: string = await res.text();
-    for (const m of text.matchAll(/<Key>([^<]+)<\/Key>/g)) keys.push(unescapeXmlEntities(m[1]));
+    for (const m of text.matchAll(/<Contents>([\s\S]*?)<\/Contents>/g)) {
+      const block = m[1];
+      const keyMatch = block.match(/<Key>([^<]+)<\/Key>/);
+      if (!keyMatch) continue;
+      const lmMatch = block.match(/<LastModified>([^<]+)<\/LastModified>/);
+      items.push({ key: unescapeXmlEntities(keyMatch[1]), lastModified: lmMatch ? lmMatch[1] : "" });
+    }
     const truncado: boolean = /<IsTruncated>true<\/IsTruncated>/.test(text);
     const tokenMatch: RegExpMatchArray | null = text.match(/<NextContinuationToken>([^<]+)<\/NextContinuationToken>/);
     token = truncado && tokenMatch ? tokenMatch[1] : null;
     if (!token) break;
   }
-  return keys;
+  return items;
 }
 
 // Busca id+cpf de TODAS as pessoas (paginado, igual fetchAllIds) — precisamos
@@ -652,10 +674,10 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
   const idsValidos = new Set(await fetchAllIds(admin, "pessoas"));
   const { final } = await fetchTreinamentosFinal(idsValidos);
 
-  // (idpessoa, idtreinamento) do vencedor -> tipo, só dos que realmente
-  // "ganharam" o dedup — um arquivo cujo (idpessoa, idtreinamento) não
-  // aparece aqui é uma versão antiga/substituída e é ignorado de propósito
-  // (ver comentário grande acima do arquivo).
+  // (idpessoa, idtreinamento) do vencedor -> pessoa_id/tipo, só dos que
+  // realmente "ganharam" o dedup — um arquivo cujo (idpessoa, idtreinamento)
+  // não aparece aqui é uma versão antiga/substituída e é ignorado de
+  // propósito (ver comentário grande acima do arquivo).
   //
   // IMPORTANTE: idtreinamento NÃO é um id global — é um contador por pessoa
   // (por isso o bucket do GPO guarda o idpessoa como pasta separada antes
@@ -666,58 +688,68 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
   const vencedorPorChaveTreinamento = new Map<string, { pessoaId: number; tipo: string }>();
   for (const r of final) vencedorPorChaveTreinamento.set(`${r.pessoa_id}::${r.legacyId}`, { pessoaId: r.pessoa_id, tipo: r.tipo });
 
-  // Só os treinamentos que ainda não têm arquivo — pedido do Diego: nunca
-  // sobrescrever o que já foi anexado manualmente.
-  //
-  // Paginado (igual fetchAllIds/fetchPessoasCpfMap acima) — BUG encontrado em
-  // 02/10/2026 (pedido do Diego: verificar por que o Rafael Santos de Sales,
-  // entre outras pessoas ativas, tinha arquivo no GPO mas nunca foi trazido
-  // mesmo rodando a importação várias vezes): sem paginação, o
-  // Supabase/PostgREST limita a resposta a 1000 linhas por padrão — e hoje
-  // existem muito mais de 1000 treinamentos sem arquivo (~6600), então a
-  // maioria nunca nem entrava nesta lista pra ser casada com os arquivos do
-  // GPO. Com paginação, todos entram.
-  const semArquivo: { id: number; pessoa_id: number; pessoa_nome: string; tipo: string }[] = [];
+  // TODOS os treinamentos (não só os sem anexo) — pedido do Diego em
+  // 02/10/2026, pra ficar claro de uma vez por todas: o anexo (e a data que
+  // aparece junto dele) sempre têm que ser o mais recente que existir no
+  // GPO; se já tiver um arquivo mais antigo anexado aqui, ele precisa ser
+  // SUBSTITUÍDO, não só preenchido quando estiver vazio. Paginado, mesmo
+  // motivo do fetchAllIds/fetchPessoasCpfMap acima (mais de 1000 linhas).
+  type TreinamentoAtual = { id: number; pessoa_id: number; pessoa_nome: string; tipo: string; arquivo_path: string | null; arquivo_nome: string | null };
+  const atual: TreinamentoAtual[] = [];
   {
     const pageSize = 1000;
     let from = 0;
     for (;;) {
       const { data, error } = await admin
         .from("treinamentos")
-        .select("id, pessoa_id, pessoa_nome, tipo")
-        .is("arquivo_path", null)
+        .select("id, pessoa_id, pessoa_nome, tipo, arquivo_path, arquivo_nome")
         .range(from, from + pageSize - 1);
-      if (error) throw new Error(`Falha ao ler treinamentos sem anexo: ${error.message}`);
-      (data || []).forEach((t: any) => semArquivo.push(t));
+      if (error) throw new Error(`Falha ao ler treinamentos: ${error.message}`);
+      (data || []).forEach((t: any) => atual.push(t));
       if (!data || data.length < pageSize) break;
       from += pageSize;
     }
   }
-
-  const candidatoPorChave = new Map<string, { id: number; pessoa_id: number; pessoa_nome: string }>();
-  (semArquivo || []).forEach((t: any) => candidatoPorChave.set(`${t.pessoa_id}::${t.tipo}`, t));
+  const atualPorChave = new Map<string, TreinamentoAtual>();
+  atual.forEach((t) => atualPorChave.set(`${t.pessoa_id}::${t.tipo}`, t));
 
   const cpfPorPessoa = await fetchPessoasCpfMap(admin);
 
-  const keys = await listGpoS3Keys("treinamentos/");
+  const arquivos = await listGpoS3Keys("treinamentos/");
 
-  type Fila = { key: string; candidato: { id: number; pessoa_id: number; pessoa_nome: string }; nomeArquivo: string };
-  const fila: Fila[] = [];
-  const usados = new Set<number>(); // candidato.id já enfileirado (defesa extra — não deveria repetir)
-
+  // Pra cada pasta (idpessoa/idtreinamento) do GPO, guarda só o arquivo mais
+  // recentemente modificado — uma pasta só deveria ter um arquivo, mas já
+  // apareceu caso (Rondirley Ribeiro Maduro, PCMSO) com dois: o GPO reemite
+  // o documento sem apagar a versão anterior da mesma pasta. Quando isso
+  // acontece, o LastModified do S3 (não o nome do arquivo) é quem decide
+  // qual é o vigente.
   const KEY_RE = /^treinamentos\/(\d+)\/(\d+)\/(.+)$/;
-  for (const key of keys) {
+  const melhorPorPasta = new Map<string, { key: string; nomeArquivo: string; lastModified: string }>();
+  for (const { key, lastModified } of arquivos) {
     const m = KEY_RE.exec(key);
     if (!m) continue;
-    const idPessoaPasta = Number(m[1]);
-    const idTreinamento = Number(m[2]);
+    const pastaKey = `${m[1]}::${m[2]}`;
     const nomeArquivo = m[3];
-    const vencedor = vencedorPorChaveTreinamento.get(`${idPessoaPasta}::${idTreinamento}`);
-    if (!vencedor) continue; // versão antiga/substituída, ou pessoa/tipo que não existe mais
-    const candidato = candidatoPorChave.get(`${vencedor.pessoaId}::${vencedor.tipo}`);
-    if (!candidato || usados.has(candidato.id)) continue;
-    usados.add(candidato.id);
-    fila.push({ key, candidato, nomeArquivo });
+    const existente = melhorPorPasta.get(pastaKey);
+    if (!existente || lastModified > existente.lastModified) {
+      melhorPorPasta.set(pastaKey, { key, nomeArquivo, lastModified });
+    }
+  }
+
+  type Fila = { key: string; nomeArquivo: string; alvo: TreinamentoAtual };
+  const fila: Fila[] = [];
+  for (const [chaveTreinamento, vencedor] of vencedorPorChaveTreinamento) {
+    const melhor = melhorPorPasta.get(chaveTreinamento);
+    if (!melhor) continue; // pasta vencedora sem nenhum arquivo (treinamento sem anexo no GPO mesmo)
+    const alvo = atualPorChave.get(`${vencedor.pessoaId}::${vencedor.tipo}`);
+    if (!alvo) continue; // ainda não existe como linha em `treinamentos` (syncTreinamentos ainda não rodou pra isso)
+    // Precisa (re)importar quando não há anexo ainda OU quando o arquivo
+    // vigente no GPO não é o mesmo que já está anexado aqui — comparação
+    // pelo nome original do arquivo, que é exatamente o que ficou salvo em
+    // `arquivo_nome` na última importação.
+    const precisaAtualizar = !alvo.arquivo_path || alvo.arquivo_nome !== melhor.nomeArquivo;
+    if (!precisaAtualizar) continue;
+    fila.push({ key: melhor.key, nomeArquivo: melhor.nomeArquivo, alvo });
   }
 
   let processados = 0;
@@ -733,8 +765,18 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
       const buffer = Buffer.from(await res.arrayBuffer());
       const contentType = res.headers.get("content-type") || contentTypeFromExt(item.nomeArquivo);
 
-      const cpf = cpfPorPessoa.get(item.candidato.pessoa_id) ?? null;
-      const path = `${storage.pessoaFolder(item.candidato.pessoa_id, item.candidato.pessoa_nome, cpf)}/${item.candidato.id}-${Date.now()}-${sanitizeFilenameImport(item.nomeArquivo)}`;
+      // Substituindo um anexo mais antigo: remove o anterior antes de subir
+      // o novo — mesmo padrão já usado na troca manual de anexo pela tela
+      // (ver src/app/api/treinamentos/[id]/arquivo/route.ts). Best-effort:
+      // se a remoção falhar, segue mesmo assim (não é motivo pra deixar a
+      // pessoa sem o documento atualizado).
+      if (item.alvo.arquivo_path) {
+        const { error: removeError } = await storage.removeFiles([item.alvo.arquivo_path]);
+        if (removeError) console.error(`Falha ao remover anexo anterior ${item.alvo.arquivo_path}:`, removeError);
+      }
+
+      const cpf = cpfPorPessoa.get(item.alvo.pessoa_id) ?? null;
+      const path = `${storage.pessoaFolder(item.alvo.pessoa_id, item.alvo.pessoa_nome, cpf)}/${item.alvo.id}-${Date.now()}-${sanitizeFilenameImport(item.nomeArquivo)}`;
 
       const { error: uploadError } = await storage.uploadFile(path, buffer, contentType);
       if (uploadError) { erros.push({ arquivo: item.nomeArquivo, motivo: `Falha ao subir: ${uploadError}` }); return; }
@@ -742,7 +784,7 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
       const { error: updateError } = await admin
         .from("treinamentos")
         .update({ arquivo_path: path, arquivo_nome: item.nomeArquivo })
-        .eq("id", item.candidato.id);
+        .eq("id", item.alvo.id);
       if (updateError) { erros.push({ arquivo: item.nomeArquivo, motivo: `Falha ao atualizar banco: ${updateError.message}` }); return; }
 
       importados++;
