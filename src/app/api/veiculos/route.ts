@@ -8,7 +8,7 @@ import { auditDiffFields } from "@/lib/audit";
 // e syncVeiculosFromGpo em gpoSync.ts), mas também podem ser criados/editados/
 // excluídos direto aqui, mesmo padrão de "patrimonio". É só dado, sem anexo
 // (diferente de Documentos) — por isso não há rota de arquivo.
-export const CAMPOS_VEICULO = [
+const CAMPOS_VEICULO = [
   "placa",
   "contrato",
   "locadora",

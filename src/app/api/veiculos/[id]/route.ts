@@ -2,7 +2,35 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
-import { CAMPOS_VEICULO } from "../route";
+
+// Duplicado intencionalmente (mesmo padrão de CAMPOS_PATRIMONIO em
+// patrimonios/route.ts e patrimonios/[id]/route.ts): um route.ts do App
+// Router só pode exportar handlers HTTP (GET/POST/...) e algumas poucas
+// configs — exportar essa constante quebra o build ("is not a valid Route
+// export field"), por isso cada arquivo tem sua própria cópia.
+const CAMPOS_VEICULO = [
+  "placa",
+  "contrato",
+  "locadora",
+  "status",
+  "condutor_nome",
+  "cpf",
+  "cnh",
+  "projeto",
+  "regional",
+  "coordenador",
+  "km_retirada",
+  "km_atual",
+  "km_devolucao",
+  "km_veiculo",
+  "km_contrato",
+  "km_revisao_realizada",
+  "proxima_revisao_km",
+  "data_contrato",
+  "data_retirada",
+  "data_devolucao",
+  "observacao",
+] as const;
 
 function up(v: any): string | null {
   const s = (v ?? "").toString().trim();
