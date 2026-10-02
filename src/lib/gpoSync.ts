@@ -652,11 +652,31 @@ export async function importarDocumentosGpo(): Promise<ImportarDocumentosResumo>
 
   // Só os treinamentos que ainda não têm arquivo — pedido do Diego: nunca
   // sobrescrever o que já foi anexado manualmente.
-  const { data: semArquivo, error: semArquivoError } = await admin
-    .from("treinamentos")
-    .select("id, pessoa_id, pessoa_nome, tipo")
-    .is("arquivo_path", null);
-  if (semArquivoError) throw new Error(`Falha ao ler treinamentos sem anexo: ${semArquivoError.message}`);
+  //
+  // Paginado (igual fetchAllIds/fetchPessoasCpfMap acima) — BUG encontrado em
+  // 02/10/2026 (pedido do Diego: verificar por que o Rafael Santos de Sales,
+  // entre outras pessoas ativas, tinha arquivo no GPO mas nunca foi trazido
+  // mesmo rodando a importação várias vezes): sem paginação, o
+  // Supabase/PostgREST limita a resposta a 1000 linhas por padrão — e hoje
+  // existem muito mais de 1000 treinamentos sem arquivo (~6600), então a
+  // maioria nunca nem entrava nesta lista pra ser casada com os arquivos do
+  // GPO. Com paginação, todos entram.
+  const semArquivo: { id: number; pessoa_id: number; pessoa_nome: string; tipo: string }[] = [];
+  {
+    const pageSize = 1000;
+    let from = 0;
+    for (;;) {
+      const { data, error } = await admin
+        .from("treinamentos")
+        .select("id, pessoa_id, pessoa_nome, tipo")
+        .is("arquivo_path", null)
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(`Falha ao ler treinamentos sem anexo: ${error.message}`);
+      (data || []).forEach((t: any) => semArquivo.push(t));
+      if (!data || data.length < pageSize) break;
+      from += pageSize;
+    }
+  }
 
   const candidatoPorChave = new Map<string, { id: number; pessoa_id: number; pessoa_nome: string }>();
   (semArquivo || []).forEach((t: any) => candidatoPorChave.set(`${t.pessoa_id}::${t.tipo}`, t));
