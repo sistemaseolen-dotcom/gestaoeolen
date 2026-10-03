@@ -172,9 +172,6 @@ export async function DELETE(_req: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: deleteError.message }, { status: 500 });
   }
 
-  // Aviso: se este veículo veio do GPO (legacy_id preenchido) e continuar
-  // existindo lá, a próxima importação o recria aqui (upsert por legacy_id)
-  // — mesmo comportamento já aceito em Patrimônio.
   await auditDelete("veiculo", id, item.placa || item.contrato || `Veículo ${id}`, gate.user);
 
   return NextResponse.json({ ok: true });

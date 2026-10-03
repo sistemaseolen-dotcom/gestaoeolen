@@ -4,10 +4,13 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 
 // "Gestão de Frotas" (pedido do Diego, 02/10/2026): contratos de locação de
-// veículos — vêm do GPO a cada importação (ver /api/admin/importar-veiculos-gpo
-// e syncVeiculosFromGpo em gpoSync.ts), mas também podem ser criados/editados/
-// excluídos direto aqui, mesmo padrão de "patrimonio". É só dado, sem anexo
-// (diferente de Documentos) — por isso não há rota de arquivo.
+// veículos, criados/editados/excluídos direto aqui, mesmo padrão de
+// "patrimonio". É só dado, sem anexo (diferente de Documentos) — por isso não
+// há rota de arquivo. A importação automática a partir do GPO existiu por
+// pouco tempo e foi removida a pedido do Diego (03/10/2026): o GPO estava
+// instável e o sistema passou a ser 100% independente dele — todo dado,
+// inclusive os campos legacy_id/origem herdados desse período, agora só
+// muda por edição manual aqui.
 const CAMPOS_VEICULO = [
   "placa",
   "contrato",
