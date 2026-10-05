@@ -29,6 +29,34 @@
     ["SEGURO", "documento"],
     ["TERMO DE CONSENTIMENTO", "documento"]
   ];
+  // TIPOS acima é só a lista "padrão" pré-cadastrada — mas qualquer pessoa
+  // pode anexar um item com nome livre (campo "Outro (especificar)" no
+  // formulário completo), e esses nomes nunca entravam na lista de TIPOS.
+  // Resultado (reportado pelo Diego, 05/10/2026): o picker de "+ Adicionar"
+  // só oferecia os itens fixos acima, nunca os tipos "personalizados" que já
+  // existem de verdade nos registros de outras pessoas no sistema. Esta
+  // função junta TIPOS com todo `tipo` distinto já usado em STATE.treinamentos
+  // (visto em qualquer pessoa), ordenado alfabeticamente — é o que
+  // openAddTreinamentosPicker() e o <select> do formulário completo devem
+  // usar no lugar de TIPOS puro, pra sempre refletir TODOS os tipos que
+  // existem hoje no sistema, não só os pré-cadastrados.
+  function todosTiposConhecidos() {
+    var vistos = {};
+    var lista = [];
+    TIPOS.forEach(function (t) {
+      vistos[t[0].toUpperCase()] = true;
+      lista.push(t);
+    });
+    ((STATE && STATE.treinamentos) || []).forEach(function (t) {
+      var nome = (t.tipo || "").trim();
+      var chave = nome.toUpperCase();
+      if (!nome || vistos[chave]) return;
+      vistos[chave] = true;
+      lista.push([nome, t.categoria === "documento" ? "documento" : "treinamento"]);
+    });
+    lista.sort(function (a, b) { return a[0].localeCompare(b[0], "pt-BR"); });
+    return lista;
+  }
   var STATUS_OPTS = ["ATIVO", "INATIVO"];
   // Cargos que disparam a criação automática dos documentos obrigatórios abaixo. Fixo de propósito:
   // cargos novos criados depois em Administrador → Listas NÃO entram aqui automaticamente — os
@@ -1404,7 +1432,7 @@
   function openAddTreinamentosPicker(p) {
     var existentes = {};
     pessoaTreinamentos(p.id).forEach(function (t) { existentes[(t.tipo || "").trim().toUpperCase()] = true; });
-    var disponiveis = TIPOS.filter(function (t) { return !existentes[t[0].toUpperCase()]; });
+    var disponiveis = todosTiposConhecidos().filter(function (t) { return !existentes[t[0].toUpperCase()]; });
 
     var listHtml = disponiveis.length
       ? '<div style="max-height:360px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius-md);">' +
@@ -5568,8 +5596,9 @@
     var isNew = !t;
     var pessoasOpts = STATE.pessoas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome); })
       .map(function (p) { return '<option value="' + p.id + '"' + ((t && t.pessoaId === p.id) || presetPessoaId === p.id ? " selected" : "") + '>' + esc(p.nome) + "</option>"; }).join("");
-    var tipoKnown = t && TIPOS.some(function (x) { return x[0] === t.tipo; });
-    var tipoOpts = TIPOS.map(function (ti) { return '<option value="' + esc(ti[0]) + '" data-cat="' + ti[1] + '"' + (t && t.tipo === ti[0] ? " selected" : "") + '>' + esc(ti[0]) + "</option>"; }).join("")
+    var tiposConhecidos = todosTiposConhecidos();
+    var tipoKnown = t && tiposConhecidos.some(function (x) { return x[0] === t.tipo; });
+    var tipoOpts = tiposConhecidos.map(function (ti) { return '<option value="' + esc(ti[0]) + '" data-cat="' + ti[1] + '"' + (t && t.tipo === ti[0] ? " selected" : "") + '>' + esc(ti[0]) + "</option>"; }).join("")
       + '<option value="__outro__"' + (t && !tipoKnown ? " selected" : "") + '>Outro (especificar)</option>';
 
     var html =
@@ -5578,7 +5607,7 @@
       '<form class="drawer-body" id="tr-form"><div class="field-grid">' +
       '<div class="field span2"><label>Pessoa *</label><select name="pessoaId" required>' + (presetPessoaId || (t && t.pessoaId) ? "" : '<option value="">Selecione…</option>') + pessoasOpts + "</select></div>" +
       '<div class="field"><label>Item *</label><select name="tipo" id="tr-tipo-select" required>' + tipoOpts + "</select></div>" +
-      '<div class="field" id="tr-tipo-outro-wrap" style="display:' + (t && !TIPOS.some(function (x) { return x[0] === t.tipo; }) ? "flex" : "none") + '"><label>Especifique o item</label><input type="text" name="tipoOutro" value="' + (t ? esc(t.tipo) : "") + '"></div>' +
+      '<div class="field" id="tr-tipo-outro-wrap" style="display:' + (t && !tipoKnown ? "flex" : "none") + '"><label>Especifique o item</label><input type="text" name="tipoOutro" value="' + (t ? esc(t.tipo) : "") + '"></div>' +
       selectField("Categoria", "categoria", ["treinamento", "documento"], t ? t.categoria : "treinamento") +
       field("Emissão", "dataEmissao", "date", t) + field("Vencimento", "vencimento", "date", t) +
       '<div class="field"><label>Situação (se sem vencimento)</label><select name="situacaoOriginal"><option value="">—</option><option value="VALIDO"' + (t && t.situacaoOriginal === "VALIDO" ? " selected" : "") + '>Válido</option><option value="RENOVAR"' + (t && t.situacaoOriginal === "RENOVAR" ? " selected" : "") + '>Renovar</option><option value="VENCIDO"' + (t && t.situacaoOriginal === "VENCIDO" ? " selected" : "") + '>Vencido</option></select></div>' +
