@@ -58,6 +58,9 @@
     return lista;
   }
   var STATUS_OPTS = ["ATIVO", "INATIVO"];
+  // Regional de Pessoas (pedido do Diego, 05/10/2026): virou um select de
+  // opções fixas (antes era texto livre) — em ordem alfabética.
+  var REGIONAL_OPTS = ["CO", "ES", "MG", "NE", "NO", "RJ", "SP", "SUL"];
   // Cargos que disparam a criação automática dos documentos obrigatórios abaixo. Fixo de propósito:
   // cargos novos criados depois em Administrador → Listas NÃO entram aqui automaticamente — os
   // documentos, nesse caso, só são adicionados manualmente.
@@ -1521,7 +1524,7 @@
       '<div class="tab-pane active" data-pane="geral"><div class="field-grid">' +
       field("Nome completo *", "nome", "text", p, { required: true, span2: true }) +
       cargoSelectField(p) + selectField("Status *", "status", listaOptions("statusPessoa"), p ? p.status : "ATIVO", { required: true }) +
-      field("Regional", "regional", "text", p) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
+      selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
       field("Operadora", "operadora", "text", p) + field("Cadastro (origem)", "cadastro", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
