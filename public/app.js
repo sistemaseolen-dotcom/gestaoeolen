@@ -4206,12 +4206,17 @@
     });
 
     $("#btn-limpar-assinatura").addEventListener("click", function () {
-      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-      if (assinaturaFoto) {
+      if (!assinaturaFoto) { canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height); return; }
+      confirmAction("Limpar assinatura?", "Tem certeza que deseja remover a assinatura salva? Esta ação não pode ser desfeita.", "Limpar", function (closeModal) {
         apiFetch("/api/auditorias/" + a.id + "/fotos/" + assinaturaFoto.id, { method: "DELETE" })
-          .then(function () { a.fotos = a.fotos.filter(function (f) { return f.id !== assinaturaFoto.id; }); assinaturaFoto = null; })
-          .catch(handleApiError);
-      }
+          .then(function () {
+            canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+            a.fotos = a.fotos.filter(function (f) { return f.id !== assinaturaFoto.id; });
+            assinaturaFoto = null;
+            closeModal();
+          })
+          .catch(function (err) { closeModal(); handleApiError(err); });
+      });
     });
     wireChecklistEvents(document.getElementById("auditoria-checklist"), a, redrawChecklist);
   }
@@ -4263,12 +4268,15 @@
         var idx = Number(btn.getAttribute("data-remove-membro"));
         var m = e.membros[idx];
         if (!m) return;
-        apiFetch("/api/equipes/" + e.id + "/membros/" + m.pessoaId, { method: "DELETE" })
-          .then(function () {
-            e.membros.splice(idx, 1);
-            render();
-          })
-          .catch(handleApiError);
+        confirmAction("Remover integrante?", "Tem certeza que deseja remover " + m.pessoaNome + " desta equipe? Esta ação não pode ser desfeita.", "Remover", function (closeModal) {
+          apiFetch("/api/equipes/" + e.id + "/membros/" + m.pessoaId, { method: "DELETE" })
+            .then(function () {
+              e.membros.splice(idx, 1);
+              closeModal();
+              render();
+            })
+            .catch(function (err) { closeModal(); handleApiError(err); });
+        });
       });
     });
     $all("[data-calib-edit]", main).forEach(function (btn) {
@@ -5639,6 +5647,20 @@
     $("#tr-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       if (!canDo("documentos", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var removerCheckbox = $('input[name="removerArquivo"]', ev.target);
+      var vaiRemoverAnexo = !!(removerCheckbox && removerCheckbox.checked && t && t.arquivoPath);
+      if (vaiRemoverAnexo) {
+        confirmAction(
+          "Remover anexo?",
+          'Tem certeza que deseja remover o anexo "' + (t.arquivoNome || "arquivo") + '"? Esta ação não pode ser desfeita.',
+          "Remover e salvar",
+          function (closeModal) { closeModal(); salvarTreinamentoForm(); }
+        );
+      } else {
+        salvarTreinamentoForm();
+      }
+
+      function salvarTreinamentoForm() {
       var fd = new FormData(ev.target);
       var pid = Number(fd.get("pessoaId"));
       var pessoa = byId(STATE.pessoas, pid);
@@ -5695,6 +5717,7 @@
           if (isNew && !presetPessoaId) navigate("#/treinamentos/" + rec.id);
         });
       }).catch(handleApiError);
+      }
     });
     $("#drawer-close").addEventListener("click", closeDrawer);
     $("#drawer-cancel").addEventListener("click", closeDrawer);
@@ -5759,6 +5782,25 @@
         handleApiError(err);
       });
     });
+  }
+
+  // Confirmação genérica antes de excluir/remover algo que NÃO é um registro
+  // inteiro (ex.: tirar um integrante de uma equipe, apagar uma opção de
+  // lista, remover um anexo) — mesmo padrão visual do confirmDelete acima e
+  // do "Remover foto?" da auditoria, só que reutilizável pra qualquer ação
+  // pontual. Pedido do Diego (05/10/2026): toda exclusão — documento,
+  // treinamento, ou qualquer outra coisa — precisa perguntar antes, nunca
+  // acontecer só de clicar.
+  // `onConfirm` recebe `closeModal` e decide quando fechar (depois do
+  // apiFetch terminar, com sucesso ou erro) — mesmo padrão já usado nos
+  // outros fluxos de confirmação deste arquivo.
+  function confirmAction(titulo, mensagem, textoBotao, onConfirm) {
+    var html =
+      '<div class="modal-box"><h3>' + esc(titulo) + "</h3><p>" + esc(mensagem) + "</p>" +
+      '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="button" class="btn danger" id="modal-confirm">' + ICONS.trash + esc(textoBotao) + "</button></div></div>";
+    openModal(html);
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#modal-confirm").addEventListener("click", function () { onConfirm(closeModal); });
   }
 
   /* ================================================================
@@ -6148,13 +6190,16 @@
         var idx = Number(btn.getAttribute("data-remove-acesso-membro"));
         var m = e.membros[idx];
         if (!m) return;
-        apiFetch("/api/acesso-equipes/" + e.id + "/membros/" + m.id, { method: "DELETE" })
-          .then(function () {
-            e.membros.splice(idx, 1);
-            render();
-            toast("Integrante removido.", "success");
-          })
-          .catch(handleApiError);
+        confirmAction("Remover integrante?", "Tem certeza que deseja remover " + m.nome + (m.sobrenome ? " " + m.sobrenome : "") + " desta equipe? Esta ação não pode ser desfeita.", "Remover", function (closeModal) {
+          apiFetch("/api/acesso-equipes/" + e.id + "/membros/" + m.id, { method: "DELETE" })
+            .then(function () {
+              e.membros.splice(idx, 1);
+              closeModal();
+              render();
+              toast("Integrante removido.", "success");
+            })
+            .catch(function (err) { closeModal(); handleApiError(err); });
+        });
       });
     });
   }
@@ -6445,13 +6490,16 @@
         btn.addEventListener("click", function () {
           var val = btn.getAttribute("data-remove-opt");
           var meta2 = listaMeta(ui.key);
-          apiFetch("/api/listas/" + meta2.key + "?valor=" + encodeURIComponent(val), { method: "DELETE" })
-            .then(function () {
-              STATE.listas[meta2.key] = STATE.listas[meta2.key].filter(function (x) { return x !== val; });
-              toast("Opção removida.", "success");
-              draw();
-            })
-            .catch(handleApiError);
+          confirmAction("Remover opção?", 'Tem certeza que deseja remover a opção "' + val + '"? Esta ação não pode ser desfeita.', "Remover", function (closeModal) {
+            apiFetch("/api/listas/" + meta2.key + "?valor=" + encodeURIComponent(val), { method: "DELETE" })
+              .then(function () {
+                STATE.listas[meta2.key] = STATE.listas[meta2.key].filter(function (x) { return x !== val; });
+                closeModal();
+                toast("Opção removida.", "success");
+                draw();
+              })
+              .catch(function (err) { closeModal(); handleApiError(err); });
+          });
         });
       });
       $("#lista-add-form", body).addEventListener("submit", function (ev) {
