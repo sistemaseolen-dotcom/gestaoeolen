@@ -3,9 +3,35 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 import { auditDiffFields } from "@/lib/audit";
-import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB — mesmo limite validado no cliente da versão antiga.
+// Não pode ser exportada — um route.ts do App Router só pode exportar
+// handlers HTTP (GET/POST/...) e algumas poucas configs (ver o mesmo erro já
+// corrigido em CAMPOS_VEICULO, src/app/api/veiculos/route.ts).
+const MAX_BYTES = 40 * 1024 * 1024; // 40MB — pedido do Diego (05/10/2026).
+
+// Upload de Documentos/Treinamentos em DUAS etapas, pra contornar o limite
+// de 4,5MB por requisição que a Vercel impõe nas funções de servidor (não é
+// configurável — é do próprio provedor, não tem como aumentar daqui). Até
+// 05/10/2026 o arquivo subia inteiro pro nosso servidor (função serverless),
+// que então repassava pro Magalu — por isso o limite prático de verdade já
+// era bem menor que os "5MB" validados no código (qualquer coisa perto
+// disso já estourava o limite da Vercel antes de chegar na nossa validação).
+//
+// Agora:
+//   1. POST aqui (esta rota) — corpo pequeno (nome/tipo/tamanho do arquivo,
+//      nunca o arquivo em si) — calcula o path, gera uma URL assinada de
+//      upload direto pro Magalu (createSignedUploadUrl) e devolve pro
+//      navegador. Não toca no banco nem remove o anexo antigo ainda.
+//   2. O NAVEGADOR manda o arquivo direto pro Magalu com essa URL (PUT),
+//      sem passar pela Vercel — é isso que permite ir até 40MB.
+//   3. POST /api/treinamentos/[id]/arquivo/concluir — corpo pequeno de novo
+//      (só o path) — confere que o arquivo realmente chegou no Magalu, só
+//      ENTÃO remove o anexo antigo, atualiza o banco e roda o OCR da Ficha
+//      de EPI se for o caso.
+//
+// Exige CORS configurado no bucket do Magalu (rodar uma vez
+// /api/admin/configurar-cors-storage, logado como admin) — sem isso o PUT do
+// passo 2 falha no navegador com erro de CORS.
 
 // Mantém só caracteres seguros no nome do arquivo dentro do path do bucket
 // (o nome original, sem sanitizar, continua guardado em arquivo_nome para
@@ -53,6 +79,10 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json({ url, nome: treino.arquivo_nome });
 }
 
+// Passo 1/2: devolve uma URL assinada de upload (PUT) direto pro Magalu —
+// ver o comentário grande no topo do arquivo. Não toca no banco nem remove
+// o anexo antigo ainda (só o passo 2, /concluir, faz isso — depois de
+// confirmar que o arquivo novo realmente chegou no storage).
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
@@ -62,108 +92,49 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return NextResponse.json({ error: "ID inválido." }, { status: 400 });
   }
 
-  let formData: FormData;
+  let body: any;
   try {
-    formData = await req.formData();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Corpo da requisição inválido." }, { status: 400 });
   }
 
-  const file = formData.get("file");
-  if (!file || !(file instanceof Blob)) {
-    return NextResponse.json({ error: "Nenhum arquivo enviado." }, { status: 400 });
+  const nomeArquivo = typeof body?.nomeArquivo === "string" && body.nomeArquivo.trim() ? body.nomeArquivo : "arquivo";
+  const contentType = typeof body?.contentType === "string" && body.contentType ? body.contentType : "application/octet-stream";
+  const tamanho = Number(body?.tamanho);
+  if (!Number.isFinite(tamanho) || tamanho <= 0) {
+    return NextResponse.json({ error: "Tamanho do arquivo inválido." }, { status: 400 });
   }
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: "Arquivo muito grande (máx. 5MB)." }, { status: 400 });
+  if (tamanho > MAX_BYTES) {
+    return NextResponse.json({ error: "Arquivo muito grande (máx. 40MB)." }, { status: 400 });
   }
-
-  const originalName = "name" in file && typeof (file as any).name === "string" ? (file as any).name : "arquivo";
 
   const admin = supabaseAdmin();
 
-  const { data: before, error: fetchError } = await admin
+  const { data: treino, error: fetchError } = await admin
     .from("treinamentos")
-    .select("*")
+    .select("id, pessoa_id, pessoa_nome")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) {
     return NextResponse.json({ error: fetchError.message }, { status: 500 });
   }
-  if (!before) {
+  if (!treino) {
     return NextResponse.json({ error: "Treinamento/documento não encontrado." }, { status: 404 });
-  }
-
-  // Substituir um anexo existente: remove o arquivo antigo antes de subir o
-  // novo. Best-effort — se a remoção falhar, seguimos mesmo assim (upsert
-  // false garante que não sobrescrevemos silenciosamente nada no bucket).
-  if (before.arquivo_path) {
-    const { error: removeError } = await storage.removeFiles([before.arquivo_path]);
-    if (removeError) {
-      console.error(`Falha ao remover anexo anterior ${before.arquivo_path}:`, removeError);
-    }
   }
 
   // Busca o CPF pra montar a pasta no padrão Nome+CPF (pedido do Diego) —
   // `treinamentos` só guarda pessoa_id/pessoa_nome (denormalizado), não cpf.
-  const { data: pessoaCpfRow } = await admin.from("pessoas").select("cpf").eq("id", before.pessoa_id).maybeSingle();
+  const { data: pessoaCpfRow } = await admin.from("pessoas").select("cpf").eq("id", treino.pessoa_id).maybeSingle();
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const path = `${storage.pessoaFolder(before.pessoa_id, before.pessoa_nome, pessoaCpfRow?.cpf)}/${id}-${Date.now()}-${sanitizeFilename(originalName)}`;
-  const contentType = file.type || "application/octet-stream";
+  const path = `${storage.pessoaFolder(treino.pessoa_id, treino.pessoa_nome, pessoaCpfRow?.cpf)}/${id}-${Date.now()}-${sanitizeFilename(nomeArquivo)}`;
 
-  const { error: uploadError } = await storage.uploadFile(path, buffer, contentType);
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError }, { status: 500 });
+  const { url, error: signError } = await storage.createSignedUploadUrl(path, contentType, 600);
+  if (signError || !url) {
+    return NextResponse.json({ error: signError || "Falha ao gerar link de upload." }, { status: 500 });
   }
 
-  const { data: after, error: updateError } = await admin
-    .from("treinamentos")
-    .update({ arquivo_path: path, arquivo_nome: originalName })
-    .eq("id", id)
-    .select()
-    .single();
-  if (updateError) {
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
-  }
-
-  await auditDiffFields({
-    entidade: "treinamento",
-    entidadeId: id,
-    entidadeLabel: `${after.tipo} — ${after.pessoa_nome}`,
-    before,
-    after,
-    campos: ["arquivo_nome"],
-    usuario: gate.user,
-  });
-
-  // Se este anexo é a "Ficha de EPI" (formulário de controle de EPI's) de
-  // alguém em PDF, tenta ler automaticamente a tabela de CA/equipamento por
-  // OCR — é o que alimenta a verificação de CA na auditoria (pedido do
-  // Diego). Best-effort: qualquer falha aqui (OCR não reconheceu nada,
-  // coluna nova ainda não existe no banco, etc.) não pode derrubar o
-  // upload do anexo em si, que já foi concluído com sucesso acima.
-  let epiOcr: { itens?: unknown; erro?: string } | null = null;
-  if (after.tipo === "FICHA DE EPI" && contentType === "application/pdf") {
-    try {
-      const resultado = await extrairItensFichaEpi(buffer);
-      epiOcr = resultado.ok ? { itens: resultado.itens } : { erro: resultado.motivo };
-      const { error: epiUpdateError } = await admin
-        .from("treinamentos")
-        .update({
-          epi_itens: resultado.ok ? resultado.itens : null,
-          epi_ocr_erro: resultado.ok ? null : resultado.motivo,
-          epi_ocr_atualizado_em: new Date().toISOString(),
-        })
-        .eq("id", id);
-      if (epiUpdateError) {
-        console.error(`Falha ao gravar leitura da Ficha de EPI (treinamento ${id}):`, epiUpdateError.message);
-      }
-    } catch (err: any) {
-      console.error(`Falha ao processar OCR da Ficha de EPI (treinamento ${id}):`, err?.message || err);
-    }
-  }
-
-  return NextResponse.json({ ...after, ...(epiOcr ? { epiOcr } : {}) });
+  return NextResponse.json({ uploadUrl: url, path });
 }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {

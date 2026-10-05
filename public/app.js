@@ -860,6 +860,41 @@
       epiItens: row.epi_itens || null, epiOcrErro: row.epi_ocr_erro || null
     };
   }
+
+  // Upload de anexo de Documentos/Treinamentos em duas etapas (pedido do
+  // Diego, 05/10/2026: subir até 40MB — bem acima do limite de 4,5MB por
+  // requisição que a Vercel impõe nas funções de servidor, por isso o
+  // arquivo não pode mais ir direto no corpo de um POST pra nossa API):
+  //   1. POST /api/treinamentos/{id}/arquivo (corpo pequeno, sem o arquivo)
+  //      devolve uma URL assinada de upload direto pro Magalu Cloud.
+  //   2. Este navegador manda o arquivo pra essa URL (PUT), sem passar pela
+  //      Vercel — é isso que contorna o limite.
+  //   3. POST /api/treinamentos/{id}/arquivo/concluir confirma o upload,
+  //      atualiza o registro e roda o OCR da Ficha de EPI se for o caso.
+  // Usada pelos dois lugares que anexam arquivo em Treinamentos (anexo
+  // rápido na lista e o formulário completo) — mesmo contrato de antes:
+  // devolve uma Promise com o registro atualizado (pronto pra
+  // mapTreinamentoFromApi).
+  var MAX_BYTES_TREINAMENTO = 40 * 1024 * 1024;
+  function uploadArquivoTreinamento(treinamentoId, file) {
+    if (file.size > MAX_BYTES_TREINAMENTO) {
+      return Promise.reject(new Error("Arquivo muito grande (máx. 40MB)."));
+    }
+    var contentType = file.type || "application/octet-stream";
+    return apiFetch("/api/treinamentos/" + treinamentoId + "/arquivo", {
+      method: "POST",
+      body: { nomeArquivo: file.name, contentType: contentType, tamanho: file.size }
+    }).then(function (iniciar) {
+      return fetch(iniciar.uploadUrl, { method: "PUT", headers: { "Content-Type": contentType }, body: file })
+        .then(function (r) {
+          if (!r.ok) throw new Error("Falha ao enviar o arquivo para o armazenamento (HTTP " + r.status + ").");
+          return apiFetch("/api/treinamentos/" + treinamentoId + "/arquivo/concluir", {
+            method: "POST",
+            body: { path: iniciar.path, nomeArquivo: file.name }
+          });
+        });
+    });
+  }
   function mapAuditoriaFromApi(row) {
     if (!row) return row;
     return {
@@ -1346,12 +1381,9 @@
       quickAttachInput.addEventListener("change", function () {
         var file = quickAttachInput.files[0];
         if (!file || !quickAttachTargetId) return;
-        if (file.size > 5 * 1024 * 1024) { toast("Arquivo muito grande (máx. 5MB).", "error"); return; }
         var tr = byId(STATE.treinamentos, quickAttachTargetId);
         if (!tr) return;
-        var fd = new FormData();
-        fd.append("file", file);
-        apiFetch("/api/treinamentos/" + tr.id + "/arquivo", { method: "POST", body: fd, isFormData: true })
+        uploadArquivoTreinamento(tr.id, file)
           .then(function (data) {
             var updated = mapTreinamentoFromApi(data);
             var idx = STATE.treinamentos.findIndex(function (x) { return x.id === updated.id; });
@@ -5596,7 +5628,7 @@
       var removerArquivo = fd.get("removerArquivo");
       var fileInput = $("#tr-file-input");
       var newFile = fileInput.files[0];
-      if (newFile && newFile.size > 5 * 1024 * 1024) { toast("Arquivo muito grande (máx. 5MB).", "error"); return; }
+      if (newFile && newFile.size > 40 * 1024 * 1024) { toast("Arquivo muito grande (máx. 40MB).", "error"); return; }
 
       var baseReq = isNew
         ? apiFetch("/api/treinamentos", { method: "POST", body: body })
@@ -5606,9 +5638,7 @@
         var rec = mapTreinamentoFromApi(data);
         var attachStep;
         if (newFile) {
-          var upFd = new FormData();
-          upFd.append("file", newFile);
-          attachStep = apiFetch("/api/treinamentos/" + rec.id + "/arquivo", { method: "POST", body: upFd, isFormData: true })
+          attachStep = uploadArquivoTreinamento(rec.id, newFile)
             .then(function (afterFile) { rec = mapTreinamentoFromApi(afterFile); });
         } else if (removerArquivo && rec.arquivoPath) {
           attachStep = apiFetch("/api/treinamentos/" + rec.id + "/arquivo", { method: "DELETE" })

@@ -19,10 +19,11 @@ import {
   DeleteObjectsCommand,
   GetObjectCommand,
   HeadObjectCommand,
+  PutBucketCorsCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { getSignedUrl as presignGetObject } from "@aws-sdk/s3-request-presigner";
+import { getSignedUrl as presignObject } from "@aws-sdk/s3-request-presigner";
 
 let cachedClient: S3Client | null = null;
 
@@ -186,9 +187,59 @@ export async function createSignedUrl(
       Key: path,
       ...(filename ? { ResponseContentDisposition: `attachment; filename="${filename.replace(/"/g, "")}"` } : {}),
     });
-    const url = await presignGetObject(client(), command, { expiresIn: expiresInSeconds });
+    const url = await presignObject(client(), command, { expiresIn: expiresInSeconds });
     return { url, error: null };
   } catch (err: any) {
     return { url: null, error: err?.message || String(err) };
+  }
+}
+
+// Gera uma URL assinada e temporária pra ENVIAR (PUT) um arquivo direto pro
+// Magalu, sem passar pelo nosso servidor — usada pelo upload de
+// Documentos/Treinamentos (pedido do Diego, 05/10/2026: subir até 40MB,
+// bem acima do limite de 4,5MB por requisição das funções da Vercel; a
+// única forma de contornar isso é o PRÓPRIO NAVEGADOR mandar o arquivo
+// direto pro storage, usando esta URL assinada em vez de um upload
+// multipart pro nosso servidor). Exige CORS configurado no bucket — ver
+// configureBucketCors() abaixo.
+export async function createSignedUploadUrl(
+  path: string,
+  contentType: string,
+  expiresInSeconds: number
+): Promise<{ url: string | null; error: string | null }> {
+  try {
+    const command = new PutObjectCommand({ Bucket: bucketName(), Key: path, ContentType: contentType });
+    const url = await presignObject(client(), command, { expiresIn: expiresInSeconds });
+    return { url, error: null };
+  } catch (err: any) {
+    return { url: null, error: err?.message || String(err) };
+  }
+}
+
+// Ferramenta de uso único (admin): libera o bucket pra aceitar upload direto
+// do navegador (PUT com URL assinada, ver createSignedUploadUrl acima) — por
+// padrão um bucket S3 rejeita requisições cross-origin do navegador sem essa
+// configuração de CORS. Chamar de novo é seguro (idempotente): sempre
+// substitui a configuração anterior por esta.
+export async function configureBucketCors(): Promise<{ error: string | null }> {
+  try {
+    await client().send(
+      new PutBucketCorsCommand({
+        Bucket: bucketName(),
+        CORSConfiguration: {
+          CORSRules: [
+            {
+              AllowedOrigins: ["https://gestaoeolen.vercel.app", "http://localhost:3000"],
+              AllowedMethods: ["PUT", "GET"],
+              AllowedHeaders: ["*"],
+              MaxAgeSeconds: 3600,
+            },
+          ],
+        },
+      })
+    );
+    return { error: null };
+  } catch (err: any) {
+    return { error: err?.message || String(err) };
   }
 }
