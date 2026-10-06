@@ -1198,10 +1198,22 @@
   }
 
   /* ---------------- Table shell helper ---------------- */
+  // Pedido do Diego (06/10/2026): exportar pra Excel em toda página de
+  // listagem do sistema, não só nos drill-downs do Painel (que já tinham
+  // isso via openGenericTableDrawer/downloadRowsAsXls). Como praticamente
+  // toda lista principal (Pessoas, Equipes, Patrimônio, Frotas, Auditorias,
+  // Empresas, Acesso) já passa por este mesmo helper, o botão "Exportar
+  // Excel" entra aqui uma vez só — cada chamador só precisa passar
+  // exportHeaders/exportRows e, depois de montar o main.innerHTML, chamar
+  // wireExportButton() (mesmo padrão dos outros `$("#btn-...")` já
+  // existentes). Opcional: quando omitido (ex.: o corpo paginado do
+  // Admin > Log, que já tem seu próprio botão de exportar com paginação
+  // server-side própria), nenhum botão extra é renderizado.
   function tableShell(opts) {
-    // opts: {toolbar, headHtml, bodyHtml, count, page, totalPages, onPage, empty}
+    // opts: {toolbar, headHtml, bodyHtml, count, page, totalPages, onPage, empty, exportHeaders, exportRows}
+    var exportBtnHtml = opts.exportHeaders ? '<button class="btn ghost sm" id="btn-export-xls">' + ICONS.download + "Exportar Excel</button>" : "";
     var html = '<div class="panel">';
-    html += '<div class="table-toolbar">' + opts.toolbar + '<span class="table-count">' + opts.count + " registro" + (opts.count === 1 ? "" : "s") + "</span></div>";
+    html += '<div class="table-toolbar">' + opts.toolbar + exportBtnHtml + '<span class="table-count">' + opts.count + " registro" + (opts.count === 1 ? "" : "s") + "</span></div>";
     if (opts.count === 0) {
       html += '<div class="empty-state">' + ICONS.inbox + "<div>" + (opts.empty || "Nenhum registro encontrado.") + "</div></div>";
     } else {
@@ -1248,6 +1260,17 @@
         rerender();
       });
     });
+  }
+  // Liga o botão "Exportar Excel" que tableShell() desenha quando recebe
+  // exportHeaders/exportRows. filenameBase é o nome "bonito" (ex.: "Pessoas")
+  // — downloadRowsAsXls() já normaliza pra nome de arquivo. Exporta sempre o
+  // conjunto FILTRADO inteiro (todas as páginas), não só a página atual —
+  // mesmo princípio dos drill-downs do Painel: exporta o que está sendo
+  // mostrado pelos filtros ativos.
+  function wireExportButton(container, filenameBase, headers, rows) {
+    var btn = $("#btn-export-xls", container);
+    if (!btn) return;
+    btn.addEventListener("click", function () { downloadRowsAsXls(filenameBase, headers, rows); });
   }
 
   /* ================================================================
@@ -1312,6 +1335,13 @@
         distinctStatuses(STATE.pessoas).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") +
         "</select>";
 
+      var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto", "Treinamentos vencidos", "Status"];
+      var exportRows = filtered.map(function (p) {
+        var tr = p.status === "ATIVO" ? pessoaTreinamentos(p.id) : [];
+        var venc = tr.filter(function (t) { return trainingStatus(t).code === "VENCIDO"; }).length;
+        return [p.nome || "", p.cargo || "", p.empresaNome || "", p.regional || "", p.projeto || "", venc, p.status || ""];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Pessoas</h1><div class="sub">Cadastro de colaboradores, PJs e técnicos de campo</div></div>' +
         (canDo("pessoas", "criar") ? '<button class="btn primary" id="btn-new-pessoa">' + ICONS.plus + "Nova pessoa</button>" : "") + "</div>" +
@@ -1322,7 +1352,9 @@
           count: filtered.length,
           page: pg.page,
           totalPages: pg.totalPages,
-          empty: "Nenhuma pessoa encontrada com esses filtros."
+          empty: "Nenhuma pessoa encontrada com esses filtros.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       if ($("#btn-new-pessoa")) $("#btn-new-pessoa").addEventListener("click", function () { openPessoaForm(null); });
@@ -1332,6 +1364,7 @@
         row.addEventListener("click", function () { navigate("#/pessoas/" + row.getAttribute("data-id")); });
       });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Pessoas", exportHeaders, exportRows);
     }
     draw();
   }
@@ -1667,6 +1700,11 @@
         '<select class="filter" id="equipes-status"><option value="">Todos os status</option>' +
         distinctStatuses(STATE.equipes).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
 
+      var exportHeaders = ["Equipe", "Líder", "Regional", "Projeto", "Operadora", "Membros", "Status"];
+      var exportRows = filtered.map(function (e) {
+        return [e.nome || "", liderName(e) || "", e.regional || "", e.projeto || "", e.operadora || "", e.membros.length, e.status || ""];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Equipes</h1><div class="sub">Times de campo, líderes e composição</div></div>' +
         (canDo("equipes", "criar") ? '<button class="btn primary" id="btn-new-equipe">' + ICONS.plus + "Nova equipe</button>" : "") + "</div>" +
@@ -1674,7 +1712,9 @@
           toolbar: toolbar,
           headHtml: "<th>Equipe / Líder</th><th>Regional</th><th>Projeto</th><th>Operadora</th><th class=\"num\">Membros</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma equipe encontrada."
+          empty: "Nenhuma equipe encontrada.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       if ($("#btn-new-equipe")) $("#btn-new-equipe").addEventListener("click", function () { openEquipeForm(null); });
@@ -1682,6 +1722,7 @@
       $("#equipes-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/equipes/" + row.getAttribute("data-id")); }); });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Equipes", exportHeaders, exportRows);
     }
     draw();
   }
@@ -1747,6 +1788,11 @@
         '<select class="filter" id="patrimonio-status"><option value="">Todos os status</option>' +
         distinctStatuses(STATE.patrimonios).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
 
+      var exportHeaders = ["Patrimônio", "Responsável", "Tipo", "Modelo", "Série", "Valor", "Status"];
+      var exportRows = filtered.map(function (p) {
+        return [p.codigo || "", p.responsavelNome || "", p.tipo || "", p.modelo || "", p.serie || "", p.valor != null ? p.valor : "", p.status || ""];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Patrimônio</h1><div class="sub">Equipamentos sincronizados do GPO (celulares, notebooks e outros itens), com edição, criação e exclusão manual</div></div>' +
         (canDo("patrimonio", "criar") ? '<button class="btn primary" id="btn-new-patrimonio">' + ICONS.plus + "Novo item</button>" : "") + "</div>" +
@@ -1754,7 +1800,9 @@
           toolbar: toolbar,
           headHtml: "<th>Patrimônio</th><th>Responsável</th><th>Tipo</th><th>Modelo</th><th>Série</th><th class=\"num\">Valor</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhum item de patrimônio encontrado."
+          empty: "Nenhum item de patrimônio encontrado.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       if ($("#btn-new-patrimonio")) $("#btn-new-patrimonio").addEventListener("click", function () { openPatrimonioForm(null); });
@@ -1762,6 +1810,7 @@
       $("#patrimonio-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/patrimonio/" + row.getAttribute("data-id")); }); });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Patrimonio", exportHeaders, exportRows);
     }
     draw();
   }
@@ -1939,6 +1988,11 @@
         '<select class="filter" id="veiculo-status"><option value="">Todos os status</option>' +
         VEICULO_STATUS_OPTS.map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
 
+      var exportHeaders = ["Placa", "Condutor", "Contrato", "Locadora", "Projeto", "Regional", "Status"];
+      var exportRows = filtered.map(function (v) {
+        return [v.placa || "", v.condutorNome || "", v.contrato || "", v.locadora || "", v.projeto || "", v.regional || "", v.status || ""];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos de locação de veículos sincronizados do GPO, com edição, criação e exclusão manual</div></div>' +
         (canDo("veiculos", "criar") ? '<button class="btn primary" id="btn-new-veiculo">' + ICONS.plus + "Novo veículo</button>" : "") + "</div>" +
@@ -1946,7 +2000,9 @@
           toolbar: toolbar,
           headHtml: "<th>Placa</th><th>Condutor</th><th>Contrato</th><th>Locadora</th><th>Projeto</th><th>Regional</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhum veículo encontrado."
+          empty: "Nenhum veículo encontrado.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       if ($("#btn-new-veiculo")) $("#btn-new-veiculo").addEventListener("click", function () { openVeiculoForm(null); });
@@ -1954,6 +2010,7 @@
       $("#veiculo-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/veiculos/" + row.getAttribute("data-id")); }); });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Gestao de Frotas", exportHeaders, exportRows);
     }
     draw();
   }
@@ -3058,6 +3115,12 @@
         '<option value="RASCUNHO"' + (ui.status === "RASCUNHO" ? " selected" : "") + '>Rascunho</option>' +
         '<option value="CONCLUIDO"' + (ui.status === "CONCLUIDO" ? " selected" : "") + ">Concluído</option></select>";
 
+      var exportHeaders = ["Site ID", "Regional", "Empresa", "Cliente", "Data (realização)", "Criado em (sistema)", "Inspetor", "Modalidade", "Criado por", "Status"];
+      var exportRows = filtered.map(function (a) {
+        var modalidadeLabel = a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "—";
+        return [a.siteId || "", regionalAuditoria(a) || "", a.empresa || "", clienteAuditoria(a), fmtDateBR(a.data), fmtDateHoraBR(a.criadoEm) || "", a.inspetorNome || "", modalidadeLabel, a.criadoPorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Checklist de segurança do trabalho feito em campo</div></div>' +
         (canDo("auditorias", "criar") ? '<button class="btn primary" id="btn-new-auditoria">' + ICONS.plus + "Nova auditoria</button>" : "") + "</div>" +
@@ -3066,7 +3129,9 @@
           toolbar: toolbar,
           headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th><th>Ficha de EPI</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma auditoria encontrada."
+          empty: "Nenhuma auditoria encontrada.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       bindAuditoriasTabs(main);
@@ -3082,6 +3147,7 @@
         });
       });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Auditorias", exportHeaders, exportRows);
     }
     draw();
   }
@@ -4591,6 +4657,11 @@
         '<select class="filter" id="empresas-status"><option value="">Todos os status</option>' +
         distinctStatuses(STATE.empresas).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
 
+      var exportHeaders = ["Empresa", "CNPJ", "Cidade", "UF", "Porte", "Status"];
+      var exportRows = filtered.map(function (e) {
+        return [empresaTitle(e), e.cnpj || "", e.cidade || "", e.uf || "", e.porte || "", e.status || ""];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Empresas</h1><div class="sub">Empresas contratadas (MEI/PJ) e prestadoras</div></div>' +
         (canDo("empresas", "criar") ? '<button class="btn primary" id="btn-new-empresa">' + ICONS.plus + "Nova empresa</button>" : "") + "</div>" +
@@ -4598,7 +4669,9 @@
           toolbar: toolbar,
           headHtml: "<th>Empresa</th><th>Cidade/UF</th><th>Porte</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma empresa encontrada."
+          empty: "Nenhuma empresa encontrada.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       if ($("#btn-new-empresa")) $("#btn-new-empresa").addEventListener("click", function () { openEmpresaForm(null); });
@@ -4606,6 +4679,7 @@
       $("#empresas-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/empresas/" + row.getAttribute("data-id")); }); });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Empresas", exportHeaders, exportRows);
     }
     draw();
   }
@@ -6199,6 +6273,12 @@
         '<select class="filter" id="acesso-regional"><option value="">Todas as regionais</option>' +
         ACESSO_REGIONAIS.map(function (r) { return '<option value="' + esc(r) + '"' + (ui.regional === r ? " selected" : "") + '>' + esc(r) + "</option>"; }).join("") + "</select>";
 
+      var exportHeaders = ["Pessoa", "Equipe", "Empresa", "Operadora", "Projetos", "Regionais", "Status"];
+      var exportRows = filtered.map(function (row) {
+        var m = row.membro, e = row.equipe;
+        return [m.nome + (m.sobrenome ? " " + m.sobrenome : ""), e.nomeEquipe || "", e.empresa || "", e.operadora || "", (e.projetos || []).join(", "), (e.regionais || []).join(", "), e.status || ""];
+      });
+
       main.innerHTML =
         '<div class="topbar"><div><h1>Acesso</h1><div class="sub">Pessoas com acesso liberado, por equipe, projeto, operadora e regional</div></div>' +
         (canDo("acesso", "criar") ? '<div style="display:flex;gap:8px;">' +
@@ -6209,7 +6289,9 @@
           toolbar: toolbar,
           headHtml: "<th>Pessoa</th><th>Equipe / Empresa</th><th>Operadora</th><th>Projeto(s)</th><th>Regional(is)</th><th>Status</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma pessoa encontrada."
+          empty: "Nenhuma pessoa encontrada.",
+          exportHeaders: exportHeaders,
+          exportRows: exportRows
         });
 
       if ($("#btn-new-acesso-pessoa")) $("#btn-new-acesso-pessoa").addEventListener("click", function () { openAcessoAdicionarPessoaForm(); });
@@ -6227,6 +6309,7 @@
         });
       });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(main, "Acesso", exportHeaders, exportRows);
     }
     draw();
   }
