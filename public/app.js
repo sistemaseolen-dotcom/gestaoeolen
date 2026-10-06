@@ -2277,25 +2277,42 @@
     if (l.indexOf("LOCALIZA") !== -1) return 1.00;
     return 0;
   }
-  function diasDeUsoFrota(dataContratoIso) {
+  // `dataFimIso` é a data de devolução, pra contrato já encerrado — sem ela,
+  // a contagem de dias de uso de um contrato devolvido continuaria rodando
+  // até hoje, inflando artificialmente o km excedido depois que o veículo já
+  // voltou pra locadora.
+  function diasDeUsoFrota(dataContratoIso, dataFimIso) {
     if (!dataContratoIso) return 0;
     var parts = dataContratoIso.split("-").map(Number);
     var dataContrato = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
-    var hoje = new Date();
-    var hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
-    return Math.round((hojeSemHora - dataContrato) / 86400000);
+    var fim;
+    if (dataFimIso) {
+      var fparts = dataFimIso.split("-").map(Number);
+      fim = new Date(fparts[0], (fparts[1] || 1) - 1, fparts[2] || 1);
+    } else {
+      var hoje = new Date();
+      fim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    }
+    return Math.round((fim - dataContrato) / 86400000);
   }
+  // Pedido do Diego (06/10/2026): mostrar TODOS os contratos (em uso ou já
+  // devolvidos/substituídos/inativos), não só os em uso — com uma coluna de
+  // status pra deixar claro qual é qual. Pra contrato não mais em uso, os
+  // dias de uso param na data de devolução em vez de continuar contando até
+  // hoje.
   function computeKmExcedidoFrota(veiculos) {
     return veiculos
-      .filter(function (v) { return String(v.status || "").toUpperCase().trim() === "EM USO"; })
       .map(function (v) {
-        var dias = diasDeUsoFrota(v.dataContrato);
+        var statusNorm = String(v.status || "").toUpperCase().trim();
+        var ativo = statusNorm === "EM USO";
+        var dias = diasDeUsoFrota(v.dataContrato, ativo ? null : v.dataDevolucao);
         var kmContratado = dias * KM_POR_DIA_FROTA;
         var kmContrato = Number(v.kmContrato) || 0;
         var saldoKm = kmContratado - kmContrato;
         var kmExcedido = saldoKm < 0 ? Math.abs(saldoKm) : 0;
         var custo = kmExcedido * valorPorKmFrota(v.locadora);
         return {
+          status: v.status, ativo: ativo,
           locadora: v.locadora, condutor: v.condutorNome, placa: v.placa, contrato: v.contrato,
           dataContrato: v.dataContrato, regional: v.regional,
           kmContratado: kmContratado, kmContrato: kmContrato, saldoKm: saldoKm, kmExcedido: kmExcedido, custo: custo
@@ -2581,7 +2598,8 @@
       var bodyHtml = pg.items.map(function (r) {
         return "<tr>" +
           '<td class="mono">' + esc(fmtDateBR(r.data)) + "</td>" +
-          "<td>" + esc(r.placa || "—") + (veiculoInativo(r.placa) ? inativoTagHtml(r.placa) : "") + "</td>" +
+          "<td>" + esc(r.placa || "—") + "</td>" +
+          "<td>" + (veiculoInativo(r.placa) ? '<span class="pill danger">Devolvido</span>' : '<span class="pill ok">Ativo</span>') + "</td>" +
           "<td>" + esc(r.motorista || "—") + (motoristaInativo(r.motorista) ? inativoTagHtml(r.motorista) : "") + "</td>" +
           "<td>" + esc(r.contrato || "—") + "</td>" +
           '<td class="mono">' + (r.km ? Number(r.km).toLocaleString("pt-BR") : "—") + "</td>" +
@@ -2597,14 +2615,14 @@
         '<input type="date" id="frota-hist-ate" class="filter" value="' + esc(ui.ate) + '">' +
         '<button type="button" class="btn ghost sm" id="frota-hist-clear">Limpar</button>';
 
-      var exportHeaders = ["Data", "Placa", "Status veículo", "Motorista", "Status motorista", "Contrato", "KM", "Observação (análise)"];
+      var exportHeaders = ["Data", "Placa", "Status do contrato", "Motorista", "Status motorista", "Contrato", "KM", "Observação (análise)"];
       var exportRows = filtered.map(function (r) {
-        return [fmtDateBR(r.data), r.placa || "", veiculoInativo(r.placa) ? "Inativo" : "Ativo", r.motorista || "", motoristaInativo(r.motorista) ? "Inativo" : "Ativo", r.contrato || "", r.km || "", r.analise || ""];
+        return [fmtDateBR(r.data), r.placa || "", veiculoInativo(r.placa) ? "Devolvido" : "Ativo", r.motorista || "", motoristaInativo(r.motorista) ? "Inativo" : "Ativo", r.contrato || "", r.km || "", r.analise || ""];
       });
 
       body2.innerHTML = resumoHtml + tableShell({
         toolbar: toolbar,
-        headHtml: "<th>Data</th><th>Placa</th><th>Motorista</th><th>Contrato</th><th>KM</th><th>Observação</th><th>Fotos</th>",
+        headHtml: "<th>Data</th><th>Placa</th><th>Status</th><th>Motorista</th><th>Contrato</th><th>KM</th><th>Observação</th><th>Fotos</th>",
         bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
         empty: "Nenhum report encontrado com esses filtros.",
         exportHeaders: exportHeaders,
@@ -2722,7 +2740,7 @@
   function renderFrotasKmExcedido(main) {
     var ui = uiState.frotasKmExcedido;
     main.innerHTML =
-      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos em uso que já passaram da franquia de KM (167km/dia), com custo estimado</div></div></div>' +
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos (ativos ou já devolvidos) que passaram da franquia de KM (167km/dia), com custo estimado</div></div></div>' +
       frotasTabsHtml("km-excedido") +
       '<div id="frota-kmexcedido-body"></div>';
     bindFrotasTabs(main);
@@ -2750,6 +2768,7 @@
 
       var bodyHtml = pg.items.map(function (r) {
         return "<tr>" +
+          "<td>" + statusPillVeiculo(r.status) + "</td>" +
           "<td>" + esc(r.locadora || "—") + "</td>" +
           "<td>" + esc(r.condutor || "—") + "</td>" +
           "<td>" + esc(r.placa || "—") + "</td>" +
@@ -2762,16 +2781,16 @@
       }).join("");
 
       var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-kmexc-q" placeholder="Buscar por condutor…" value="' + esc(ui.q) + '"></div>';
-      var exportHeaders = ["Locadora", "Condutor", "Placa", "Contrato", "Data Contrato", "Regional", "KM Excedido", "Custo"];
+      var exportHeaders = ["Status", "Locadora", "Condutor", "Placa", "Contrato", "Data Contrato", "Regional", "KM Excedido", "Custo"];
       var exportRows = filtered.map(function (r) {
-        return [r.locadora || "", r.condutor || "", r.placa || "", r.contrato || "", fmtDateBR(r.dataContrato), r.regional || "", r.kmExcedido, r.custo];
+        return [r.status || "", r.locadora || "", r.condutor || "", r.placa || "", r.contrato || "", fmtDateBR(r.dataContrato), r.regional || "", r.kmExcedido, r.custo];
       });
 
       body2.innerHTML = kpiHtml + tableShell({
         toolbar: toolbar,
-        headHtml: "<th>Locadora</th><th>Condutor</th><th>Placa</th><th>Contrato</th><th>Data Contrato</th><th>Regional</th><th>KM Excedido</th><th>Custo</th>",
+        headHtml: "<th>Status</th><th>Locadora</th><th>Condutor</th><th>Placa</th><th>Contrato</th><th>Data Contrato</th><th>Regional</th><th>KM Excedido</th><th>Custo</th>",
         bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-        empty: q ? "Nenhum condutor encontrado para essa busca." : "Nenhum contrato em uso com km excedido no momento. 🎉",
+        empty: q ? "Nenhum condutor encontrado para essa busca." : "Nenhum contrato com km excedido no momento. 🎉",
         exportHeaders: exportHeaders,
         exportRows: exportRows
       });
