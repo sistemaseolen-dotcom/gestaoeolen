@@ -2815,7 +2815,7 @@
           return '<tr><td class="mono">' + esc(fmtDateBR(l.data)) + '</td>' +
             (multiPlaca ? "<td>" + (isCurrent ? esc(l.placa || "—") : '<a href="#/veiculos/' + l.veiculoId + '">' + esc(l.placa || "—") + "</a>") + "</td>" : "") +
             '<td class="mono">' + esc(String(l.km)) + '</td><td>' + esc(l.responsavelNome || "—") + '</td><td class="row-actions">' +
-            (canDo("veiculos", "editar") && isCurrent ? '<button class="btn ghost sm" title="Remover" data-remove-km-lanc="' + l.lancId + '">' + ICONS.trash + "</button>" : "") +
+            (canDo("veiculos", "editar") ? '<button class="btn ghost sm" title="Remover" data-remove-km-lanc="' + l.lancId + '" data-remove-km-veiculo="' + l.veiculoId + '">' + ICONS.trash + "</button>" : "") +
             "</td></tr>";
         }).join("") + "</tbody></table></div>" : '<div class="empty-state" style="padding:20px;">Nenhuma leitura de KM lançada ainda.</div>') +
       "</div></div>" +
@@ -2835,12 +2835,19 @@
         ev.stopPropagation();
         if (!canDo("veiculos", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
         var lancId = Number(btn.getAttribute("data-remove-km-lanc"));
-        var l = byId(v.kmLancamentos, lancId);
+        // O histórico aqui é do CONTRATO inteiro (pode juntar várias placas,
+        // ver veiculosContrato acima) — cada leitura pertence ao veículo
+        // (placa) que ela foi lançada, não necessariamente ao veículo que
+        // está aberto na tela agora. Por isso resolve o veículo certo pelo
+        // data-remove-km-veiculo, em vez de assumir sempre "v".
+        var veiculoId = Number(btn.getAttribute("data-remove-km-veiculo"));
+        var vv = byId(STATE.veiculos, veiculoId);
+        var l = vv && byId(vv.kmLancamentos, lancId);
         if (!l) return;
         confirmAction("Remover leitura de KM?", "Tem certeza que deseja remover a leitura de " + fmtDateBR(l.data) + " (" + l.km + " km)? Esta ação não pode ser desfeita.", "Remover", function (closeModal) {
-          apiFetch("/api/veiculos/" + v.id + "/km-lancamentos/" + lancId, { method: "DELETE" })
+          apiFetch("/api/veiculos/" + veiculoId + "/km-lancamentos/" + lancId, { method: "DELETE" })
             .then(function () {
-              v.kmLancamentos = v.kmLancamentos.filter(function (x) { return x.id !== lancId; });
+              vv.kmLancamentos = vv.kmLancamentos.filter(function (x) { return x.id !== lancId; });
               closeModal();
               render();
             })
