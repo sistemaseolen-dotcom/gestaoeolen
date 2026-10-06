@@ -1963,6 +1963,7 @@
     if (!v) { navigate("#/veiculos"); return; }
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Gestão de Frotas</button><h1 style="margin-top:6px;">' + esc(v.placa || v.contrato || ("Veículo " + v.id)) + "</h1>" +
+      (v.condutorNome ? '<div class="destaque-secundario">' + esc(v.condutorNome) + "</div>" : "") +
       '<div class="sub">' + esc(v.locadora || "—") + (v.contrato ? " · Contrato " + esc(v.contrato) : "") + " · " + statusPillVeiculo(v.status) + "</div>" +
       '<div class="header-field-notes">' + fieldNoteHtml("placa", "Placa") + fieldNoteHtml("status", "Status") + fieldNoteHtml("condutor_nome", "Condutor") + "</div>" +
       "</div>" +

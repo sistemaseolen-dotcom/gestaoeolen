@@ -222,6 +222,11 @@ main { grid-column: 2; grid-row: 2; min-width: 0; padding: 28px 34px 60px; }
 .topbar { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
 .topbar h1 { font-size: 27px; }
 .topbar .sub { color: var(--ink-faint); font-size: 13.5px; margin-top: 3px; }
+/* Linha de destaque secundária no topbar (ex.: condutor do veículo em
+   Gestão de Frotas) — mais forte que .sub (que é cinza/pequeno), mas sem
+   competir com o h1. Pedido do Diego (06/10/2026): ao entrar num veículo, o
+   nome do condutor precisa aparecer em destaque, não só a placa. */
+.topbar .destaque-secundario { color: var(--ink-soft); font-size: 16px; font-weight: 600; margin-top: 4px; }
 
 .readonly-banner {
   background: var(--warning-soft); color: var(--warning-ink);

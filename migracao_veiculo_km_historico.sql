@@ -32,9 +32,13 @@ create table if not exists veiculo_km_lancamentos (
   criado_em timestamptz not null default now()
 );
 
-create unique index if not exists veiculo_km_lancamentos_legacy_id_key
-  on veiculo_km_lancamentos (legacy_id)
-  where legacy_id is not null;
+-- unique (não índice parcial): upsert por legacy_id (onConflict) exige uma
+-- constraint/índice único "cheio" — um índice parcial (where legacy_id is
+-- not null) não é aceito como alvo do ON CONFLICT gerado pelo
+-- supabase-js, e nem precisa: unique já permite múltiplos NULLs (um por
+-- lançamento manual) sem conflito nenhum.
+alter table veiculo_km_lancamentos
+  add constraint veiculo_km_lancamentos_legacy_id_key unique (legacy_id);
 
 create index if not exists veiculo_km_lancamentos_veiculo_id_idx
   on veiculo_km_lancamentos (veiculo_id);

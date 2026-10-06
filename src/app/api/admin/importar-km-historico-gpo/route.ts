@@ -38,14 +38,29 @@ function normNum(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// dataehora do GPO vem como "YYYY-MM-DD HH:mm:ss" (ou similar) — guardamos
-// só a data (igual ao resto do app, sem coluna de hora).
+// dataehora do GPO vem como um instante UTC completo
+// ("2026-09-24T00:00:00.000Z"), não uma data "pura" — descoberto na
+// importação única (06/10/2026): usar os 10 primeiros caracteres direto
+// (igual normDate de importar-veiculos-gpo, que lida com datas "puras")
+// dava uma data um dia à frente do que o GPO mostra na própria tela, porque
+// o GPO exibe esse instante já convertido pro horário de Brasília
+// (UTC-3, sem horário de verão desde 2019). Por isso aqui SUBTRAÍMOS 3h do
+// instante antes de extrair a data — só então os 10 primeiros caracteres
+// batem com o que o GPO mostra (conferido contra a tela "Histórico de
+// Kilometragem" de várias placas).
 function normDate(raw: any): string | null {
   if (!raw) return null;
   const s = String(raw).trim();
   if (!s) return null;
   let y: number, m: number, d: number;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(s)) {
+    const instanteUtc = new Date(s);
+    if (Number.isNaN(instanteUtc.getTime())) return null;
+    const brasilia = new Date(instanteUtc.getTime() - 3 * 60 * 60 * 1000);
+    const iso = brasilia.toISOString();
+    const [yy, mm, dd] = iso.slice(0, 10).split("-").map(Number);
+    y = yy; m = mm; d = dd;
+  } else if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
     const [yy, mm, dd] = s.slice(0, 10).split("-").map(Number);
     y = yy; m = mm; d = dd;
   } else if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
