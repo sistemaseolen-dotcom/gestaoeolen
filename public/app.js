@@ -2066,6 +2066,11 @@
       return (a.data || "").localeCompare(b.data || "") || ((numOrNull(a.km) || 0) - (numOrNull(b.km) || 0));
     });
 
+    var kmExportHeaders = multiPlaca ? ["Data", "Placa", "KM", "Responsável"] : ["Data", "KM", "Responsável"];
+    var kmExportRows = lancamentosContrato.map(function (l) {
+      return multiPlaca ? [fmtDateBR(l.data), l.placa || "", l.km, l.responsavelNome || ""] : [fmtDateBR(l.data), l.km, l.responsavelNome || ""];
+    });
+
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Gestão de Frotas</button><h1 style="margin-top:6px;">' + esc(v.placa || v.contrato || ("Veículo " + v.id)) + "</h1>" +
       (v.condutorNome ? '<div class="destaque-secundario">' + esc(v.condutorNome) + "</div>" : "") +
@@ -2108,8 +2113,11 @@
         }).join("") +
         "</tbody></table></div></div></div>" : "") +
       '<div class="panel"><div class="panel-head"><h3>' + (multiPlaca ? "Histórico de Kilometragem do Contrato" : "Histórico de Kilometragem") + '</h3>' +
-      (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") + '</div><div class="panel-body">' +
-      (lancamentosContrato.length ? '<div class="table-scroll"><table class="data"><thead><tr><th>Data</th>' + (multiPlaca ? "<th>Placa</th>" : "") + '<th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
+      '<div style="display:flex;gap:8px;">' +
+      (lancamentosContrato.length ? '<button class="btn ghost sm" id="btn-export-km-contrato">' + ICONS.download + "Exportar Excel</button>" : "") +
+      (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") +
+      "</div></div><div class=\"panel-body\">" +
+      (lancamentosContrato.length ? '<div class="table-scroll tall"><table class="data"><thead><tr><th>Data</th>' + (multiPlaca ? "<th>Placa</th>" : "") + '<th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
         lancamentosContrato.map(function (l) {
           var isCurrent = l.veiculoId === v.id;
           return '<tr><td class="mono">' + esc(fmtDateBR(l.data)) + '</td>' +
@@ -2127,6 +2135,9 @@
     if ($("#btn-edit-veiculo")) $("#btn-edit-veiculo").addEventListener("click", function () { openVeiculoForm(v); });
     if ($("#btn-del-veiculo")) $("#btn-del-veiculo").addEventListener("click", function () { confirmDelete("veiculo", v.id, v.placa || v.contrato || ("Veículo " + v.id), { after: function () { navigate("#/veiculos"); } }); });
     if ($("#btn-lancar-km")) $("#btn-lancar-km").addEventListener("click", function () { openLancarKm(v); });
+    if ($("#btn-export-km-contrato")) $("#btn-export-km-contrato").addEventListener("click", function () {
+      downloadRowsAsXls("Historico_KM_" + (v.contrato || v.placa || v.id), kmExportHeaders, kmExportRows);
+    });
     $all("[data-remove-km-lanc]", main).forEach(function (btn) {
       btn.addEventListener("click", function (ev) {
         ev.stopPropagation();

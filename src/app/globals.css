@@ -318,6 +318,11 @@ select.filter, input.filter {
    (a tabela larga, com os textareas de observação) e a tabela vaza pra
    fora do drawer em vez de rolar horizontalmente dentro dele. */
 .table-scroll { overflow-x: auto; min-width: 0; }
+/* .tall (pedido do Diego, 06/10/2026): histórico de KM do contrato pode
+   acumular dezenas de leituras — sem isso a tabela inteira empurrava a
+   página pra baixo. O cabeçalho (table.data th) já é "position: sticky",
+   então basta limitar a altura e rolar dentro do painel. */
+.table-scroll.tall { max-height: 420px; overflow-y: auto; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
 table.data th {
   text-align: left; font-size: 12.5px; color: var(--ink-soft);
@@ -330,7 +335,14 @@ table.data tbody tr:hover { background: var(--surface-alt); }
 table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .row-primary { font-weight: 600; }
 .row-secondary { color: var(--ink-faint); font-size: 12px; }
-.row-actions { display: flex; gap: 4px; white-space: nowrap; }
+/* min-height (pedido do Diego, 06/10/2026): numa tabela onde só ALGUMAS
+   linhas têm botão de ação (ex.: Histórico de Kilometragem do Contrato, que
+   só permite remover leituras da placa atual), uma célula de ação vazia
+   colapsava mais baixa que uma com botão — a linha com botão ficava mais
+   alta que as outras, e as bordas entre linhas pareciam "desalinhadas" ao
+   descer a coluna. Reservando a mesma altura do botão (ícone 15px + padding
+   5px + borda 1px de cada lado) sempre, com ou sem botão, resolve. */
+.row-actions { display: flex; align-items: center; gap: 4px; min-height: 27px; white-space: nowrap; }
 .row-actions .btn { padding: 5px; }
 .empty-state { padding: 46px 20px; text-align: center; color: var(--ink-faint); }
 .empty-state .ic { width: 34px; height: 34px; margin-bottom: 10px; opacity: .5; }
