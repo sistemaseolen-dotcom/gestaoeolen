@@ -749,6 +749,35 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 }
 tr.row-divergente { background: var(--warning-soft); }
 
+/* Alertas de hodômetro em Gestão de Frotas > Reports (pedido do Diego,
+   06/10/2026) — mesmo princípio do .kpi.alert-blink: pisca pra chamar
+   atenção pra um dado que exige conferência, sem virar decoração solta.
+   "menor" (km voltou pra trás, impossível) pisca em vermelho; "salto"
+   (aumento grande demais num intervalo curto) pisca em âmbar. */
+tbody tr.row-alerta-km { animation: frotaAlertaKmBlink 1.6s ease-in-out infinite; }
+tbody tr.row-alerta-km:hover { animation-play-state: paused; }
+@keyframes frotaAlertaKmBlink {
+  0%, 100% { background: transparent; }
+  50% { background: var(--danger-soft); }
+}
+tbody tr.row-alerta-km-salto { animation: frotaAlertaKmSaltoBlink 1.6s ease-in-out infinite; }
+tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
+@keyframes frotaAlertaKmSaltoBlink {
+  0%, 100% { background: transparent; }
+  50% { background: var(--warning-soft); }
+}
+@media (prefers-reduced-motion: reduce) {
+  tbody tr.row-alerta-km { animation: none; background: var(--danger-soft); }
+  tbody tr.row-alerta-km-salto { animation: none; background: var(--warning-soft); }
+}
+/* KM acima da franquia (KM Semana / KM Excedido) — mesma semântica de cor
+   que o resto do sistema usa pra "acima do esperado"/"vencido". */
+.frota-km-over { color: var(--danger-ink); font-weight: 700; background: var(--danger-soft); }
+.frota-foto-thumb {
+  width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm);
+  cursor: zoom-in; border: 1px solid var(--border);
+}
+
 /* Data de fabricação por item, na mesma tela de assinatura (pedido do
    Diego, 23/09/2026): obrigatório pra item com CA corrigido, editável nos
    demais — mesmo visual do ca-check-input. */

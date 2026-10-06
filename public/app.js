@@ -134,6 +134,9 @@
     patrimonio: { q: "", page: 1 },
     veiculos: { q: "", status: "", page: 1 },
     frotasReports: { q: "", page: 1 },
+    frotasHistorico: { placa: "", motorista: "", de: "", ate: "", page: 1 },
+    frotasKmSemana: { mes: "", motorista: "" },
+    frotasKmExcedido: { q: "", page: 1 },
     auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
     acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
   };
@@ -1957,13 +1960,30 @@
   // é a tela de sempre (lista de veiculos/locações); "Reports" é a nova aba
   // trazida do projeto separado "Gestão de Frotas" (ver
   // src/app/api/frotas-reports/route.ts) — mesmo padrão de adminTabsHtml.
+  // Sub-abas adicionadas em 06/10/2026 (continuação do mesmo pedido): "Histórico"
+  // (todos os reports, sem exigir contrato ativo), "KM Semana" e "KM Excedido" —
+  // as duas últimas eram abas próprias no projeto original, portadas 1:1.
+  var FROTA_TABS = [
+    ["contratos", "Contratos"],
+    ["reports", "Reports"],
+    ["historico", "Histórico"],
+    ["km-semana", "KM Semana"],
+    ["km-excedido", "KM Excedido"]
+  ];
   function frotasTabsHtml(active) {
     return '<div class="section-tabs" style="margin-bottom:16px;">' +
-      '<button type="button" class="section-tab' + (active === "contratos" ? " active" : "") + '" data-frotatab="contratos">Contratos</button>' +
-      '<button type="button" class="section-tab' + (active === "reports" ? " active" : "") + '" data-frotatab="reports">Reports</button>' +
+      FROTA_TABS.map(function (t) {
+        return '<button type="button" class="section-tab' + (active === t[0] ? " active" : "") + '" data-frotatab="' + t[0] + '">' + t[1] + "</button>";
+      }).join("") +
       "</div>";
   }
-  var FROTA_TAB_ROUTES = { contratos: "#/veiculos", reports: "#/veiculos/reports" };
+  var FROTA_TAB_ROUTES = {
+    contratos: "#/veiculos",
+    reports: "#/veiculos/reports",
+    historico: "#/veiculos/historico",
+    "km-semana": "#/veiculos/km-semana",
+    "km-excedido": "#/veiculos/km-excedido"
+  };
   function bindFrotasTabs(main) {
     $all("[data-frotatab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () { navigate(FROTA_TAB_ROUTES[btn.getAttribute("data-frotatab")] || "#/veiculos"); });
@@ -1997,15 +2017,288 @@
     return cls === "avaria" ? '<span class="pill danger">Avarias</span>' : '<span class="pill ok">OK</span>';
   }
 
+  // Cache simples em memória dos reports de /api/frotas-reports (reports +
+  // veiculoInfoPorPlaca + usuarioAtivoPorNome) — Reports, Histórico, Alertas
+  // e KM Semana usam exatamente os mesmos dados; sem isso cada troca de
+  // sub-aba refaria a mesma busca no Supabase à toa.
+  var frotasReportsCache = null;
+  function loadFrotasReportsData(force) {
+    if (frotasReportsCache && !force) return Promise.resolve(frotasReportsCache);
+    return apiFetch("/api/frotas-reports").then(function (data) {
+      frotasReportsCache = data;
+      return data;
+    });
+  }
+
+  // Alertas de hodômetro (pedido do Diego, 06/10/2026) — portado 1:1 do
+  // projeto original (computeAlertas): "menor" é fisicamente impossível (km
+  // atual menor que o report anterior da mesma placa); "salto" é um aumento
+  // grande demais (>7.000km) num intervalo curto (até 7 dias). No projeto
+  // original isso não é uma aba própria — é um destaque piscante na própria
+  // linha do report (ver .row-alerta-km / .row-alerta-km-salto no CSS).
+  var ALERTA_KM_SALTO_LIMIAR = 7000;
+  var ALERTA_KM_SALTO_DIAS = 7;
+  function computeAlertasFrota(reports) {
+    var byPlaca = {};
+    reports.forEach(function (r) {
+      (byPlaca[r.placa] = byPlaca[r.placa] || []).push(r);
+    });
+    var alertas = [];
+    Object.keys(byPlaca).forEach(function (placa) {
+      var list = byPlaca[placa].slice().sort(function (a, b) { return (a.data || "").localeCompare(b.data || ""); });
+      for (var i = 1; i < list.length; i++) {
+        var atual = list[i], anterior = list[i - 1];
+        var kmAtual = Number(atual.km) || 0, kmAnterior = Number(anterior.km) || 0;
+        var diferenca = kmAtual - kmAnterior;
+        var dias = (new Date(atual.data) - new Date(anterior.data)) / 86400000;
+        var tipo = null;
+        if (kmAtual < kmAnterior) tipo = "menor";
+        else if (diferenca > ALERTA_KM_SALTO_LIMIAR && dias <= ALERTA_KM_SALTO_DIAS) tipo = "salto";
+        if (tipo) {
+          alertas.push({
+            tipo: tipo, placa: placa, motorista: atual.motorista, contrato: atual.contrato,
+            data: atual.data, km: kmAtual, dataAnterior: anterior.data, kmAnterior: kmAnterior, diferenca: diferenca
+          });
+        }
+      }
+    });
+    alertas.sort(function (a, b) { return (b.data || "").localeCompare(a.data || ""); });
+    return alertas;
+  }
+  function buildAlertaMapFrota(alertas) {
+    var map = {};
+    alertas.forEach(function (a) { map[a.placa + "|" + a.data] = a; });
+    return map;
+  }
+  function openKmAlertaModal(alerta) {
+    var isSalto = alerta.tipo === "salto";
+    var corClasse = isSalto ? "warn" : "danger";
+    var titulo = isSalto ? "KM muito acima do esperado" : "Divergência de hodômetro";
+    var explicacao = isSalto
+      ? "O hodômetro reportado é <strong>" + alerta.diferenca.toLocaleString("pt-BR") + " km maior</strong> que o report anterior da mesma placa, em até " + ALERTA_KM_SALTO_DIAS + " dias — acima do limite de alerta (" + ALERTA_KM_SALTO_LIMIAR.toLocaleString("pt-BR") + " km em " + ALERTA_KM_SALTO_DIAS + " dias). Pode ser viagem longa de verdade ou erro de digitação/leitura — vale conferir."
+      : "O hodômetro reportado é <strong>" + Math.abs(alerta.diferenca).toLocaleString("pt-BR") + " km menor</strong> que o report anterior da mesma placa — fisicamente impossível, provável erro de digitação ou leitura.";
+    openModal(
+      '<div class="panel" style="max-width:480px;padding:20px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+      '<div><h2 style="margin:0 0 4px;">' + esc(titulo) + "</h2>" +
+      '<div class="sub">' + esc(alerta.motorista || "—") + " · <strong>" + esc(alerta.placa) + "</strong> · contrato " + esc(alerta.contrato || "—") + "</div></div>" +
+      '<button type="button" class="btn ghost sm" id="km-alerta-close">' + ICONS.close + "</button></div>" +
+      '<div style="display:flex;gap:16px;margin:16px 0;">' +
+      '<div><div class="sub">Report anterior</div><div class="mono" style="font-size:18px;font-weight:700;">' + alerta.kmAnterior.toLocaleString("pt-BR") + ' km</div><div class="sub">' + esc(fmtDateBR(alerta.dataAnterior)) + "</div></div>" +
+      '<div><div class="sub">Report atual</div><div class="mono" style="font-size:18px;font-weight:700;">' + alerta.km.toLocaleString("pt-BR") + ' km</div><div class="sub">' + esc(fmtDateBR(alerta.data)) + "</div></div>" +
+      "</div>" +
+      '<div class="pill ' + corClasse + '" style="display:block;padding:10px 12px;line-height:1.5;">' + explicacao + "</div>" +
+      "</div>"
+    );
+    var btn = $("#km-alerta-close");
+    if (btn) btn.addEventListener("click", closeModal);
+  }
+  function bindAlertaButtons(container, alertaMap) {
+    $all("[data-alerta-key]", container).forEach(function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var alerta = alertaMap[btn.getAttribute("data-alerta-key")];
+        if (alerta) openKmAlertaModal(alerta);
+      });
+    });
+  }
+  function alertaRowClass(alerta) {
+    if (!alerta) return "";
+    return alerta.tipo === "salto" ? "row-alerta-km-salto" : "row-alerta-km";
+  }
+  function alertaBtnHtml(key, alertaMap) {
+    var alerta = alertaMap[key];
+    if (!alerta) return "";
+    var titulo = alerta.tipo === "salto" ? "KM muito acima do esperado — clique para ver" : "Divergência de hodômetro — clique para ver";
+    return '<button type="button" class="btn ghost sm" data-alerta-key="' + esc(key) + '" title="' + esc(titulo) + '">' + ICONS.alert + "</button>";
+  }
+
+  // Fotos do odômetro/avarias (pedido do Diego, 06/10/2026) — vêm de um
+  // Apps Script que consulta o BigQuery, NÃO do Supabase (ver comentário em
+  // src/app/api/frotas-reports/route.ts). CORS já é aberto (validado em
+  // navegador real) e a chave de acesso é a conta do Google do próprio
+  // Apps Script publicado — então, igual ao projeto original, o navegador
+  // busca direto, sem passar pelo nosso backend.
+  var FROTAS_FOTOS_API_URL = "https://script.google.com/macros/s/AKfycbz_98InVCx1TZOBXGaCKgDTQG80NkXzSn_nIG1Hs-QKD_SXmskEJJ-xLafXVJw_iBGGiw/exec";
+  var frotasFotosCache = {};
+  function renderFrotasFotosBody(urls) {
+    var body = $("#frota-fotos-body");
+    if (!body) return;
+    if (!urls.length) {
+      body.innerHTML = '<div class="empty-state">' + ICONS.inbox + "<div>Nenhuma foto encontrada para esse report.</div></div>";
+      return;
+    }
+    body.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">' +
+      urls.map(function (u) { return '<img src="' + esc(u) + '" loading="lazy" class="frota-foto-thumb" data-foto-url="' + esc(u) + '">'; }).join("") +
+      "</div>";
+    $all("[data-foto-url]", body).forEach(function (img) {
+      img.addEventListener("click", function () { openFotoLightbox(img.getAttribute("data-foto-url")); });
+    });
+  }
+  function showFrotasFotos(placa, data, label) {
+    var key = placa + "|" + data;
+    openModal(
+      '<div class="panel" style="max-width:720px;padding:20px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+      "<h2 style=\"margin:0;\">Fotos — " + esc(label) + "</h2>" +
+      '<button type="button" class="btn ghost sm" id="frota-fotos-close">' + ICONS.close + "</button></div>" +
+      '<div id="frota-fotos-body" class="hint">Carregando…</div>' +
+      "</div>"
+    );
+    var closeBtn = $("#frota-fotos-close");
+    if (closeBtn) closeBtn.addEventListener("click", closeModal);
+    if (frotasFotosCache[key]) { renderFrotasFotosBody(frotasFotosCache[key]); return; }
+    var url = new URL(FROTAS_FOTOS_API_URL);
+    url.searchParams.set("placa", placa);
+    url.searchParams.set("data", data);
+    fetch(url.toString()).then(function (res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.json();
+    }).then(function (json) {
+      if (json.error) throw new Error(json.error);
+      var urls = (json.fotos || []).map(function (f) { return f.url; });
+      frotasFotosCache[key] = urls;
+      renderFrotasFotosBody(urls);
+    }).catch(function (err) {
+      var body = $("#frota-fotos-body");
+      if (body) body.innerHTML = '<div class="empty-state">Não consegui buscar as fotos (' + esc((err && err.message) || "erro") + ").</div>";
+    });
+  }
+  function fotoBtnHtml(r) {
+    var key = r.placa + "|" + r.data;
+    var label = esc(r.placa) + " — " + esc(fmtDateBR(r.data));
+    return '<button type="button" class="btn ghost sm" data-foto-placa="' + esc(r.placa) + '" data-foto-data="' + esc(r.data) + '" data-foto-label="' + label + '">Ver fotos</button>';
+  }
+  function bindFotoButtons(container) {
+    $all("[data-foto-placa]", container).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        showFrotasFotos(btn.getAttribute("data-foto-placa"), btn.getAttribute("data-foto-data"), btn.getAttribute("data-foto-label"));
+      });
+    });
+  }
+
+  // KM por Semana (pedido do Diego, 06/10/2026) — portado 1:1 do projeto
+  // original (computeKmPorSemanaAll/getWeekStart): km da semana é a
+  // diferença de hodômetro entre reports CONSECUTIVOS da MESMA placa de um
+  // mesmo motorista, creditada à semana do report mais ANTIGO do par (os
+  // reports são feitos toda segunda e sexta — o de segunda cobre o fim de
+  // semana anterior). Descarta deltas com km/dia acima de KM_DIA_OUTLIER
+  // (quase sempre erro de digitação do hodômetro) e intervalos maiores que
+  // 10 dias (motorista ficou tempo demais sem reportar pra confiar a
+  // distribuição numa única semana).
+  var KM_DIA_OUTLIER = 700;
+  var KM_SEMANA_LIMITE = 167 * 7; // 1.169 km/semana — mesma meta do KM Excedido
+  var MESES_PT_FROTA = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  function getWeekStartFrota(iso) {
+    var d = new Date(iso + "T00:00:00");
+    var day = d.getDay();
+    var diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d.toISOString().slice(0, 10);
+  }
+  function weekLabelFrota(weekStart) {
+    var start = new Date(weekStart + "T00:00:00");
+    var end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    function fmt(d) { return String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0"); }
+    return fmt(start) + " - " + fmt(end);
+  }
+  function getWeekNumberOfYearFrota(weekStart) {
+    var d = new Date(weekStart + "T00:00:00");
+    d.setDate(d.getDate() + 3);
+    var yearStart = new Date(d.getFullYear(), 0, 1);
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  }
+  function computeKmPorSemanaAllFrota(reports) {
+    var byMotorista = {};
+    reports.forEach(function (r) {
+      if (!r.motorista || !r.data || !r.km) return;
+      (byMotorista[r.motorista] = byMotorista[r.motorista] || []).push(r);
+    });
+    var byMotoristaWeek = {}, outliers = [], weeksInfo = {};
+    function registerWeek(wk) {
+      if (weeksInfo[wk]) return;
+      var wkDate = new Date(wk + "T00:00:00");
+      weeksInfo[wk] = { mesKey: wkDate.getFullYear() + "-" + String(wkDate.getMonth() + 1).padStart(2, "0") };
+    }
+    Object.keys(byMotorista).forEach(function (motorista) {
+      var list = byMotorista[motorista].slice().sort(function (a, b) {
+        return a.data === b.data ? (Number(a.km) || 0) - (Number(b.km) || 0) : (a.data || "").localeCompare(b.data || "");
+      });
+      list.forEach(function (r) { registerWeek(getWeekStartFrota(r.data)); });
+      for (var i = 1; i < list.length; i++) {
+        var prev = list[i - 1], cur = list[i];
+        if (prev.placa !== cur.placa) continue;
+        var delta = (Number(cur.km) || 0) - (Number(prev.km) || 0);
+        if (delta <= 0) continue;
+        var dias = Math.max(1, (new Date(cur.data) - new Date(prev.data)) / 86400000);
+        var kmDia = delta / dias;
+        if (kmDia > KM_DIA_OUTLIER) {
+          outliers.push({ motorista: motorista, placa: cur.placa, de: prev.km, para: cur.km, dataAnterior: prev.data, data: cur.data, kmDia: Math.round(kmDia) });
+          continue;
+        }
+        if (dias > 10) continue;
+        var wkPrev = getWeekStartFrota(prev.data);
+        byMotoristaWeek[motorista] = byMotoristaWeek[motorista] || {};
+        byMotoristaWeek[motorista][wkPrev] = (byMotoristaWeek[motorista][wkPrev] || 0) + delta;
+      }
+    });
+    return { byMotoristaWeek: byMotoristaWeek, outliers: outliers, weeksInfo: weeksInfo };
+  }
+
+  // KM Excedido (pedido do Diego, 06/10/2026) — portado 1:1 do projeto
+  // original (computeKmExcedido), mas 100% client-side: todos os campos
+  // necessários (status, dataContrato, kmContrato, locadora, placa,
+  // contrato, regional, condutorNome) já estão em STATE.veiculos (import do
+  // GPO), então não precisa de nenhuma chamada nova. Mesma constante do
+  // Power BI: 167 km/dia de franquia; custo por km excedido varia por
+  // locadora (R$0,60 Movida / R$1,00 Localiza / sem custo pras demais, por
+  // falta de tabela de preço cadastrada).
+  var KM_POR_DIA_FROTA = 167;
+  function valorPorKmFrota(locadora) {
+    var l = String(locadora || "").toUpperCase();
+    if (l.indexOf("MOVIDA") !== -1) return 0.60;
+    if (l.indexOf("LOCALIZA") !== -1) return 1.00;
+    return 0;
+  }
+  function diasDeUsoFrota(dataContratoIso) {
+    if (!dataContratoIso) return 0;
+    var parts = dataContratoIso.split("-").map(Number);
+    var dataContrato = new Date(parts[0], (parts[1] || 1) - 1, parts[2] || 1);
+    var hoje = new Date();
+    var hojeSemHora = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    return Math.round((hojeSemHora - dataContrato) / 86400000);
+  }
+  function computeKmExcedidoFrota(veiculos) {
+    return veiculos
+      .filter(function (v) { return String(v.status || "").toUpperCase().trim() === "EM USO"; })
+      .map(function (v) {
+        var dias = diasDeUsoFrota(v.dataContrato);
+        var kmContratado = dias * KM_POR_DIA_FROTA;
+        var kmContrato = Number(v.kmContrato) || 0;
+        var saldoKm = kmContratado - kmContrato;
+        var kmExcedido = saldoKm < 0 ? Math.abs(saldoKm) : 0;
+        var custo = kmExcedido * valorPorKmFrota(v.locadora);
+        return {
+          locadora: v.locadora, condutor: v.condutorNome, placa: v.placa, contrato: v.contrato,
+          dataContrato: v.dataContrato, regional: v.regional,
+          kmContratado: kmContratado, kmContrato: kmContrato, saldoKm: saldoKm, kmExcedido: kmExcedido, custo: custo
+        };
+      })
+      .filter(function (r) { return r.kmExcedido > 0; })
+      .sort(function (a, b) { return b.kmExcedido - a.kmExcedido; });
+  }
+
   function renderFrotasReports(main) {
     var ui = uiState.frotasReports;
     main.innerHTML =
-      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas (dados brutos)</div></div></div>' +
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas, com alertas de hodômetro e fotos</div></div></div>' +
       frotasTabsHtml("reports") +
       '<div id="frota-reports-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
     bindFrotasTabs(main);
 
     var allReports = [];
+    var alertaMap = {};
 
     function computeFiltered() {
       return allReports.filter(function (r) {
@@ -2022,21 +2315,27 @@
       var pg = paginate(filtered, ui.page, PAGE_SIZE);
       ui.page = pg.page;
       var bodyHtml = pg.items.map(function (r) {
-        return "<tr>" +
+        var key = r.placa + "|" + r.data;
+        var alerta = alertaMap[key];
+        return '<tr class="' + alertaRowClass(alerta) + '">' +
           '<td class="mono">' + esc(fmtDateBR(r.data)) + "</td>" +
           "<td>" + esc(r.placa || "—") + "</td>" +
           "<td>" + esc(r.motorista || "—") + "</td>" +
           "<td>" + esc(r.contrato || "—") + "</td>" +
           '<td class="mono">' + (r.km ? Number(r.km).toLocaleString("pt-BR") : "—") + "</td>" +
           "<td>" + analiseBadgeHtml(r.analise) + "</td>" +
+          '<td style="display:flex;gap:4px;align-items:center;">' + fotoBtnHtml(r) + alertaBtnHtml(key, alertaMap) + "</td>" +
           "</tr>";
       }).join("");
       var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-reports-q" placeholder="Buscar por placa, motorista ou contrato…" value="' + esc(ui.q) + '"></div>';
-      var exportHeaders = ["Data", "Placa", "Motorista", "Contrato", "KM", "Observação (análise)"];
-      var exportRows = filtered.map(function (r) { return [fmtDateBR(r.data), r.placa || "", r.motorista || "", r.contrato || "", r.km || "", r.analise || ""]; });
+      var exportHeaders = ["Data", "Placa", "Motorista", "Contrato", "KM", "Observação (análise)", "Alerta"];
+      var exportRows = filtered.map(function (r) {
+        var alerta = alertaMap[r.placa + "|" + r.data];
+        return [fmtDateBR(r.data), r.placa || "", r.motorista || "", r.contrato || "", r.km || "", r.analise || "", alerta ? (alerta.tipo === "salto" ? "KM muito acima do esperado" : "Divergência de hodômetro") : ""];
+      });
       body2.innerHTML = tableShell({
         toolbar: toolbar,
-        headHtml: "<th>Data</th><th>Placa</th><th>Motorista</th><th>Contrato</th><th>KM</th><th>Observação</th>",
+        headHtml: "<th>Data</th><th>Placa</th><th>Motorista</th><th>Contrato</th><th>KM</th><th>Observação</th><th>Fotos / Alerta</th>",
         bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
         empty: "Nenhum report encontrado.",
         exportHeaders: exportHeaders,
@@ -2045,15 +2344,286 @@
       $("#frota-reports-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
       wireExportButton(body2, "Reports_Frotas", exportHeaders, exportRows);
+      bindFotoButtons(body2);
+      bindAlertaButtons(body2, alertaMap);
     }
 
-    apiFetch("/api/frotas-reports").then(function (data) {
+    loadFrotasReportsData().then(function (data) {
       allReports = data.reports || [];
+      alertaMap = buildAlertaMapFrota(computeAlertasFrota(allReports));
       draw();
     }).catch(function (err) {
       var body2 = $("#frota-reports-body");
       if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar os reports (' + esc((err && err.message) || "erro") + ").</div>";
     });
+  }
+
+  // Histórico (pedido do Diego, 06/10/2026) — portado 1:1 do projeto
+  // original (getFilteredHistorico/renderHistoricoTab): mostra TODOS os
+  // reports já enviados, ativos ou não (diferente da aba Reports, aqui não
+  // existe conceito de "contrato ativo" — cobre motoristas/veículos que já
+  // saíram da frota). Filtros de placa/motorista/período são opcionais.
+  function renderFrotasHistorico(main) {
+    var ui = uiState.frotasHistorico;
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Histórico completo de reports — inclusive veículos e motoristas que já saíram da frota</div></div></div>' +
+      frotasTabsHtml("historico") +
+      '<div id="frota-historico-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
+    bindFrotasTabs(main);
+
+    var allReports = [], veiculoInfoPorPlaca = {}, usuarioAtivoPorNome = {};
+
+    function veiculoInativo(placa) {
+      var info = veiculoInfoPorPlaca[placa];
+      return !!info && info.ativo === 0;
+    }
+    function motoristaInativo(nome) {
+      return usuarioAtivoPorNome[stripAccentsFrota(nome || "").toLowerCase().trim().replace(/\s+/g, " ")] === 0;
+    }
+    function inativoTagHtml(label) {
+      return ' <span class="pill danger" title="' + esc(label) + ' não faz mais parte da frota hoje">Inativo</span>';
+    }
+
+    function computeFiltered() {
+      var qPlaca = normalize(ui.placa), qMotorista = normalize(ui.motorista);
+      return allReports.filter(function (r) {
+        if (qPlaca && normalize(r.placa).indexOf(qPlaca) === -1) return false;
+        if (qMotorista && normalize(r.motorista).indexOf(qMotorista) === -1) return false;
+        if (ui.de && (r.data || "") < ui.de) return false;
+        if (ui.ate && (r.data || "") > ui.ate) return false;
+        return true;
+      });
+    }
+
+    function draw() {
+      var body2 = $("#frota-historico-body");
+      if (!body2) return;
+      var filtered = computeFiltered().slice().sort(function (a, b) {
+        return (b.data || "").localeCompare(a.data || "") || normalize(a.placa).localeCompare(normalize(b.placa));
+      });
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+
+      var resumoHtml = "";
+      if (filtered.length) {
+        var datas = filtered.map(function (r) { return r.data; }).sort();
+        var placasUnicas = filtered.map(function (r) { return r.placa; }).filter(Boolean).filter(function (v, i, arr) { return arr.indexOf(v) === i; });
+        var motoristasUnicos = filtered.map(function (r) { return r.motorista; }).filter(Boolean).filter(function (v, i, arr) { return arr.indexOf(v) === i; });
+        var inativosVeiculos = placasUnicas.filter(veiculoInativo).length;
+        var inativosMotoristas = motoristasUnicos.filter(motoristaInativo).length;
+        var kpis = [
+          ["Período", fmtDateBR(datas[0]) + " — " + fmtDateBR(datas[datas.length - 1]), "neutral"],
+          ["Veículos", placasUnicas.length + (inativosVeiculos ? " (" + inativosVeiculos + " inativo" + (inativosVeiculos > 1 ? "s" : "") + ")" : ""), inativosVeiculos ? "warn" : "ok"],
+          ["Motoristas", motoristasUnicos.length + (inativosMotoristas ? " (" + inativosMotoristas + " inativo" + (inativosMotoristas > 1 ? "s" : "") + ")" : ""), inativosMotoristas ? "warn" : "ok"]
+        ];
+        resumoHtml = '<div class="kpi-row" style="margin-bottom:12px;">' + kpis.map(function (k) {
+          return '<div class="kpi ' + k[2] + '"><span class="label">' + k[0] + '</span><span class="value tabular" style="font-size:16px;">' + k[1] + "</span></div>";
+        }).join("") + "</div>";
+      }
+
+      var bodyHtml = pg.items.map(function (r) {
+        return "<tr>" +
+          '<td class="mono">' + esc(fmtDateBR(r.data)) + "</td>" +
+          "<td>" + esc(r.placa || "—") + (veiculoInativo(r.placa) ? inativoTagHtml(r.placa) : "") + "</td>" +
+          "<td>" + esc(r.motorista || "—") + (motoristaInativo(r.motorista) ? inativoTagHtml(r.motorista) : "") + "</td>" +
+          "<td>" + esc(r.contrato || "—") + "</td>" +
+          '<td class="mono">' + (r.km ? Number(r.km).toLocaleString("pt-BR") : "—") + "</td>" +
+          "<td>" + analiseBadgeHtml(r.analise) + "</td>" +
+          "<td>" + fotoBtnHtml(r) + "</td>" +
+          "</tr>";
+      }).join("");
+
+      var toolbar =
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-hist-placa" placeholder="Placa…" style="width:110px;" value="' + esc(ui.placa) + '"></div>' +
+        '<input type="text" id="frota-hist-motorista" placeholder="Motorista…" class="filter" style="width:160px;" value="' + esc(ui.motorista) + '">' +
+        '<input type="date" id="frota-hist-de" class="filter" value="' + esc(ui.de) + '">' +
+        '<input type="date" id="frota-hist-ate" class="filter" value="' + esc(ui.ate) + '">' +
+        '<button type="button" class="btn ghost sm" id="frota-hist-clear">Limpar</button>';
+
+      var exportHeaders = ["Data", "Placa", "Status veículo", "Motorista", "Status motorista", "Contrato", "KM", "Observação (análise)"];
+      var exportRows = filtered.map(function (r) {
+        return [fmtDateBR(r.data), r.placa || "", veiculoInativo(r.placa) ? "Inativo" : "Ativo", r.motorista || "", motoristaInativo(r.motorista) ? "Inativo" : "Ativo", r.contrato || "", r.km || "", r.analise || ""];
+      });
+
+      body2.innerHTML = resumoHtml + tableShell({
+        toolbar: toolbar,
+        headHtml: "<th>Data</th><th>Placa</th><th>Motorista</th><th>Contrato</th><th>KM</th><th>Observação</th><th>Fotos</th>",
+        bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+        empty: "Nenhum report encontrado com esses filtros.",
+        exportHeaders: exportHeaders,
+        exportRows: exportRows
+      });
+
+      $("#frota-hist-placa").addEventListener("input", debounce(function (e) { ui.placa = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#frota-hist-motorista").addEventListener("input", debounce(function (e) { ui.motorista = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#frota-hist-de").addEventListener("change", function (e) { ui.de = e.target.value; ui.page = 1; draw(); });
+      $("#frota-hist-ate").addEventListener("change", function (e) { ui.ate = e.target.value; ui.page = 1; draw(); });
+      $("#frota-hist-clear").addEventListener("click", function () { ui.placa = ""; ui.motorista = ""; ui.de = ""; ui.ate = ""; ui.page = 1; draw(); });
+      bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(body2, "Historico_Frotas", exportHeaders, exportRows);
+      bindFotoButtons(body2);
+    }
+
+    loadFrotasReportsData().then(function (data) {
+      allReports = data.reports || [];
+      veiculoInfoPorPlaca = data.veiculoInfoPorPlaca || {};
+      usuarioAtivoPorNome = data.usuarioAtivoPorNome || {};
+      draw();
+    }).catch(function (err) {
+      var body2 = $("#frota-historico-body");
+      if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar o histórico (' + esc((err && err.message) || "erro") + ").</div>";
+    });
+  }
+
+  // KM por Semana (pedido do Diego, 06/10/2026) — ver computeKmPorSemanaAllFrota
+  // acima para a lógica. Tabela: uma linha por motorista, uma coluna por
+  // semana do mês selecionado, destaque quando a semana passa de 1.169km.
+  function renderFrotasKmSemana(main) {
+    var ui = uiState.frotasKmSemana;
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">KM rodado por motorista em cada semana (segunda a domingo)</div></div></div>' +
+      frotasTabsHtml("km-semana") +
+      '<div id="frota-kmsemana-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
+    bindFrotasTabs(main);
+
+    var weeksInfo = {}, byMotoristaWeek = {};
+
+    function draw() {
+      var body2 = $("#frota-kmsemana-body");
+      if (!body2) return;
+
+      var mesesDisponiveis = Object.keys(weeksInfo).map(function (wk) { return weeksInfo[wk].mesKey; })
+        .filter(function (v, i, arr) { return arr.indexOf(v) === i; }).sort();
+      if (!mesesDisponiveis.length) {
+        body2.innerHTML = '<div class="empty-state" style="padding:20px;">' + ICONS.inbox + "<div>Ainda não há dados suficientes (precisa de pelo menos 2 reports da mesma placa/motorista).</div></div>";
+        return;
+      }
+      if (!ui.mes || mesesDisponiveis.indexOf(ui.mes) === -1) ui.mes = mesesDisponiveis[mesesDisponiveis.length - 1];
+
+      var weeks = Object.keys(weeksInfo).filter(function (wk) { return weeksInfo[wk].mesKey === ui.mes; }).sort();
+      var qMotorista = normalize(ui.motorista);
+      var linhas = Object.keys(byMotoristaWeek)
+        .filter(function (m) { return !qMotorista || normalize(m).indexOf(qMotorista) !== -1; })
+        .map(function (motorista) {
+          var porSemana = weeks.map(function (wk) { return Math.round((byMotoristaWeek[motorista] || {})[wk] || 0); });
+          var total = porSemana.reduce(function (a, b) { return a + b; }, 0);
+          return { motorista: motorista, porSemana: porSemana, total: total };
+        })
+        .filter(function (l) { return l.total > 0; })
+        .sort(function (a, b) { return b.total - a.total; });
+
+      var headHtml = "<th>Motorista</th>" + weeks.map(function (wk) {
+        return '<th style="text-align:right;">S' + getWeekNumberOfYearFrota(wk) + '<br><span class="sub">' + weekLabelFrota(wk) + "</span></th>";
+      }).join("") + '<th style="text-align:right;">Total</th>';
+
+      var bodyHtml = linhas.map(function (l) {
+        return "<tr><td>" + esc(l.motorista) + "</td>" +
+          l.porSemana.map(function (v) {
+            return '<td class="mono' + (v > KM_SEMANA_LIMITE ? " frota-km-over" : "") + '" style="text-align:right;">' + (v > 0 ? v.toLocaleString("pt-BR") : "—") + "</td>";
+          }).join("") +
+          '<td class="mono" style="text-align:right;font-weight:700;">' + l.total.toLocaleString("pt-BR") + "</td></tr>";
+      }).join("");
+
+      var monthOptEls = mesesDisponiveis.map(function (mk) {
+        var parts = mk.split("-");
+        var label = MESES_PT_FROTA[Number(parts[1]) - 1] + "/" + parts[0];
+        return '<option value="' + mk + '"' + (ui.mes === mk ? " selected" : "") + ">" + label + "</option>";
+      }).join("");
+      var toolbar =
+        '<select class="filter" id="frota-kmsemana-mes">' + monthOptEls + "</select>" +
+        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-kmsemana-motorista" placeholder="Buscar motorista…" value="' + esc(ui.motorista) + '"></div>';
+
+      var exportHeaders = ["Motorista"].concat(weeks.map(function (wk) { return "S" + getWeekNumberOfYearFrota(wk) + " (" + weekLabelFrota(wk) + ")"; })).concat(["Total"]);
+      var exportRows = linhas.map(function (l) { return [l.motorista].concat(l.porSemana).concat([l.total]); });
+
+      body2.innerHTML = tableShell({
+        toolbar: toolbar,
+        headHtml: headHtml,
+        bodyHtml: bodyHtml, count: linhas.length, page: 1, totalPages: 1,
+        empty: "Sem km registrado no mês selecionado.",
+        exportHeaders: exportHeaders,
+        exportRows: exportRows
+      });
+      $("#frota-kmsemana-mes").addEventListener("change", function (e) { ui.mes = e.target.value; draw(); });
+      $("#frota-kmsemana-motorista").addEventListener("input", debounce(function (e) { ui.motorista = e.target.value; draw(); }, 120));
+      wireExportButton(body2, "KmSemana_Frotas", exportHeaders, exportRows);
+    }
+
+    loadFrotasReportsData().then(function (data) {
+      var computed = computeKmPorSemanaAllFrota(data.reports || []);
+      weeksInfo = computed.weeksInfo;
+      byMotoristaWeek = computed.byMotoristaWeek;
+      draw();
+    }).catch(function (err) {
+      var body2 = $("#frota-kmsemana-body");
+      if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar os dados (' + esc((err && err.message) || "erro") + ").</div>";
+    });
+  }
+
+  // KM Excedido (pedido do Diego, 06/10/2026) — 100% client-side a partir de
+  // STATE.veiculos (ver computeKmExcedidoFrota acima), sem chamada nova.
+  function renderFrotasKmExcedido(main) {
+    var ui = uiState.frotasKmExcedido;
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos em uso que já passaram da franquia de KM (167km/dia), com custo estimado</div></div></div>' +
+      frotasTabsHtml("km-excedido") +
+      '<div id="frota-kmexcedido-body"></div>';
+    bindFrotasTabs(main);
+
+    var allRows = computeKmExcedidoFrota(STATE.veiculos || []);
+
+    function draw() {
+      var body2 = $("#frota-kmexcedido-body");
+      if (!body2) return;
+      var q = normalize(ui.q);
+      var filtered = !q ? allRows : allRows.filter(function (r) { return normalize(r.condutor).indexOf(q) !== -1; });
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+
+      var totalKm = filtered.reduce(function (s, r) { return s + r.kmExcedido; }, 0);
+      var totalCusto = filtered.reduce(function (s, r) { return s + r.custo; }, 0);
+      var kpis = [
+        ["Contratos", filtered.length, "neutral"],
+        ["KM excedido (total)", totalKm.toLocaleString("pt-BR") + " km", "danger"],
+        ["Custo estimado (total)", totalCusto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }), "danger"]
+      ];
+      var kpiHtml = '<div class="kpi-row" style="margin-bottom:12px;">' + kpis.map(function (k) {
+        return '<div class="kpi ' + k[2] + '"><span class="label">' + k[0] + '</span><span class="value tabular">' + k[1] + "</span></div>";
+      }).join("") + "</div>";
+
+      var bodyHtml = pg.items.map(function (r) {
+        return "<tr>" +
+          "<td>" + esc(r.locadora || "—") + "</td>" +
+          "<td>" + esc(r.condutor || "—") + "</td>" +
+          "<td>" + esc(r.placa || "—") + "</td>" +
+          '<td class="mono">' + esc(r.contrato || "—") + "</td>" +
+          '<td class="mono">' + esc(fmtDateBR(r.dataContrato)) + "</td>" +
+          "<td>" + esc(r.regional || "—") + "</td>" +
+          '<td class="mono frota-km-over">' + r.kmExcedido.toLocaleString("pt-BR") + " km</td>" +
+          '<td class="mono frota-km-over">' + r.custo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) + "</td>" +
+          "</tr>";
+      }).join("");
+
+      var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-kmexc-q" placeholder="Buscar por condutor…" value="' + esc(ui.q) + '"></div>';
+      var exportHeaders = ["Locadora", "Condutor", "Placa", "Contrato", "Data Contrato", "Regional", "KM Excedido", "Custo"];
+      var exportRows = filtered.map(function (r) {
+        return [r.locadora || "", r.condutor || "", r.placa || "", r.contrato || "", fmtDateBR(r.dataContrato), r.regional || "", r.kmExcedido, r.custo];
+      });
+
+      body2.innerHTML = kpiHtml + tableShell({
+        toolbar: toolbar,
+        headHtml: "<th>Locadora</th><th>Condutor</th><th>Placa</th><th>Contrato</th><th>Data Contrato</th><th>Regional</th><th>KM Excedido</th><th>Custo</th>",
+        bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+        empty: q ? "Nenhum condutor encontrado para essa busca." : "Nenhum contrato em uso com km excedido no momento. 🎉",
+        exportHeaders: exportHeaders,
+        exportRows: exportRows
+      });
+      $("#frota-kmexc-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(body2, "KmExcedido_Frotas", exportHeaders, exportRows);
+    }
+
+    draw();
   }
 
   function renderVeiculosList(main) {
@@ -7352,7 +7922,14 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
-    else if (route.view === "veiculos") route.id === "reports" ? renderFrotasReports(main) : route.id ? renderVeiculoDetail(main, route.id) : renderVeiculosList(main);
+    else if (route.view === "veiculos") {
+      if (route.id === "reports") renderFrotasReports(main);
+      else if (route.id === "historico") renderFrotasHistorico(main);
+      else if (route.id === "km-semana") renderFrotasKmSemana(main);
+      else if (route.id === "km-excedido") renderFrotasKmExcedido(main);
+      else if (route.id) renderVeiculoDetail(main, route.id);
+      else renderVeiculosList(main);
+    }
     else if (route.view === "auditorias") {
       if (route.id === "lista") renderAuditoriasList(main);
       else if (route.id && route.sub === "ficha-epi" && route.extra) renderFichaEpiAssinatura(main, route.id, route.extra);
