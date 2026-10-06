@@ -2295,31 +2295,128 @@
     }
     return Math.round((fim - dataContrato) / 86400000);
   }
-  // Pedido do Diego (06/10/2026): mostrar TODOS os contratos (em uso ou já
-  // devolvidos/substituídos/inativos), não só os em uso — com uma coluna de
-  // status pra deixar claro qual é qual. Pra contrato não mais em uso, os
-  // dias de uso param na data de devolução em vez de continuar contando até
-  // hoje.
-  function computeKmExcedidoFrota(veiculos) {
-    return veiculos
-      .map(function (v) {
-        var statusNorm = String(v.status || "").toUpperCase().trim();
-        var ativo = statusNorm === "EM USO";
-        var dias = diasDeUsoFrota(v.dataContrato, ativo ? null : v.dataDevolucao);
-        var kmContratado = dias * KM_POR_DIA_FROTA;
-        var kmContrato = Number(v.kmContrato) || 0;
-        var saldoKm = kmContratado - kmContrato;
-        var kmExcedido = saldoKm < 0 ? Math.abs(saldoKm) : 0;
-        var custo = kmExcedido * valorPorKmFrota(v.locadora);
-        return {
-          status: v.status, ativo: ativo,
-          locadora: v.locadora, condutor: v.condutorNome, placa: v.placa, contrato: v.contrato,
-          dataContrato: v.dataContrato, regional: v.regional,
-          kmContratado: kmContratado, kmContrato: kmContrato, saldoKm: saldoKm, kmExcedido: kmExcedido, custo: custo
-        };
-      })
-      .filter(function (r) { return r.kmExcedido > 0; })
+  // Km excedido de CADA placa (não agrupado ainda) — pra contrato não mais
+  // em uso, os dias de uso param na data de devolução em vez de continuar
+  // contando até hoje (senão o km excedido continuaria inflando sozinho
+  // depois que o veículo já voltou pra locadora). Sem filtro de >0 aqui de
+  // propósito: o detalhe por contrato (ver computeKmExcedidoPorContratoFrota)
+  // precisa listar TODAS as placas que já passaram pelo contrato, inclusive
+  // as que não excederam.
+  function computeKmExcedidoPorVeiculoFrota(veiculos) {
+    return veiculos.map(function (v) {
+      var statusNorm = String(v.status || "").toUpperCase().trim();
+      var ativo = statusNorm === "EM USO";
+      var dias = diasDeUsoFrota(v.dataContrato, ativo ? null : v.dataDevolucao);
+      var kmContratado = dias * KM_POR_DIA_FROTA;
+      var kmContrato = Number(v.kmContrato) || 0;
+      var saldoKm = kmContratado - kmContrato;
+      var kmExcedido = saldoKm < 0 ? Math.abs(saldoKm) : 0;
+      var custo = kmExcedido * valorPorKmFrota(v.locadora);
+      return {
+        id: v.id, status: v.status, ativo: ativo,
+        locadora: v.locadora, condutor: v.condutorNome, placa: v.placa, contrato: v.contrato,
+        dataContrato: v.dataContrato, dataRetirada: v.dataRetirada, dataDevolucao: v.dataDevolucao, regional: v.regional,
+        kmContratado: kmContratado, kmContrato: kmContrato, saldoKm: saldoKm, kmExcedido: kmExcedido, custo: custo
+      };
+    });
+  }
+  // Pedido do Diego (10/2026): agrupar KM Excedido por CONTRATO, não por
+  // placa — um mesmo contrato pode passar por várias placas substituídas ao
+  // longo do tempo (mesmo princípio do "Histórico do Contrato" em
+  // renderVeiculoDetail), então uma placa isolada não é a unidade certa pra
+  // olhar km excedido. Cada linha soma o km excedido de todas as placas que
+  // já passaram pelo contrato; o status da linha é só "EM USO" (se alguma
+  // placa do contrato ainda está em uso) ou "DEVOLVIDO" (se todas já
+  // saíram) — os status detalhados de cada placa continuam visíveis no
+  // detalhe (clique na linha).
+  function computeKmExcedidoPorContratoFrota(veiculos) {
+    var porVeiculo = computeKmExcedidoPorVeiculoFrota(veiculos);
+    var porContrato = {};
+    porVeiculo.forEach(function (r) {
+      var key = (r.contrato || "").trim() || ("placa:" + r.placa);
+      (porContrato[key] = porContrato[key] || []).push(r);
+    });
+    return Object.keys(porContrato).map(function (key) {
+      var membros = porContrato[key].slice().sort(function (a, b) {
+        return (a.dataContrato || a.dataRetirada || "").localeCompare(b.dataContrato || b.dataRetirada || "");
+      });
+      var algumAtivo = membros.some(function (m) { return m.ativo; });
+      var atual = membros.filter(function (m) { return m.ativo; })[0] || membros[membros.length - 1];
+      var dataFim = "";
+      if (!algumAtivo) {
+        membros.forEach(function (m) { if ((m.dataDevolucao || "") > dataFim) dataFim = m.dataDevolucao || ""; });
+      }
+      return {
+        key: key, contrato: atual.contrato, condutor: atual.condutor, locadora: atual.locadora, regional: atual.regional,
+        dataContrato: membros[0].dataContrato || membros[0].dataRetirada, dataFim: dataFim || null,
+        ativo: algumAtivo, kmExcedido: membros.reduce(function (s, m) { return s + m.kmExcedido; }, 0),
+        custo: membros.reduce(function (s, m) { return s + m.custo; }, 0),
+        veiculos: membros
+      };
+    })
+      .filter(function (g) { return g.kmExcedido > 0; })
       .sort(function (a, b) { return b.kmExcedido - a.kmExcedido; });
+  }
+  // KM reportado por semana de UM contrato (soma todas as placas que já
+  // passaram por ele) — mesma lógica de deltas/outliers de
+  // computeKmPorSemanaAllFrota, só que sem quebrar por motorista (o
+  // detalhe do contrato quer o total semanal do contrato, não por pessoa).
+  function computeKmPorSemanaContratoFrota(reports) {
+    var byPlaca = {};
+    reports.forEach(function (r) {
+      if (!r.placa || !r.data || !r.km) return;
+      (byPlaca[r.placa] = byPlaca[r.placa] || []).push(r);
+    });
+    var porSemana = {};
+    Object.keys(byPlaca).forEach(function (placa) {
+      var list = byPlaca[placa].slice().sort(function (a, b) { return (a.data || "").localeCompare(b.data || ""); });
+      for (var i = 1; i < list.length; i++) {
+        var prev = list[i - 1], cur = list[i];
+        var delta = (Number(cur.km) || 0) - (Number(prev.km) || 0);
+        if (delta <= 0) continue;
+        var dias = Math.max(1, (new Date(cur.data) - new Date(prev.data)) / 86400000);
+        if (delta / dias > KM_DIA_OUTLIER || dias > 10) continue;
+        var wk = getWeekStartFrota(prev.data);
+        porSemana[wk] = (porSemana[wk] || 0) + delta;
+      }
+    });
+    return Object.keys(porSemana).sort().reverse().map(function (wk) {
+      return { semana: wk, km: Math.round(porSemana[wk]) };
+    });
+  }
+  function openKmExcedidoDetalheModal(grupo, allReports) {
+    var reportsContrato = allReports.filter(function (r) { return (r.contrato || "").trim() === (grupo.contrato || "").trim(); });
+    var porSemana = computeKmPorSemanaContratoFrota(reportsContrato);
+    openModal(
+      '<div class="panel" style="width:min(720px, 100%);max-height:85vh;overflow-y:auto;padding:20px;box-sizing:border-box;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+      '<div><h2 style="margin:0 0 4px;">Contrato ' + esc(grupo.contrato || "—") + "</h2>" +
+      '<div class="sub">' + esc(grupo.condutor || "—") + " · " + esc(grupo.locadora || "—") + (grupo.regional ? " · " + esc(grupo.regional) : "") + "</div></div>" +
+      '<button type="button" class="btn ghost sm" id="frota-kmexc-detalhe-close">' + ICONS.close + "</button></div>" +
+      '<div class="kpi-row" style="margin:16px 0;">' +
+      '<div class="kpi ' + (grupo.ativo ? "ok" : "danger") + '"><span class="label">Status</span><span class="value">' + (grupo.ativo ? "Em uso" : "Devolvido") + "</span></div>" +
+      '<div class="kpi danger"><span class="label">KM excedido (total)</span><span class="value tabular">' + grupo.kmExcedido.toLocaleString("pt-BR") + " km</span></div>" +
+      '<div class="kpi danger"><span class="label">Custo estimado</span><span class="value tabular">' + grupo.custo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) + "</span></div>" +
+      "</div>" +
+      '<h3 style="margin:0 0 8px;">Veículos do contrato (' + grupo.veiculos.length + ")</h3>" +
+      '<div class="table-scroll"><table class="data"><thead><tr><th>Placa</th><th>Condutor</th><th>Período</th><th>Status</th><th>KM excedido</th></tr></thead><tbody>' +
+      grupo.veiculos.map(function (vv) {
+        var periodo = (vv.dataRetirada ? fmtDateBR(vv.dataRetirada) : fmtDateBR(vv.dataContrato)) + " – " + (vv.dataDevolucao ? fmtDateBR(vv.dataDevolucao) : "atual");
+        return "<tr><td>" + esc(vv.placa || "—") + "</td><td>" + esc(vv.condutor || "—") + "</td><td>" + periodo + "</td>" +
+          "<td>" + statusPillVeiculo(vv.status) + "</td>" +
+          '<td class="mono">' + vv.kmExcedido.toLocaleString("pt-BR") + " km</td></tr>";
+      }).join("") + "</tbody></table></div>" +
+      '<h3 style="margin:20px 0 8px;">KM reportado por semana</h3>' +
+      (porSemana.length
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Semana</th><th>KM</th></tr></thead><tbody>' +
+          porSemana.map(function (s) {
+            return "<tr><td>S" + getWeekNumberOfYearFrota(s.semana) + " · " + weekLabelFrota(s.semana) + '</td><td class="mono">' + s.km.toLocaleString("pt-BR") + " km</td></tr>";
+          }).join("") + "</tbody></table></div>"
+        : '<div class="empty-state" style="padding:16px;">' + ICONS.inbox + "<div>Sem reports suficientes pra calcular km por semana desse contrato.</div></div>") +
+      "</div>"
+    );
+    var btn = $("#frota-kmexc-detalhe-close");
+    if (btn) btn.addEventListener("click", closeModal);
   }
 
   // Contratos "ativos" pro dashboard de Reports = veículos EM USO em
@@ -2738,17 +2835,28 @@
     });
   }
 
-  // KM Excedido (pedido do Diego, 06/10/2026) — 100% client-side a partir de
-  // STATE.veiculos (ver computeKmExcedidoFrota acima), sem chamada nova.
+  // KM Excedido (pedido do Diego, 06/10/2026, reagrupado por contrato em
+  // 10/2026) — a lista de contratos vem 100% client-side de STATE.veiculos
+  // (ver computeKmExcedidoPorContratoFrota acima); os reports só são
+  // carregados pra alimentar o detalhe (clique na linha), que mostra todas
+  // as placas substituídas do contrato + o km reportado por semana.
   function renderFrotasKmExcedido(main) {
     var ui = uiState.frotasKmExcedido;
     main.innerHTML =
-      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos (ativos ou já devolvidos) que passaram da franquia de KM (167km/dia), com custo estimado</div></div></div>' +
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos (em uso ou já devolvidos) que passaram da franquia de KM (167km/dia) — clique numa linha pra ver as placas substituídas e o km reportado por semana</div></div></div>' +
       frotasTabsHtml("km-excedido") +
       '<div id="frota-kmexcedido-body"></div>';
     bindFrotasTabs(main);
 
-    var allRows = computeKmExcedidoFrota(STATE.veiculos || []);
+    var allRows = computeKmExcedidoPorContratoFrota(STATE.veiculos || []);
+    var gruposPorKey = {};
+    allRows.forEach(function (g) { gruposPorKey[g.key] = g; });
+
+    function abrirDetalhe(grupo) {
+      loadFrotasReportsData().then(function (data) {
+        openKmExcedidoDetalheModal(grupo, data.reports || []);
+      });
+    }
 
     function draw() {
       var body2 = $("#frota-kmexcedido-body");
@@ -2770,28 +2878,27 @@
       }).join("") + "</div>";
 
       var bodyHtml = pg.items.map(function (r) {
-        return "<tr>" +
-          "<td>" + statusPillVeiculo(r.status) + "</td>" +
-          "<td>" + esc(r.locadora || "—") + "</td>" +
+        return '<tr data-km-contrato="' + esc(r.key) + '" style="cursor:pointer;">' +
+          "<td>" + (r.ativo ? '<span class="pill ok">Em uso</span>' : '<span class="pill danger">Devolvido</span>') + "</td>" +
           "<td>" + esc(r.condutor || "—") + "</td>" +
-          "<td>" + esc(r.placa || "—") + "</td>" +
           '<td class="mono">' + esc(r.contrato || "—") + "</td>" +
           '<td class="mono">' + esc(fmtDateBR(r.dataContrato)) + "</td>" +
+          '<td class="mono">' + esc(fmtDateBR(r.dataFim)) + "</td>" +
           "<td>" + esc(r.regional || "—") + "</td>" +
+          "<td>" + esc(r.locadora || "—") + "</td>" +
           '<td class="mono frota-km-over">' + r.kmExcedido.toLocaleString("pt-BR") + " km</td>" +
-          '<td class="mono frota-km-over">' + r.custo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) + "</td>" +
           "</tr>";
       }).join("");
 
       var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-kmexc-q" placeholder="Buscar por condutor…" value="' + esc(ui.q) + '"></div>';
-      var exportHeaders = ["Status", "Locadora", "Condutor", "Placa", "Contrato", "Data Contrato", "Regional", "KM Excedido", "Custo"];
+      var exportHeaders = ["Status", "Condutor", "Contrato", "Data Contrato", "Fim do Contrato", "Regional", "Locadora", "KM Excedido"];
       var exportRows = filtered.map(function (r) {
-        return [r.status || "", r.locadora || "", r.condutor || "", r.placa || "", r.contrato || "", fmtDateBR(r.dataContrato), r.regional || "", r.kmExcedido, r.custo];
+        return [r.ativo ? "Em uso" : "Devolvido", r.condutor || "", r.contrato || "", fmtDateBR(r.dataContrato), fmtDateBR(r.dataFim), r.regional || "", r.locadora || "", r.kmExcedido];
       });
 
       body2.innerHTML = kpiHtml + tableShell({
         toolbar: toolbar,
-        headHtml: "<th>Status</th><th>Locadora</th><th>Condutor</th><th>Placa</th><th>Contrato</th><th>Data Contrato</th><th>Regional</th><th>KM Excedido</th><th>Custo</th>",
+        headHtml: "<th>Status</th><th>Condutor</th><th>Contrato</th><th>Data Contrato</th><th>Fim do Contrato</th><th>Regional</th><th>Locadora</th><th>KM Excedido</th>",
         bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
         empty: q ? "Nenhum condutor encontrado para essa busca." : "Nenhum contrato com km excedido no momento. 🎉",
         exportHeaders: exportHeaders,
@@ -2800,6 +2907,12 @@
       $("#frota-kmexc-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; withFocusPreserved(draw); }, 120));
       bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
       wireExportButton(body2, "KmExcedido_Frotas", exportHeaders, exportRows);
+      $all("tbody tr[data-km-contrato]", body2).forEach(function (tr) {
+        tr.addEventListener("click", function () {
+          var grupo = gruposPorKey[tr.getAttribute("data-km-contrato")];
+          if (grupo) abrirDetalhe(grupo);
+        });
+      });
     }
 
     draw();
