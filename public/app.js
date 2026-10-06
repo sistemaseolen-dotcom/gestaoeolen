@@ -2018,6 +2018,54 @@
   function renderVeiculoDetail(main, id) {
     var v = byId(STATE.veiculos, id);
     if (!v) { navigate("#/veiculos"); return; }
+
+    // Histórico do Contrato (pedido do Diego, 06/10/2026): um mesmo contrato
+    // de locação pode passar por mais de uma placa ao longo do tempo (troca
+    // de veículo mantendo o número de contrato) — cada placa é um registro
+    // próprio em `veiculos` (um por legacy_id do GPO). Aqui juntamos todas
+    // as placas que já passaram por este `contrato` numa única linha do
+    // tempo de leituras de KM, com o total percorrido somando a distância
+    // de cada placa (ponta a ponta das leituras + km retirada/atual/
+    // devolução de cada uma — não é só o campo kmContrato isolado do GPO).
+    var contratoKey = (v.contrato || "").trim();
+    var veiculosContrato = (contratoKey
+      ? STATE.veiculos.filter(function (x) { return (x.contrato || "").trim() === contratoKey; })
+      : [v]).slice().sort(function (a, b) {
+        return (a.dataContrato || a.dataRetirada || "").localeCompare(b.dataContrato || b.dataRetirada || "");
+      });
+    var multiPlaca = veiculosContrato.length > 1;
+
+    function numOrNull(n) {
+      var x = Number(n);
+      return Number.isFinite(x) ? x : null;
+    }
+    function veiculoKmPercorrido(vv) {
+      var inicio = [], fim = [];
+      (vv.kmLancamentos || []).forEach(function (l) {
+        var k = numOrNull(l.km);
+        if (k !== null) { inicio.push(k); fim.push(k); }
+      });
+      var retirada = numOrNull(vv.kmRetirada);
+      if (retirada !== null) inicio.push(retirada);
+      var devolucao = numOrNull(vv.kmDevolucao), atual = numOrNull(vv.kmAtual);
+      if (devolucao !== null) fim.push(devolucao);
+      if (atual !== null) fim.push(atual);
+      if (!inicio.length || !fim.length) return 0;
+      var min = Math.min.apply(null, inicio), max = Math.max.apply(null, fim);
+      return max > min ? max - min : 0;
+    }
+    var totalKmContrato = veiculosContrato.reduce(function (sum, vv) { return sum + veiculoKmPercorrido(vv); }, 0);
+
+    var lancamentosContrato = [];
+    veiculosContrato.forEach(function (vv) {
+      (vv.kmLancamentos || []).forEach(function (l) {
+        lancamentosContrato.push({ veiculoId: vv.id, placa: vv.placa, data: l.data, km: l.km, responsavelNome: l.responsavelNome, lancId: l.id });
+      });
+    });
+    lancamentosContrato.sort(function (a, b) {
+      return (a.data || "").localeCompare(b.data || "") || ((numOrNull(a.km) || 0) - (numOrNull(b.km) || 0));
+    });
+
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Gestão de Frotas</button><h1 style="margin-top:6px;">' + esc(v.placa || v.contrato || ("Veículo " + v.id)) + "</h1>" +
       (v.condutorNome ? '<div class="destaque-secundario">' + esc(v.condutorNome) + "</div>" : "") +
@@ -2044,11 +2092,29 @@
       detailItem("KM contrato", v.kmContrato, "km_contrato") + detailItem("KM revisão realizada", v.kmRevisaoRealizada, "km_revisao_realizada") +
       detailItem("Próxima revisão (KM)", v.proximaRevisaoKm, "proxima_revisao_km") +
       "</div></div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Histórico de Kilometragem</h3>' + (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") + '</div><div class="panel-body">' +
-      ((v.kmLancamentos && v.kmLancamentos.length) ? '<div class="table-scroll"><table class="data"><thead><tr><th>Data</th><th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
-        v.kmLancamentos.map(function (l) {
-          return '<tr data-km-lanc="' + l.id + '"><td class="mono">' + esc(fmtDateBR(l.data)) + '</td><td class="mono">' + esc(String(l.km)) + '</td><td>' + esc(l.responsavelNome || "—") + '</td><td class="row-actions">' +
-            (canDo("veiculos", "editar") ? '<button class="btn ghost sm" title="Remover" data-remove-km-lanc="' + l.id + '">' + ICONS.trash + "</button>" : "") +
+      (multiPlaca ? '<div class="panel"><div class="panel-head"><h3>Placas do Contrato (' + veiculosContrato.length + ')</h3></div><div class="panel-body">' +
+        '<div class="table-scroll"><table class="data"><thead><tr><th>Placa</th><th>Condutor</th><th>Período</th><th>Status</th><th>KM percorrido</th></tr></thead><tbody>' +
+        veiculosContrato.map(function (vv) {
+          var isCurrent = vv.id === v.id;
+          var periodo = (vv.dataRetirada ? fmtDateBR(vv.dataRetirada) : "—") + " – " + (vv.dataDevolucao ? fmtDateBR(vv.dataDevolucao) : "atual");
+          return "<tr>" +
+            "<td>" + (isCurrent ? "<strong>" + esc(vv.placa || "—") + '</strong> <span class="hint">(esta)</span>' : '<a href="#/veiculos/' + vv.id + '">' + esc(vv.placa || "—") + "</a>") + "</td>" +
+            "<td>" + esc(vv.condutorNome || "—") + "</td>" +
+            "<td>" + periodo + "</td>" +
+            "<td>" + statusPillVeiculo(vv.status) + "</td>" +
+            '<td class="mono">' + veiculoKmPercorrido(vv).toLocaleString("pt-BR") + " km</td></tr>";
+        }).join("") +
+        "</tbody></table></div></div></div>" : "") +
+      '<div class="panel"><div class="panel-head"><h3>' + (multiPlaca ? "Histórico de Kilometragem do Contrato" : "Histórico de Kilometragem") + '</h3>' +
+      '<span class="tag" style="margin-left:8px;">Total percorrido: ' + totalKmContrato.toLocaleString("pt-BR") + ' km</span>' +
+      (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") + '</div><div class="panel-body">' +
+      (lancamentosContrato.length ? '<div class="table-scroll"><table class="data"><thead><tr><th>Data</th>' + (multiPlaca ? "<th>Placa</th>" : "") + '<th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
+        lancamentosContrato.map(function (l) {
+          var isCurrent = l.veiculoId === v.id;
+          return '<tr><td class="mono">' + esc(fmtDateBR(l.data)) + '</td>' +
+            (multiPlaca ? "<td>" + (isCurrent ? esc(l.placa || "—") : '<a href="#/veiculos/' + l.veiculoId + '">' + esc(l.placa || "—") + "</a>") + "</td>" : "") +
+            '<td class="mono">' + esc(String(l.km)) + '</td><td>' + esc(l.responsavelNome || "—") + '</td><td class="row-actions">' +
+            (canDo("veiculos", "editar") && isCurrent ? '<button class="btn ghost sm" title="Remover" data-remove-km-lanc="' + l.lancId + '">' + ICONS.trash + "</button>" : "") +
             "</td></tr>";
         }).join("") + "</tbody></table></div>" : '<div class="empty-state" style="padding:20px;">Nenhuma leitura de KM lançada ainda.</div>') +
       "</div></div>" +
