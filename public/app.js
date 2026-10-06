@@ -2473,7 +2473,10 @@
         exportHeaders: exportHeaders,
         exportRows: exportRows
       });
-      $("#frota-reports-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; drawDash(); drawBody(); }, 120));
+      $("#frota-reports-q").addEventListener("input", debounce(function (e) {
+        ui.q = e.target.value; ui.page = 1;
+        withFocusPreserved(function () { drawDash(); drawBody(); });
+      }, 120));
       bindPagination(body2, ui, PAGE_SIZE, filtered, drawBody);
       wireExportButton(body2, "Reports_Frotas", exportHeaders, exportRows);
       bindFotoButtons(body2);
@@ -2610,7 +2613,7 @@
 
       var toolbar =
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-hist-placa" placeholder="Placa…" style="width:110px;" value="' + esc(ui.placa) + '"></div>' +
-        '<input type="text" id="frota-hist-motorista" placeholder="Motorista…" class="filter" style="width:160px;" value="' + esc(ui.motorista) + '">' +
+        '<input type="text" id="frota-hist-motorista" placeholder="Motorista…" class="filter" style="width:220px;" value="' + esc(ui.motorista) + '">' +
         '<input type="date" id="frota-hist-de" class="filter" value="' + esc(ui.de) + '">' +
         '<input type="date" id="frota-hist-ate" class="filter" value="' + esc(ui.ate) + '">' +
         '<button type="button" class="btn ghost sm" id="frota-hist-clear">Limpar</button>';
@@ -2629,8 +2632,8 @@
         exportRows: exportRows
       });
 
-      $("#frota-hist-placa").addEventListener("input", debounce(function (e) { ui.placa = e.target.value; ui.page = 1; draw(); }, 120));
-      $("#frota-hist-motorista").addEventListener("input", debounce(function (e) { ui.motorista = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#frota-hist-placa").addEventListener("input", debounce(function (e) { ui.placa = e.target.value; ui.page = 1; withFocusPreserved(draw); }, 120));
+      $("#frota-hist-motorista").addEventListener("input", debounce(function (e) { ui.motorista = e.target.value; ui.page = 1; withFocusPreserved(draw); }, 120));
       $("#frota-hist-de").addEventListener("change", function (e) { ui.de = e.target.value; ui.page = 1; draw(); });
       $("#frota-hist-ate").addEventListener("change", function (e) { ui.ate = e.target.value; ui.page = 1; draw(); });
       $("#frota-hist-clear").addEventListener("click", function () { ui.placa = ""; ui.motorista = ""; ui.de = ""; ui.ate = ""; ui.page = 1; draw(); });
@@ -2720,7 +2723,7 @@
         exportRows: exportRows
       });
       $("#frota-kmsemana-mes").addEventListener("change", function (e) { ui.mes = e.target.value; draw(); });
-      $("#frota-kmsemana-motorista").addEventListener("input", debounce(function (e) { ui.motorista = e.target.value; draw(); }, 120));
+      $("#frota-kmsemana-motorista").addEventListener("input", debounce(function (e) { ui.motorista = e.target.value; withFocusPreserved(draw); }, 120));
       wireExportButton(body2, "KmSemana_Frotas", exportHeaders, exportRows);
     }
 
@@ -2794,7 +2797,7 @@
         exportHeaders: exportHeaders,
         exportRows: exportRows
       });
-      $("#frota-kmexc-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      $("#frota-kmexc-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; withFocusPreserved(draw); }, 120));
       bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
       wireExportButton(body2, "KmExcedido_Frotas", exportHeaders, exportRows);
     }
