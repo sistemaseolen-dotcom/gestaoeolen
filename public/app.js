@@ -2069,7 +2069,8 @@
     main.innerHTML =
       '<div class="topbar"><div><button class="link-btn" id="back-btn">← Gestão de Frotas</button><h1 style="margin-top:6px;">' + esc(v.placa || v.contrato || ("Veículo " + v.id)) + "</h1>" +
       (v.condutorNome ? '<div class="destaque-secundario">' + esc(v.condutorNome) + "</div>" : "") +
-      '<div class="sub">' + esc(v.locadora || "—") + (v.contrato ? " · Contrato " + esc(v.contrato) : "") + " · " + statusPillVeiculo(v.status) + "</div>" +
+      '<div class="sub">' + esc(v.locadora || "—") + (v.contrato ? " · Contrato " + esc(v.contrato) : "") + " · " + statusPillVeiculo(v.status) +
+      (totalKmContrato ? ' <span class="tag">' + totalKmContrato.toLocaleString("pt-BR") + " km percorridos</span>" : "") + "</div>" +
       '<div class="header-field-notes">' + fieldNoteHtml("placa", "Placa") + fieldNoteHtml("status", "Status") + fieldNoteHtml("condutor_nome", "Condutor") + "</div>" +
       "</div>" +
       '<div style="display:flex;gap:8px;">' +
@@ -2092,7 +2093,8 @@
       detailItem("KM contrato", v.kmContrato, "km_contrato") + detailItem("KM revisão realizada", v.kmRevisaoRealizada, "km_revisao_realizada") +
       detailItem("Próxima revisão (KM)", v.proximaRevisaoKm, "proxima_revisao_km") +
       "</div></div></div>" +
-      (multiPlaca ? '<div class="panel"><div class="panel-head"><h3>Placas do Contrato (' + veiculosContrato.length + ')</h3></div><div class="panel-body">' +
+      (multiPlaca ? '<div class="panel"><div class="panel-head"><h3>Placas do Contrato (' + veiculosContrato.length + ')</h3>' +
+        '<span class="tag">Total percorrido: ' + totalKmContrato.toLocaleString("pt-BR") + ' km</span></div><div class="panel-body">' +
         '<div class="table-scroll"><table class="data"><thead><tr><th>Placa</th><th>Condutor</th><th>Período</th><th>Status</th><th>KM percorrido</th></tr></thead><tbody>' +
         veiculosContrato.map(function (vv) {
           var isCurrent = vv.id === v.id;
@@ -2106,7 +2108,6 @@
         }).join("") +
         "</tbody></table></div></div></div>" : "") +
       '<div class="panel"><div class="panel-head"><h3>' + (multiPlaca ? "Histórico de Kilometragem do Contrato" : "Histórico de Kilometragem") + '</h3>' +
-      '<span class="tag" style="margin-left:8px;">Total percorrido: ' + totalKmContrato.toLocaleString("pt-BR") + ' km</span>' +
       (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") + '</div><div class="panel-body">' +
       (lancamentosContrato.length ? '<div class="table-scroll"><table class="data"><thead><tr><th>Data</th>' + (multiPlaca ? "<th>Placa</th>" : "") + '<th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
         lancamentosContrato.map(function (l) {
