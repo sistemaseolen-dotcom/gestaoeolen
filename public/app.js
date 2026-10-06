@@ -2354,7 +2354,8 @@
   function renderFrotasReports(main) {
     var ui = uiState.frotasReports;
     main.innerHTML =
-      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas, com alertas de hodômetro e fotos</div></div></div>' +
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas, com alertas de hodômetro e fotos</div></div>' +
+      '<button type="button" class="btn sm" id="frota-reports-refresh">' + ICONS.sync + "Atualizar</button></div>" +
       frotasTabsHtml("reports") +
       '<div id="frota-reports-dash"></div>' +
       '<div id="frota-reports-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
@@ -2482,16 +2483,36 @@
       if ($("#frota-day-none", body2)) $("#frota-day-none", body2).addEventListener("click", function () { ui.dates = []; ui.page = 1; drawDash(); drawBody(); });
     }
 
-    loadFrotasReportsData().then(function (data) {
-      allReports = data.reports || [];
-      allAlertas = computeAlertasFrota(allReports);
-      alertaMap = buildAlertaMapFrota(allAlertas);
-      drawDash();
-      drawBody();
-    }).catch(function (err) {
-      var body2 = $("#frota-reports-body");
-      if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar os reports (' + esc((err && err.message) || "erro") + ").</div>";
-    });
+    // Carrega (ou recarrega, pedido do Diego, 06/10/2026) os dados da tela:
+    // reports (/api/frotas-reports) e contratos ativos (STATE.veiculos, via
+    // refreshState — os reports já têm cache próprio em
+    // loadFrotasReportsData, mas o status dos contratos vem do /api/state
+    // geral). `force` ignora o cache de reports e busca tudo de novo.
+    function carregarDadosReports(force) {
+      var btn = $("#frota-reports-refresh");
+      if (btn) { btn.disabled = true; btn.innerHTML = ICONS.sync + "Atualizando…"; }
+      return Promise.all([refreshState(), loadFrotasReportsData(!!force)])
+        .then(function (res) {
+          contratosAtivos = frotaContratosAtivos();
+          allReports = res[1].reports || [];
+          allAlertas = computeAlertasFrota(allReports);
+          alertaMap = buildAlertaMapFrota(allAlertas);
+          drawDash();
+          drawBody();
+        })
+        .catch(function (err) {
+          var body2 = $("#frota-reports-body");
+          if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar os reports (' + esc((err && err.message) || "erro") + ").</div>";
+        })
+        .finally(function () {
+          var btn2 = $("#frota-reports-refresh");
+          if (btn2) { btn2.disabled = false; btn2.innerHTML = ICONS.sync + "Atualizar"; }
+        });
+    }
+    var refreshBtn = $("#frota-reports-refresh");
+    if (refreshBtn) refreshBtn.addEventListener("click", function () { carregarDadosReports(true); });
+
+    carregarDadosReports(false);
   }
 
   // Histórico (pedido do Diego, 06/10/2026) — portado 1:1 do projeto
