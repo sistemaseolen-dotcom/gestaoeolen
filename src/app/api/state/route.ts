@@ -45,7 +45,7 @@ export async function GET() {
   // página, mesmo padrão já usado acima para Auditorias.
   const podeAcesso = canView(gate.user, "acesso");
 
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
     fetchAllRows(admin, "pessoas"),
     fetchAllRows(admin, "empresas"),
     fetchAllRows(admin, "treinamentos"),
@@ -55,6 +55,7 @@ export async function GET() {
     fetchAllRows(admin, "listas_opcoes"),
     fetchAllRows(admin, "patrimonios"),
     fetchAllRows(admin, "veiculos"),
+    fetchAllRows(admin, "veiculo_km_lancamentos"),
     podeAuditorias
       ? admin
           .from("auditorias")
@@ -66,7 +67,7 @@ export async function GET() {
     podeAcesso ? fetchAllRows(admin, "acesso_membros") : Promise.resolve({ data: [] as any[], error: null as any }),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -91,6 +92,20 @@ export async function GET() {
     ...e,
     membros: membrosPorEquipe.get(e.id) || [],
     calibracoes: calibracoesPorEquipe.get(e.id) || [],
+  }));
+
+  // Histórico de Kilometragem (pedido do Diego, 06/10/2026) — mesmo padrão
+  // de equipeCalibracoes acima: agrupa por veiculo_id e embute em cada
+  // veículo, pra não precisar de uma chamada à parte por veículo.
+  const kmLancamentosPorVeiculo = new Map<number, any[]>();
+  for (const l of veiculoKmLancamentos.data || []) {
+    const list = kmLancamentosPorVeiculo.get(l.veiculo_id) || [];
+    list.push(l);
+    kmLancamentosPorVeiculo.set(l.veiculo_id, list);
+  }
+  const veiculosComKmLancamentos = (veiculos.data || []).map((v) => ({
+    ...v,
+    kmLancamentos: kmLancamentosPorVeiculo.get(v.id) || [],
   }));
 
   const listas: Record<string, string[]> = { cargo: [], tipoPessoa: [], statusPessoa: [], projeto: [] };
@@ -119,7 +134,7 @@ export async function GET() {
     treinamentos: treinamentos.data,
     equipes: equipesComMembros,
     patrimonios: patrimonios.data,
-    veiculos: veiculos.data,
+    veiculos: veiculosComKmLancamentos,
     auditorias: auditorias.data,
     listas,
     configuracoes: config,

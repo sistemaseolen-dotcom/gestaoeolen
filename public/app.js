@@ -879,7 +879,20 @@
       kmVeiculo: row.km_veiculo, kmContrato: row.km_contrato, kmRevisaoRealizada: row.km_revisao_realizada,
       proximaRevisaoKm: row.proxima_revisao_km, observacao: row.observacao, projeto: row.projeto,
       regional: row.regional, coordenador: row.coordenador, dataContrato: row.data_contrato,
-      dataRetirada: row.data_retirada, dataDevolucao: row.data_devolucao, origem: row.origem
+      dataRetirada: row.data_retirada, dataDevolucao: row.data_devolucao, origem: row.origem,
+      kmLancamentos: (row.kmLancamentos || []).map(mapKmLancamentoFromApi).sort(function (a, b) { return (b.data || "").localeCompare(a.data || ""); })
+    };
+  }
+  // "Histórico de Kilometragem" (pedido do Diego, 06/10/2026) — leituras
+  // periódicas de KM por veículo, igual à tela "Alterar Veículo" do GPO.
+  // Não confundir com veiculos.kmContrato (o total somado do CONTRATO, que
+  // continua valendo entre trocas de placa e não é recalculado a partir
+  // daqui).
+  function mapKmLancamentoFromApi(row) {
+    if (!row) return row;
+    return {
+      id: row.id, veiculoId: row.veiculo_id, legacyId: row.legacy_id,
+      data: row.data_lancamento, km: row.km, responsavelNome: row.responsavel_nome, origem: row.origem
     };
   }
   function mapTreinamentoFromApi(row) {
@@ -1973,6 +1986,14 @@
       detailItem("KM contrato", v.kmContrato, "km_contrato") + detailItem("KM revisão realizada", v.kmRevisaoRealizada, "km_revisao_realizada") +
       detailItem("Próxima revisão (KM)", v.proximaRevisaoKm, "proxima_revisao_km") +
       "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Histórico de Kilometragem</h3>' + (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") + '</div><div class="panel-body">' +
+      ((v.kmLancamentos && v.kmLancamentos.length) ? '<div class="table-scroll"><table class="data"><thead><tr><th>Data</th><th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
+        v.kmLancamentos.map(function (l) {
+          return '<tr data-km-lanc="' + l.id + '"><td class="mono">' + esc(fmtDateBR(l.data)) + '</td><td class="mono">' + esc(String(l.km)) + '</td><td>' + esc(l.responsavelNome || "—") + '</td><td class="row-actions">' +
+            (canDo("veiculos", "editar") ? '<button class="btn ghost sm" title="Remover" data-remove-km-lanc="' + l.id + '">' + ICONS.trash + "</button>" : "") +
+            "</td></tr>";
+        }).join("") + "</tbody></table></div>" : '<div class="empty-state" style="padding:20px;">Nenhuma leitura de KM lançada ainda.</div>') +
+      "</div></div>" +
       (v.observacao ? '<div class="panel"><div class="panel-head"><h3>Observação</h3></div><div class="panel-body pad">' + esc(v.observacao) + "</div></div>" : "") +
       historyPanelHtml("veiculo", v.id);
     loadHistoryPanel("veiculo", v.id);
@@ -1980,6 +2001,60 @@
     $("#back-btn").addEventListener("click", function () { navigate("#/veiculos"); });
     if ($("#btn-edit-veiculo")) $("#btn-edit-veiculo").addEventListener("click", function () { openVeiculoForm(v); });
     if ($("#btn-del-veiculo")) $("#btn-del-veiculo").addEventListener("click", function () { confirmDelete("veiculo", v.id, v.placa || v.contrato || ("Veículo " + v.id), { after: function () { navigate("#/veiculos"); } }); });
+    if ($("#btn-lancar-km")) $("#btn-lancar-km").addEventListener("click", function () { openLancarKm(v); });
+    $all("[data-remove-km-lanc]", main).forEach(function (btn) {
+      btn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        if (!canDo("veiculos", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+        var lancId = Number(btn.getAttribute("data-remove-km-lanc"));
+        var l = byId(v.kmLancamentos, lancId);
+        if (!l) return;
+        confirmAction("Remover leitura de KM?", "Tem certeza que deseja remover a leitura de " + fmtDateBR(l.data) + " (" + l.km + " km)? Esta ação não pode ser desfeita.", "Remover", function (closeModal) {
+          apiFetch("/api/veiculos/" + v.id + "/km-lancamentos/" + lancId, { method: "DELETE" })
+            .then(function () {
+              v.kmLancamentos = v.kmLancamentos.filter(function (x) { return x.id !== lancId; });
+              closeModal();
+              render();
+            })
+            .catch(function (err) { closeModal(); handleApiError(err); });
+        });
+      });
+    });
+  }
+
+  function openLancarKm(v) {
+    var hoje = todaySP ? todaySP() : new Date().toISOString().slice(0, 10);
+    var html =
+      '<div class="modal-box"><h3>Lançar Kilometragem</h3><p>' + esc(v.placa || v.contrato || "Veículo " + v.id) + '</p>' +
+      '<form id="km-lanc-form" class="field-grid one">' +
+      '<div class="field"><label>Data *</label><input type="date" name="data" value="' + esc(hoje) + '" required></div>' +
+      '<div class="field"><label>KM *</label><input type="number" name="km" step="1" min="0" required></div>' +
+      '<div class="field"><label>Responsável</label><input type="text" name="responsavelNome" placeholder="Nome de quem fez a leitura"></div>' +
+      '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="submit" class="btn primary">Lançar</button></div>' +
+      "</form></div>";
+    openModal(html);
+    $("#km-lanc-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      if (!canDo("veiculos", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(ev.target);
+      var body = {
+        data: (fd.get("data") || "").toString().trim(),
+        km: (fd.get("km") || "").toString().trim(),
+        responsavelNome: (fd.get("responsavelNome") || "").toString().trim()
+      };
+      apiFetch("/api/veiculos/" + v.id + "/km-lancamentos", { method: "POST", body: body })
+        .then(function (data) {
+          var rec = mapKmLancamentoFromApi(data);
+          v.kmLancamentos = v.kmLancamentos || [];
+          v.kmLancamentos.push(rec);
+          v.kmLancamentos.sort(function (a, b) { return (b.data || "").localeCompare(a.data || ""); });
+          closeModal();
+          render();
+          toast("Kilometragem lançada.", "success");
+        })
+        .catch(handleApiError);
+    });
+    $("#modal-cancel").addEventListener("click", closeModal);
   }
 
   // Condutor é opcionalmente vinculado a uma pessoa já cadastrada (mesmo
