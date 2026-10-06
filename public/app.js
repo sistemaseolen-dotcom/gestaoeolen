@@ -137,7 +137,7 @@
     frotasReports: { q: "", page: 1, dates: [], onlyAlert: false },
     frotasHistorico: { placa: "", motorista: "", de: "", ate: "", page: 1 },
     frotasKmSemana: { mes: "", motorista: "" },
-    frotasKmExcedido: { q: "", page: 1 },
+    frotasKmExcedido: { q: "", status: "", page: 1 },
     auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
     acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
   };
@@ -2877,7 +2877,9 @@
       var body2 = $("#frota-kmexcedido-body");
       if (!body2) return;
       var q = normalize(ui.q);
-      var filtered = !q ? allRows : allRows.filter(function (r) { return normalize(r.condutor).indexOf(q) !== -1; });
+      var filtered = allRows
+        .filter(function (r) { return !q || normalize(r.condutor).indexOf(q) !== -1; })
+        .filter(function (r) { return !ui.status || (ui.status === "ativo" ? r.ativo : !r.ativo); });
       var pg = paginate(filtered, ui.page, PAGE_SIZE);
       ui.page = pg.page;
 
@@ -2905,7 +2907,12 @@
           "</tr>";
       }).join("");
 
-      var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-kmexc-q" placeholder="Buscar por condutor…" value="' + esc(ui.q) + '"></div>';
+      var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-kmexc-q" placeholder="Buscar por condutor…" value="' + esc(ui.q) + '"></div>' +
+        '<select class="filter" id="frota-kmexc-status">' +
+        '<option value=""' + (!ui.status ? " selected" : "") + ">Todos os status</option>" +
+        '<option value="ativo"' + (ui.status === "ativo" ? " selected" : "") + ">Em uso</option>" +
+        '<option value="devolvido"' + (ui.status === "devolvido" ? " selected" : "") + ">Devolvido</option>" +
+        "</select>";
       var exportHeaders = ["Status", "Condutor", "Contrato", "Data Contrato", "Fim do Contrato", "Regional", "Locadora", "KM Excedido"];
       var exportRows = filtered.map(function (r) {
         return [r.ativo ? "Em uso" : "Devolvido", r.condutor || "", r.contrato || "", fmtDateBR(r.dataContrato), fmtDateBR(r.dataFim), r.regional || "", r.locadora || "", r.kmExcedido];
@@ -2915,11 +2922,12 @@
         toolbar: toolbar,
         headHtml: "<th>Status</th><th>Condutor</th><th>Contrato</th><th>Data Contrato</th><th>Fim do Contrato</th><th>Regional</th><th>Locadora</th><th>KM Excedido</th>",
         bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-        empty: q ? "Nenhum condutor encontrado para essa busca." : "Nenhum contrato com km excedido no momento. 🎉",
+        empty: (q || ui.status) ? "Nenhum contrato encontrado com esses filtros." : "Nenhum contrato com km excedido no momento. 🎉",
         exportHeaders: exportHeaders,
         exportRows: exportRows
       });
       $("#frota-kmexc-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; withFocusPreserved(draw); }, 120));
+      $("#frota-kmexc-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
       wireExportButton(body2, "KmExcedido_Frotas", exportHeaders, exportRows);
       $all("tbody tr[data-km-contrato]", body2).forEach(function (tr) {
