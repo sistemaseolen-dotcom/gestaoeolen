@@ -372,6 +372,21 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .pill.info { background: var(--accent-soft); color: var(--accent-soft-ink); }
 .tag { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: var(--surface-alt); color: var(--ink-soft); font-size: 11px; font-weight: 600; }
 
+/* Modal de detalhe do alerta de KM (Gestão de Frotas > Reports). O bug
+   original era reusar a classe .pill — ela tem white-space: nowrap, então a
+   frase de explicação, que é longa, saía toda numa linha só e vazava pra
+   fora da caixa em vez de quebrar. Aqui é um bloco próprio, que quebra
+   normalmente e nunca passa da largura do modal. */
+.km-alerta-modal { width: min(520px, 100%); padding: 20px; box-sizing: border-box; }
+.km-alerta-modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.km-alerta-modal-kms { display: flex; flex-wrap: wrap; gap: 16px; margin: 16px 0; }
+.km-alerta-explica {
+  display: block; padding: 10px 12px; border-radius: var(--radius-sm);
+  font-size: 13px; line-height: 1.5; white-space: normal; overflow-wrap: break-word;
+}
+.km-alerta-explica.warn { background: var(--warning-soft); color: var(--warning-ink); }
+.km-alerta-explica.danger { background: var(--danger-soft); color: var(--danger-ink); }
+
 /* ---------- Modal / Drawer ---------- */
 .overlay {
   position: fixed; inset: 0; background: rgba(10, 16, 13, 0.45); backdrop-filter: blur(1px);

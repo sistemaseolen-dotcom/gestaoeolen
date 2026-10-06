@@ -2031,14 +2031,18 @@
     });
   }
 
-  // Alertas de hodômetro — regra definida pelo Diego (06/10/2026): "menor" é
+  // Alertas de hodômetro — regra ajustada pelo Diego (06/10/2026): "menor" é
   // fisicamente impossível (km atual menor que o report anterior da mesma
-  // placa); "salto" é o km atual mais de 5.000km maior que o report
-  // anterior da mesma placa, sem limite de dias entre os dois. Isso não é
-  // uma aba própria — é um destaque piscante na própria linha do report
-  // (ver .row-alerta-km / .row-alerta-km-salto no CSS) e um card no
-  // dashboard de Reports (ver drawFrotasReportsDash).
-  var ALERTA_KM_SALTO_LIMIAR = 5000;
+  // placa, sem limite de dias); "salto" ("KM exorbitante") é o km atual mais
+  // de 7.000km maior que o report anterior da mesma placa E esse report
+  // anterior foi há no máximo 7 dias — se o intervalo entre os dois reports
+  // for maior que 7 dias, não gera alerta, porque km mais alto é esperado
+  // quando o motorista ficou um tempo sem reportar. Isso não é uma aba
+  // própria — é um destaque piscante na própria linha do report (ver
+  // .row-alerta-km / .row-alerta-km-salto no CSS) e um card no dashboard de
+  // Reports (ver drawFrotasReportsDash).
+  var ALERTA_KM_EXORBITANTE_LIMIAR = 7000;
+  var ALERTA_KM_EXORBITANTE_DIAS = 7;
   function computeAlertasFrota(reports) {
     var byPlaca = {};
     reports.forEach(function (r) {
@@ -2051,13 +2055,14 @@
         var atual = list[i], anterior = list[i - 1];
         var kmAtual = Number(atual.km) || 0, kmAnterior = Number(anterior.km) || 0;
         var diferenca = kmAtual - kmAnterior;
+        var dias = Math.round(Math.max(0, (new Date(atual.data) - new Date(anterior.data)) / 86400000));
         var tipo = null;
         if (kmAtual < kmAnterior) tipo = "menor";
-        else if (diferenca > ALERTA_KM_SALTO_LIMIAR) tipo = "salto";
+        else if (diferenca > ALERTA_KM_EXORBITANTE_LIMIAR && dias <= ALERTA_KM_EXORBITANTE_DIAS) tipo = "salto";
         if (tipo) {
           alertas.push({
             tipo: tipo, placa: placa, motorista: atual.motorista, contrato: atual.contrato,
-            data: atual.data, km: kmAtual, dataAnterior: anterior.data, kmAnterior: kmAnterior, diferenca: diferenca
+            data: atual.data, km: kmAtual, dataAnterior: anterior.data, kmAnterior: kmAnterior, diferenca: diferenca, dias: dias
           });
         }
       }
@@ -2075,19 +2080,19 @@
     var corClasse = isSalto ? "warn" : "danger";
     var titulo = isSalto ? "KM muito acima do esperado" : "Divergência de hodômetro";
     var explicacao = isSalto
-      ? "O hodômetro reportado é <strong>" + alerta.diferenca.toLocaleString("pt-BR") + " km maior</strong> que o report anterior da mesma placa — acima do limite de alerta (" + ALERTA_KM_SALTO_LIMIAR.toLocaleString("pt-BR") + " km). Pode ser viagem longa de verdade ou erro de digitação/leitura — vale conferir."
+      ? "O hodômetro reportado é <strong>" + alerta.diferenca.toLocaleString("pt-BR") + " km maior</strong> que o report anterior da mesma placa, em apenas <strong>" + alerta.dias + (alerta.dias === 1 ? " dia" : " dias") + "</strong> — acima do limite de alerta (" + ALERTA_KM_EXORBITANTE_LIMIAR.toLocaleString("pt-BR") + " km em até " + ALERTA_KM_EXORBITANTE_DIAS + " dias). Pode ser viagem longa de verdade ou erro de digitação/leitura — vale conferir."
       : "O hodômetro reportado é <strong>" + Math.abs(alerta.diferenca).toLocaleString("pt-BR") + " km menor</strong> que o report anterior da mesma placa — fisicamente impossível, provável erro de digitação ou leitura.";
     openModal(
-      '<div class="panel" style="max-width:480px;padding:20px;">' +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+      '<div class="panel km-alerta-modal">' +
+      '<div class="km-alerta-modal-head">' +
       '<div><h2 style="margin:0 0 4px;">' + esc(titulo) + "</h2>" +
       '<div class="sub">' + esc(alerta.motorista || "—") + " · <strong>" + esc(alerta.placa) + "</strong> · contrato " + esc(alerta.contrato || "—") + "</div></div>" +
       '<button type="button" class="btn ghost sm" id="km-alerta-close">' + ICONS.close + "</button></div>" +
-      '<div style="display:flex;gap:16px;margin:16px 0;">' +
+      '<div class="km-alerta-modal-kms">' +
       '<div><div class="sub">Report anterior</div><div class="mono" style="font-size:18px;font-weight:700;">' + alerta.kmAnterior.toLocaleString("pt-BR") + ' km</div><div class="sub">' + esc(fmtDateBR(alerta.dataAnterior)) + "</div></div>" +
       '<div><div class="sub">Report atual</div><div class="mono" style="font-size:18px;font-weight:700;">' + alerta.km.toLocaleString("pt-BR") + ' km</div><div class="sub">' + esc(fmtDateBR(alerta.data)) + "</div></div>" +
       "</div>" +
-      '<div class="pill ' + corClasse + '" style="display:block;padding:10px 12px;line-height:1.5;">' + explicacao + "</div>" +
+      '<div class="km-alerta-explica ' + corClasse + '">' + explicacao + "</div>" +
       "</div>"
     );
     var btn = $("#km-alerta-close");
