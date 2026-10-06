@@ -133,7 +133,7 @@
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
-    veiculos: { q: "", status: "", page: 1 },
+    veiculos: { q: "", status: "EM USO", page: 1 },
     frotasReports: { q: "", page: 1 },
     frotasHistorico: { placa: "", motorista: "", de: "", ate: "", page: 1 },
     frotasKmSemana: { mes: "", motorista: "" },
