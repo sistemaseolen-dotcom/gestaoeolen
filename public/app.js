@@ -134,7 +134,7 @@
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
     veiculos: { q: "", status: "EM USO", page: 1 },
-    frotasReports: { q: "", page: 1 },
+    frotasReports: { q: "", page: 1, dates: [], onlyAlert: false },
     frotasHistorico: { placa: "", motorista: "", de: "", ate: "", page: 1 },
     frotasKmSemana: { mes: "", motorista: "" },
     frotasKmExcedido: { q: "", page: 1 },
@@ -2031,14 +2031,14 @@
     });
   }
 
-  // Alertas de hodômetro (pedido do Diego, 06/10/2026) — portado 1:1 do
-  // projeto original (computeAlertas): "menor" é fisicamente impossível (km
-  // atual menor que o report anterior da mesma placa); "salto" é um aumento
-  // grande demais (>7.000km) num intervalo curto (até 7 dias). No projeto
-  // original isso não é uma aba própria — é um destaque piscante na própria
-  // linha do report (ver .row-alerta-km / .row-alerta-km-salto no CSS).
-  var ALERTA_KM_SALTO_LIMIAR = 7000;
-  var ALERTA_KM_SALTO_DIAS = 7;
+  // Alertas de hodômetro — regra definida pelo Diego (06/10/2026): "menor" é
+  // fisicamente impossível (km atual menor que o report anterior da mesma
+  // placa); "salto" é o km atual mais de 5.000km maior que o report
+  // anterior da mesma placa, sem limite de dias entre os dois. Isso não é
+  // uma aba própria — é um destaque piscante na própria linha do report
+  // (ver .row-alerta-km / .row-alerta-km-salto no CSS) e um card no
+  // dashboard de Reports (ver drawFrotasReportsDash).
+  var ALERTA_KM_SALTO_LIMIAR = 5000;
   function computeAlertasFrota(reports) {
     var byPlaca = {};
     reports.forEach(function (r) {
@@ -2051,10 +2051,9 @@
         var atual = list[i], anterior = list[i - 1];
         var kmAtual = Number(atual.km) || 0, kmAnterior = Number(anterior.km) || 0;
         var diferenca = kmAtual - kmAnterior;
-        var dias = (new Date(atual.data) - new Date(anterior.data)) / 86400000;
         var tipo = null;
         if (kmAtual < kmAnterior) tipo = "menor";
-        else if (diferenca > ALERTA_KM_SALTO_LIMIAR && dias <= ALERTA_KM_SALTO_DIAS) tipo = "salto";
+        else if (diferenca > ALERTA_KM_SALTO_LIMIAR) tipo = "salto";
         if (tipo) {
           alertas.push({
             tipo: tipo, placa: placa, motorista: atual.motorista, contrato: atual.contrato,
@@ -2076,7 +2075,7 @@
     var corClasse = isSalto ? "warn" : "danger";
     var titulo = isSalto ? "KM muito acima do esperado" : "Divergência de hodômetro";
     var explicacao = isSalto
-      ? "O hodômetro reportado é <strong>" + alerta.diferenca.toLocaleString("pt-BR") + " km maior</strong> que o report anterior da mesma placa, em até " + ALERTA_KM_SALTO_DIAS + " dias — acima do limite de alerta (" + ALERTA_KM_SALTO_LIMIAR.toLocaleString("pt-BR") + " km em " + ALERTA_KM_SALTO_DIAS + " dias). Pode ser viagem longa de verdade ou erro de digitação/leitura — vale conferir."
+      ? "O hodômetro reportado é <strong>" + alerta.diferenca.toLocaleString("pt-BR") + " km maior</strong> que o report anterior da mesma placa — acima do limite de alerta (" + ALERTA_KM_SALTO_LIMIAR.toLocaleString("pt-BR") + " km). Pode ser viagem longa de verdade ou erro de digitação/leitura — vale conferir."
       : "O hodômetro reportado é <strong>" + Math.abs(alerta.diferenca).toLocaleString("pt-BR") + " km menor</strong> que o report anterior da mesma placa — fisicamente impossível, provável erro de digitação ou leitura.";
     openModal(
       '<div class="panel" style="max-width:480px;padding:20px;">' +
@@ -2301,29 +2300,125 @@
       .sort(function (a, b) { return b.kmExcedido - a.kmExcedido; });
   }
 
+  // Contratos "ativos" pro dashboard de Reports = veículos EM USO em
+  // STATE.veiculos (já importados do GPO) — mesmo universo usado em KM
+  // Excedido, sem nenhuma chamada nova.
+  function frotaContratosAtivos() {
+    return (STATE.veiculos || []).filter(function (v) { return String(v.status || "").toUpperCase().trim() === "EM USO"; });
+  }
+  function frotaDayLabel(iso) { return fmtDateBR(iso); }
+  // Popover de seleção de dia(s) (pedido do Diego, 06/10/2026) — mesmo
+  // padrão visual do pessoa-combo-list, mas com checkboxes em vez de busca.
+  // O estado de aberto/fechado do popover é lido do próprio DOM (o atributo
+  // `hidden` do painel) antes de reconstruir o HTML, pra não fechar sozinho
+  // a cada clique num checkbox (ver drawFrotasReportsBody).
+  function frotaDayPickerHtml(allDates, selected) {
+    var label = !selected.length ? "Todos os dias" : selected.length === 1 ? frotaDayLabel(selected[0]) : selected.length + " dias selecionados";
+    return '<div class="daypicker" id="frota-daypicker">' +
+      '<button type="button" class="btn sm" id="frota-daypicker-btn">' + ICONS.history + "Dia: " + esc(label) + "</button>" +
+      '<div class="daypicker-panel" id="frota-daypicker-panel" hidden>' +
+      '<div class="daypicker-actions"><button type="button" class="link-btn" id="frota-day-all">Marcar todos</button><button type="button" class="link-btn" id="frota-day-none">Limpar</button></div>' +
+      allDates.map(function (d) {
+        return '<label class="daypicker-option"><input type="checkbox" value="' + esc(d) + '"' + (selected.indexOf(d) !== -1 ? " checked" : "") + "> " + esc(frotaDayLabel(d)) + "</label>";
+      }).join("") +
+      "</div></div>";
+  }
+  function frotaDateScopeLabel(selected) {
+    if (!selected.length) return "(todas as datas)";
+    if (selected.length === 1) return "em " + fmtDateBR(selected[0]);
+    return "em " + selected.length + " dias selecionados";
+  }
+  function openFrotaPendentesModal(list) {
+    openModal(
+      '<div class="panel" style="max-width:560px;max-height:80vh;overflow-y:auto;padding:20px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      "<h2 style=\"margin:0;\">Contratos pendentes — " + list.length + "</h2>" +
+      '<button type="button" class="btn ghost sm" id="frota-pendentes-close">' + ICONS.close + "</button></div>" +
+      (list.length
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Condutor</th><th>Placa</th><th>Contrato</th></tr></thead><tbody>' +
+          list.map(function (v) {
+            return "<tr><td>" + esc(v.condutorNome || "—") + "</td><td>" + esc(v.placa || "—") + '</td><td class="mono">' + esc(v.contrato || "—") + "</td></tr>";
+          }).join("") + "</tbody></table></div>"
+        : '<div class="empty-state">' + ICONS.inbox + "<div>Nenhum contrato pendente nesse filtro.</div></div>") +
+      "</div>"
+    );
+    var btn = $("#frota-pendentes-close");
+    if (btn) btn.addEventListener("click", closeModal);
+  }
+
   function renderFrotasReports(main) {
     var ui = uiState.frotasReports;
     main.innerHTML =
       '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas, com alertas de hodômetro e fotos</div></div></div>' +
       frotasTabsHtml("reports") +
+      '<div id="frota-reports-dash"></div>' +
       '<div id="frota-reports-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
     bindFrotasTabs(main);
 
     var allReports = [];
     var alertaMap = {};
+    var allAlertas = [];
+    var contratosAtivos = frotaContratosAtivos();
 
-    function computeFiltered() {
+    function matchesQ(placa, nome, contrato) {
+      if (!ui.q) return true;
+      var hay = normalize([placa, nome, contrato].join(" "));
+      return hay.indexOf(normalize(ui.q)) !== -1;
+    }
+    // Reports filtrados por dia(s) selecionado(s) + busca — usado tanto pela
+    // tabela quanto pelos cards "Enviaram report"/"Pendentes" do dashboard.
+    function reportsNoEscopo() {
       return allReports.filter(function (r) {
-        if (!ui.q) return true;
-        var hay = normalize([r.placa, r.motorista, r.contrato].join(" "));
-        return hay.indexOf(normalize(ui.q)) !== -1;
+        if (ui.dates.length && ui.dates.indexOf(r.data) === -1) return false;
+        return matchesQ(r.placa, r.motorista, r.contrato);
+      });
+    }
+    function ativosFiltrados() {
+      return contratosAtivos.filter(function (v) { return matchesQ(v.placa, v.condutorNome, v.contrato); });
+    }
+    function computeFilteredTabela() {
+      return reportsNoEscopo().filter(function (r) {
+        if (ui.onlyAlert && !alertaMap[r.placa + "|" + r.data]) return false;
+        return true;
       });
     }
 
-    function draw() {
+    function drawDash() {
+      var dashEl = $("#frota-reports-dash");
+      if (!dashEl) return;
+      var ativos = ativosFiltrados();
+      var reportsEscopo = reportsNoEscopo();
+      var ativosSet = {};
+      ativos.forEach(function (v) { if (v.contrato) ativosSet[v.contrato] = true; });
+      var enviadosSet = {};
+      reportsEscopo.forEach(function (r) { if (r.contrato && ativosSet[r.contrato]) enviadosSet[r.contrato] = true; });
+      var totalAtivos = ativos.length;
+      var enviados = Object.keys(enviadosSet).length;
+      var pendentesList = ativos.filter(function (v) { return !enviadosSet[v.contrato]; })
+        .sort(function (a, b) { return (a.condutorNome || "").localeCompare(b.condutorNome || "", "pt-BR"); });
+      var pendentes = pendentesList.length;
+      var scopeLabel = frotaDateScopeLabel(ui.dates);
+
+      dashEl.innerHTML = '<div class="kpi-row">' +
+        '<div class="kpi neutral"><span class="label">Contratos ativos</span><span class="value tabular">' + totalAtivos.toLocaleString("pt-BR") + "</span></div>" +
+        '<div class="kpi ok"><span class="label">Enviaram report</span><span class="value tabular">' + enviados.toLocaleString("pt-BR") + '</span><span class="hint">' + esc(scopeLabel) + "</span></div>" +
+        '<div class="kpi warn" id="frota-kpi-pendentes" tabindex="0" style="cursor:pointer;"><span class="label">Pendentes</span><span class="value tabular">' + pendentes.toLocaleString("pt-BR") + '</span><span class="hint">' + esc(scopeLabel) + " — clique para ver quem</span></div>" +
+        '<div class="kpi danger' + (ui.onlyAlert ? " alert-blink" : "") + '" id="frota-kpi-alertas" tabindex="0" style="cursor:pointer;"><span class="label">Alertas</span><span class="value tabular">' + allAlertas.length.toLocaleString("pt-BR") + '</span><span class="hint">' + (ui.onlyAlert ? "km errado ou muito alto — clique para limpar o filtro" : "km errado ou muito alto — clique para filtrar") + "</span></div>" +
+        "</div>";
+      $("#frota-kpi-pendentes").addEventListener("click", function () { openFrotaPendentesModal(pendentesList); });
+      $("#frota-kpi-alertas").addEventListener("click", function () { ui.onlyAlert = !ui.onlyAlert; ui.page = 1; drawDash(); drawBody(); });
+    }
+
+    function drawBody() {
       var body2 = $("#frota-reports-body");
       if (!body2) return;
-      var filtered = computeFiltered().sort(function (a, b) { return (b.data || "").localeCompare(a.data || ""); });
+      var oldPanel = $("#frota-daypicker-panel", body2);
+      var panelWasOpen = !!(oldPanel && !oldPanel.hidden);
+
+      var allDates = allReports.map(function (r) { return r.data; }).filter(Boolean)
+        .filter(function (v, i, arr) { return arr.indexOf(v) === i; }).sort().reverse();
+
+      var filtered = computeFilteredTabela().sort(function (a, b) { return (b.data || "").localeCompare(a.data || ""); });
       var pg = paginate(filtered, ui.page, PAGE_SIZE);
       ui.page = pg.page;
       var bodyHtml = pg.items.map(function (r) {
@@ -2339,7 +2434,9 @@
           '<td style="display:flex;gap:4px;align-items:center;">' + fotoBtnHtml(r) + alertaBtnHtml(key, alertaMap) + "</td>" +
           "</tr>";
       }).join("");
-      var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-reports-q" placeholder="Buscar por placa, motorista ou contrato…" value="' + esc(ui.q) + '"></div>';
+      var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-reports-q" placeholder="Buscar por placa, motorista ou contrato…" value="' + esc(ui.q) + '"></div>' +
+        frotaDayPickerHtml(allDates, ui.dates) +
+        (ui.onlyAlert ? '<button type="button" class="btn sm danger" id="frota-reports-clear-alert">' + ICONS.alert + "Só com alerta — limpar</button>" : "");
       var exportHeaders = ["Data", "Placa", "Motorista", "Contrato", "KM", "Observação (análise)", "Alerta"];
       var exportRows = filtered.map(function (r) {
         var alerta = alertaMap[r.placa + "|" + r.data];
@@ -2353,17 +2450,39 @@
         exportHeaders: exportHeaders,
         exportRows: exportRows
       });
-      $("#frota-reports-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
-      bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
+      $("#frota-reports-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; drawDash(); drawBody(); }, 120));
+      bindPagination(body2, ui, PAGE_SIZE, filtered, drawBody);
       wireExportButton(body2, "Reports_Frotas", exportHeaders, exportRows);
       bindFotoButtons(body2);
       bindAlertaButtons(body2, alertaMap);
+      if (ui.onlyAlert && $("#frota-reports-clear-alert")) {
+        $("#frota-reports-clear-alert").addEventListener("click", function () { ui.onlyAlert = false; ui.page = 1; drawDash(); drawBody(); });
+      }
+
+      var panel = $("#frota-daypicker-panel", body2);
+      if (panel) panel.hidden = !panelWasOpen;
+      var dayBtn = $("#frota-daypicker-btn", body2);
+      if (dayBtn) dayBtn.addEventListener("click", function (e) { e.stopPropagation(); if (panel) panel.hidden = !panel.hidden; });
+      function toggleDate(d, checked) {
+        var idx = ui.dates.indexOf(d);
+        if (checked && idx === -1) ui.dates.push(d);
+        else if (!checked && idx !== -1) ui.dates.splice(idx, 1);
+        ui.page = 1;
+        drawDash(); drawBody();
+      }
+      $all(".daypicker-option input", body2).forEach(function (cb) {
+        cb.addEventListener("change", function () { toggleDate(cb.value, cb.checked); });
+      });
+      if ($("#frota-day-all", body2)) $("#frota-day-all", body2).addEventListener("click", function () { ui.dates = allDates.slice(); ui.page = 1; drawDash(); drawBody(); });
+      if ($("#frota-day-none", body2)) $("#frota-day-none", body2).addEventListener("click", function () { ui.dates = []; ui.page = 1; drawDash(); drawBody(); });
     }
 
     loadFrotasReportsData().then(function (data) {
       allReports = data.reports || [];
-      alertaMap = buildAlertaMapFrota(computeAlertasFrota(allReports));
-      draw();
+      allAlertas = computeAlertasFrota(allReports);
+      alertaMap = buildAlertaMapFrota(allAlertas);
+      drawDash();
+      drawBody();
     }).catch(function (err) {
       var body2 = $("#frota-reports-body");
       if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar os reports (' + esc((err && err.message) || "erro") + ").</div>";
@@ -7925,6 +8044,13 @@
       } else {
         input.value = "";
       }
+    });
+    // Fecha o popover de "Dia" (Gestão de Frotas > Reports) quando o clique
+    // acontece fora dele — mesmo padrão do pessoa-combo acima.
+    $all(".daypicker").forEach(function (wrap) {
+      if (wrap.contains(e.target)) return;
+      var panel = wrap.querySelector(".daypicker-panel");
+      if (panel) panel.hidden = true;
     });
   });
   document.addEventListener("keydown", function (e) {

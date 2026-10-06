@@ -803,6 +803,23 @@ tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
 .pessoa-combo-option { padding: 8px 10px; font-size: 13px; cursor: pointer; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
 .pessoa-combo-option:hover, .pessoa-combo-option:active { background: var(--surface-alt); }
 .pessoa-combo-cargo { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; color: var(--ink-faint); }
+
+/* Popover de seleção de dia(s) — Gestão de Frotas > Reports (pedido do
+   Diego, 06/10/2026). Mesmo princípio visual do pessoa-combo-list acima,
+   com checkboxes em vez de busca por texto. */
+.daypicker { position: relative; }
+.daypicker-panel {
+  position: absolute; left: 0; top: calc(100% + 4px); z-index: 40; min-width: 230px; max-height: 320px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg);
+  padding: 6px;
+}
+.daypicker-actions {
+  display: flex; justify-content: space-between; gap: 10px; padding: 6px 8px 10px; margin-bottom: 4px;
+  border-bottom: 1px solid var(--border); font-size: 12px;
+}
+.daypicker-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 13px; cursor: pointer; border-radius: var(--radius-sm); }
+.daypicker-option:hover { background: var(--surface-alt); }
+.daypicker-option input { margin: 0; }
 .pessoa-combo-empty { padding: 10px; font-size: 12.5px; color: var(--ink-faint); }
 
 /* Lightbox de foto (clique pra ampliar). .lightbox-viewport é a "moldura"
