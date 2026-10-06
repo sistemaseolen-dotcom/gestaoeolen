@@ -31,6 +31,16 @@
 alter table pessoas
   add column if not exists cargo_aso text;
 
+-- `listas_opcoes.lista` tem um check constraint travando os valores
+-- aceitos pra essa coluna (cargo/tipoPessoa/statusPessoa/projeto) — precisa
+-- incluir "cargoAso" nele antes de inserir as opções abaixo, senão o INSERT
+-- falha com "violates check constraint listas_opcoes_lista_check".
+alter table listas_opcoes
+  drop constraint if exists listas_opcoes_lista_check;
+alter table listas_opcoes
+  add constraint listas_opcoes_lista_check
+  check (lista = any (array['cargo', 'tipoPessoa', 'statusPessoa', 'projeto', 'cargoAso']));
+
 insert into listas_opcoes (lista, valor)
 values
   ('cargoAso', 'ANTENISTA'),
