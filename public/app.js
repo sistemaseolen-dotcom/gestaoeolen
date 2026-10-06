@@ -133,6 +133,7 @@
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
     veiculos: { q: "", status: "", page: 1 },
+    frotasReports: { q: "", page: 1 },
     auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
     acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
   };
@@ -1952,6 +1953,109 @@
     return '<span class="pill ' + cls + '">' + esc(status || "—") + "</span>";
   }
 
+  // Sub-abas de Gestão de Frotas (pedido do Diego, 06/10/2026): "Contratos"
+  // é a tela de sempre (lista de veiculos/locações); "Reports" é a nova aba
+  // trazida do projeto separado "Gestão de Frotas" (ver
+  // src/app/api/frotas-reports/route.ts) — mesmo padrão de adminTabsHtml.
+  function frotasTabsHtml(active) {
+    return '<div class="section-tabs" style="margin-bottom:16px;">' +
+      '<button type="button" class="section-tab' + (active === "contratos" ? " active" : "") + '" data-frotatab="contratos">Contratos</button>' +
+      '<button type="button" class="section-tab' + (active === "reports" ? " active" : "") + '" data-frotatab="reports">Reports</button>' +
+      "</div>";
+  }
+  var FROTA_TAB_ROUTES = { contratos: "#/veiculos", reports: "#/veiculos/reports" };
+  function bindFrotasTabs(main) {
+    $all("[data-frotatab]", main).forEach(function (btn) {
+      btn.addEventListener("click", function () { navigate(FROTA_TAB_ROUTES[btn.getAttribute("data-frotatab")] || "#/veiculos"); });
+    });
+  }
+
+  // Resume o texto livre de "Análise" (gerado a partir das fotos do report
+  // semanal, fora daqui) em Avarias/OK — heurística portada 1:1 do projeto
+  // original "Gestão de Frotas" (classifyAnalise), validada lá manualmente
+  // contra ~2.700 textos únicos reais.
+  function stripAccentsFrota(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, ""); }
+  var ANALISE_NEG_STARTS = [
+    "sem amassad", "sem risco", "sem avaria", "sem dano", "sem arranh", "sem marca", "sem indicio", "sem sinal",
+    "nao ha amassad", "nao ha risco", "nao ha avaria", "nao ha dano", "nao ha arranh", "nao ha marca", "nao ha indicio de avaria", "nao ha nenhum",
+    "nenhum amassad", "nenhuma avaria", "nenhum risco", "nenhum dano", "nenhum arranhao", "nenhuma marca", "nenhum sinal",
+    "nao foram constatad", "nao foi constatad", "nao identificad", "nao apresenta", "nao consta", "nada consta",
+    "veiculo sem amassad", "veiculo sem avaria", "veiculo em bom estado", "veiculo aparenta estar em bom estado",
+    "imagens nao mostram", "nao e possivel identificar amassad", "nao e possivel visualizar amassad"
+  ];
+  var ANALISE_PROBLEM_WORDS = [
+    "amassad", "amasso", "risco", "arranh", "avaria", "danific", "quebrad", "trincad", "rachad", "estilhac", "amolgad", "batid"
+  ];
+  function classifyAnalise(text) {
+    var n = stripAccentsFrota(text).toLowerCase().trim();
+    if (ANALISE_NEG_STARTS.some(function (p) { return n.indexOf(p) === 0; })) return "ok";
+    if (ANALISE_PROBLEM_WORDS.some(function (p) { return n.indexOf(p) !== -1; })) return "avaria";
+    return "ok";
+  }
+  function analiseBadgeHtml(analise) {
+    var cls = classifyAnalise(analise);
+    return cls === "avaria" ? '<span class="pill danger">Avarias</span>' : '<span class="pill ok">OK</span>';
+  }
+
+  function renderFrotasReports(main) {
+    var ui = uiState.frotasReports;
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas (dados brutos)</div></div></div>' +
+      frotasTabsHtml("reports") +
+      '<div id="frota-reports-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
+    bindFrotasTabs(main);
+
+    var allReports = [];
+
+    function computeFiltered() {
+      return allReports.filter(function (r) {
+        if (!ui.q) return true;
+        var hay = normalize([r.placa, r.motorista, r.contrato].join(" "));
+        return hay.indexOf(normalize(ui.q)) !== -1;
+      });
+    }
+
+    function draw() {
+      var body2 = $("#frota-reports-body");
+      if (!body2) return;
+      var filtered = computeFiltered().sort(function (a, b) { return (b.data || "").localeCompare(a.data || ""); });
+      var pg = paginate(filtered, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+      var bodyHtml = pg.items.map(function (r) {
+        return "<tr>" +
+          '<td class="mono">' + esc(fmtDateBR(r.data)) + "</td>" +
+          "<td>" + esc(r.placa || "—") + "</td>" +
+          "<td>" + esc(r.motorista || "—") + "</td>" +
+          "<td>" + esc(r.contrato || "—") + "</td>" +
+          '<td class="mono">' + (r.km ? Number(r.km).toLocaleString("pt-BR") : "—") + "</td>" +
+          "<td>" + analiseBadgeHtml(r.analise) + "</td>" +
+          "</tr>";
+      }).join("");
+      var toolbar = '<div class="search-wrap">' + ICONS.search + '<input type="text" id="frota-reports-q" placeholder="Buscar por placa, motorista ou contrato…" value="' + esc(ui.q) + '"></div>';
+      var exportHeaders = ["Data", "Placa", "Motorista", "Contrato", "KM", "Observação (análise)"];
+      var exportRows = filtered.map(function (r) { return [fmtDateBR(r.data), r.placa || "", r.motorista || "", r.contrato || "", r.km || "", r.analise || ""]; });
+      body2.innerHTML = tableShell({
+        toolbar: toolbar,
+        headHtml: "<th>Data</th><th>Placa</th><th>Motorista</th><th>Contrato</th><th>KM</th><th>Observação</th>",
+        bodyHtml: bodyHtml, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
+        empty: "Nenhum report encontrado.",
+        exportHeaders: exportHeaders,
+        exportRows: exportRows
+      });
+      $("#frota-reports-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
+      bindPagination(body2, ui, PAGE_SIZE, filtered, draw);
+      wireExportButton(body2, "Reports_Frotas", exportHeaders, exportRows);
+    }
+
+    apiFetch("/api/frotas-reports").then(function (data) {
+      allReports = data.reports || [];
+      draw();
+    }).catch(function (err) {
+      var body2 = $("#frota-reports-body");
+      if (body2) body2.innerHTML = '<div class="empty-state" style="padding:20px;">Não consegui carregar os reports (' + esc((err && err.message) || "erro") + ").</div>";
+    });
+  }
+
   function renderVeiculosList(main) {
     var ui = uiState.veiculos;
 
@@ -1996,6 +2100,7 @@
       main.innerHTML =
         '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Contratos de locação de veículos sincronizados do GPO, com edição, criação e exclusão manual</div></div>' +
         (canDo("veiculos", "criar") ? '<button class="btn primary" id="btn-new-veiculo">' + ICONS.plus + "Novo veículo</button>" : "") + "</div>" +
+        frotasTabsHtml("contratos") +
         tableShell({
           toolbar: toolbar,
           headHtml: "<th>Placa</th><th>Condutor</th><th>Contrato</th><th>Locadora</th><th>Projeto</th><th>Regional</th><th>Status</th>",
@@ -2006,6 +2111,7 @@
         });
 
       if ($("#btn-new-veiculo")) $("#btn-new-veiculo").addEventListener("click", function () { openVeiculoForm(null); });
+      bindFrotasTabs(main);
       $("#veiculo-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#veiculo-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/veiculos/" + row.getAttribute("data-id")); }); });
@@ -7246,7 +7352,7 @@
     else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
-    else if (route.view === "veiculos") route.id ? renderVeiculoDetail(main, route.id) : renderVeiculosList(main);
+    else if (route.view === "veiculos") route.id === "reports" ? renderFrotasReports(main) : route.id ? renderVeiculoDetail(main, route.id) : renderVeiculosList(main);
     else if (route.view === "auditorias") {
       if (route.id === "lista") renderAuditoriasList(main);
       else if (route.id && route.sub === "ficha-epi" && route.extra) renderFichaEpiAssinatura(main, route.id, route.extra);
