@@ -2117,7 +2117,11 @@
       (lancamentosContrato.length ? '<button class="btn ghost sm" id="btn-export-km-contrato">' + ICONS.download + "Exportar Excel</button>" : "") +
       (canDo("veiculos", "editar") ? '<button class="btn sm primary" id="btn-lancar-km">' + ICONS.plus + "Lançar Kilometragem</button>" : "") +
       "</div></div><div class=\"panel-body\">" +
-      (lancamentosContrato.length ? '<div class="table-scroll tall"><table class="data"><thead><tr><th>Data</th>' + (multiPlaca ? "<th>Placa</th>" : "") + '<th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
+      (lancamentosContrato.length ? '<div class="table-scroll tall"><table class="data fixed">' +
+        (multiPlaca
+          ? '<colgroup><col style="width:16%"><col style="width:14%"><col style="width:12%"><col style="width:46%"><col style="width:12%"></colgroup>'
+          : '<colgroup><col style="width:16%"><col style="width:14%"><col style="width:58%"><col style="width:12%"></colgroup>') +
+        '<thead><tr><th>Data</th>' + (multiPlaca ? "<th>Placa</th>" : "") + '<th>KM</th><th>Responsável</th><th>Ações</th></tr></thead><tbody>' +
         lancamentosContrato.map(function (l) {
           var isCurrent = l.veiculoId === v.id;
           return '<tr><td class="mono">' + esc(fmtDateBR(l.data)) + '</td>' +

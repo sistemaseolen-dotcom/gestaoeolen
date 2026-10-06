@@ -324,6 +324,16 @@ select.filter, input.filter {
    então basta limitar a altura e rolar dentro do painel. */
 .table-scroll.tall { max-height: 420px; overflow-y: auto; }
 table.data { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 640px; }
+/* .fixed (pedido do Diego, 06/10/2026): com table-layout "auto" (padrão), o
+   navegador pode calcular a largura das colunas de um jeito que não bate
+   exatamente entre o <thead> (sticky, sempre visível) e as linhas do
+   <tbody> rolando por baixo dele — a última coluna (Ações) é onde essa
+   deriva de alguns pixels fica mais visível, parecendo que as linhas
+   "escorregam" ao descer. table-layout: fixed + <colgroup> com largura
+   fixa por coluna elimina esse recálculo: toda linha (header incluso) usa
+   exatamente a mesma largura de coluna, sempre. */
+table.data.fixed { table-layout: fixed; }
+table.data.fixed td, table.data.fixed th { overflow-wrap: break-word; }
 table.data th {
   text-align: left; font-size: 12.5px; color: var(--ink-soft);
   font-weight: 600; padding: 10px 14px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface);
