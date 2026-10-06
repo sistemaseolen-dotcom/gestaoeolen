@@ -2176,7 +2176,7 @@
   }
   function fotoBtnHtml(r) {
     var label = esc(r.placa) + " — " + esc(fmtDateBR(r.data));
-    return '<button type="button" class="btn ghost sm" data-foto-placa="' + esc(r.placa) + '" data-foto-data="' + esc(r.data) + '" data-foto-label="' + label + '" data-foto-km="' + esc(r.km || "") + '" data-foto-analise="' + esc(r.analise || "") + '">Ver fotos</button>';
+    return '<button type="button" class="btn sm" data-foto-placa="' + esc(r.placa) + '" data-foto-data="' + esc(r.data) + '" data-foto-label="' + label + '" data-foto-km="' + esc(r.km || "") + '" data-foto-analise="' + esc(r.analise || "") + '">' + ICONS.camera + "Ver fotos</button>";
   }
   function bindFotoButtons(container) {
     $all("[data-foto-placa]", container).forEach(function (btn) {
