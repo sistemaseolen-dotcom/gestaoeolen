@@ -192,7 +192,14 @@
     { key: "cargo", label: "Cargo (pessoas)", defaults: ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE"] },
     { key: "tipoPessoa", label: "Tipo de pessoa", defaults: ["CLT", "PJ", "JOVEM APRENDIZ", "ESTAGIÁRIO"] },
     { key: "statusPessoa", label: "Status (pessoas)", defaults: ["ATIVO", "INATIVO", "BLOQUEADO", "CRESCIMENTO", "FÉRIAS"] },
-    { key: "projeto", label: "Projeto", defaults: ["HUAWEI", "ERICSSON", "NOKIA", "TELEFONICA", "NG"] }
+    { key: "projeto", label: "Projeto", defaults: ["HUAWEI", "ERICSSON", "NOKIA", "TELEFONICA", "NG"] },
+    { key: "cargoAso", label: "Cargo ASO (pessoas)", defaults: [
+      "ANTENISTA", "AUXILIAR DE TELECOM", "AUXILIAR TECNICO", "INSTALADOR",
+      "INSTALADOR DE TELECOMUNICAÇÕES", "INSTALADOR TECNICO",
+      "INSTALADOR-REPARADOR DE LINHAS E APARELHOS DE TELECOMUNICAÇÕES", "LIDER",
+      "TECNICO DE TELECOM", "TECNICO DE TELECOMUNICACOES", "TECNICO DE VISTORIA DE TELECOM",
+      "TECNICO INSTALADOR", "TECNICO LIDER"
+    ] }
   ];
   function listaMeta(key) {
     for (var i = 0; i < LISTAS_META.length; i++) if (LISTAS_META[i].key === key) return LISTAS_META[i];
@@ -769,7 +776,7 @@
   function mapPessoaFromApi(row) {
     if (!row) return row;
     return {
-      id: row.id, nome: row.nome, cargo: row.cargo, status: row.status, regional: row.regional,
+      id: row.id, nome: row.nome, cargo: row.cargo, cargoAso: row.cargo_aso, status: row.status, regional: row.regional,
       projeto: row.projeto, operadora: row.operadora, cadastro: row.cadastro, coordenador: row.coordenador,
       tipoPessoa: row.tipo_pessoa, dataAdmissao: row.data_admissao, dataDemissao: row.data_demissao,
       matriculaESocial: row.matricula_esocial, cpf: row.cpf, rg: row.rg, dataNascimento: row.data_nascimento,
@@ -1339,7 +1346,7 @@
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados gerais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("CPF", p.cpf, "cpf") + detailItem("RG", p.rg, "rg") + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento), "data_nascimento") +
-      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
+      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
       "</div></div></div>" +
@@ -1523,7 +1530,8 @@
       "</div>" +
       '<div class="tab-pane active" data-pane="geral"><div class="field-grid">' +
       field("Nome completo *", "nome", "text", p, { required: true, span2: true }) +
-      cargoSelectField(p) + selectField("Status *", "status", listaOptions("statusPessoa"), p ? p.status : "ATIVO", { required: true }) +
+      cargoSelectField(p) + selectField("Cargo ASO", "cargoAso", listaOptions("cargoAso"), p ? p.cargoAso : "", { allowEmpty: true }) +
+      selectField("Status *", "status", listaOptions("statusPessoa"), p ? p.status : "ATIVO", { required: true }) +
       selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
       field("Operadora", "operadora", "text", p) + field("Cadastro (origem)", "cadastro", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
@@ -1561,7 +1569,7 @@
       if (!canDo("pessoas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
       var fd = new FormData(e.target);
       var body = {};
-      var camposEditaveis = ["nome", "cargo", "status", "regional", "projeto", "operadora", "cadastro", "coordenador", "tipoPessoa",
+      var camposEditaveis = ["nome", "cargo", "cargoAso", "status", "regional", "projeto", "operadora", "cadastro", "coordenador", "tipoPessoa",
         "dataAdmissao", "dataDemissao", "matriculaESocial", "cpf", "rg", "dataNascimento", "pis", "cnh", "dataValidadeCNH",
         "escolaridade", "estadoCivil", "email", "telefone", "emailCorporativo", "telefoneCorporativo", "cep", "endereco",
         "numero", "complemento", "bairro", "municipio", "estado", "mei", "numeroContrato", "validadeContrato", "observacao"];

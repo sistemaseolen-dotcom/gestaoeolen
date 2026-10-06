@@ -5,7 +5,7 @@ import { auditDiffFields, auditDelete } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
 
 const CAMPOS_PESSOA = [
-  "nome", "cargo", "status", "regional", "projeto", "operadora", "cadastro", "coordenador",
+  "nome", "cargo", "cargo_aso", "status", "regional", "projeto", "operadora", "cadastro", "coordenador",
   "tipo_pessoa", "data_admissao", "data_demissao", "matricula_esocial", "cpf", "rg",
   "data_nascimento", "pis", "cnh", "data_validade_cnh", "escolaridade", "estado_civil",
   "email", "telefone", "email_corporativo", "telefone_corporativo", "cep", "endereco",
@@ -37,6 +37,7 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
     matriculaESocial: "matricula_esocial",
     coordenador: "coordenador",
     cargo: "cargo",
+    cargoAso: "cargo_aso",
     email: "email",
     telefone: "telefone",
     emailCorporativo: "email_corporativo",
