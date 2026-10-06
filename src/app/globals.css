@@ -773,6 +773,11 @@ tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
 /* KM acima da franquia (KM Semana / KM Excedido) — mesma semântica de cor
    que o resto do sistema usa pra "acima do esperado"/"vencido". */
 .frota-km-over { color: var(--danger-ink); font-weight: 700; background: var(--danger-soft); }
+/* Modal "Ver fotos" de Gestão de Frotas (pedido do Diego, 06/10/2026,
+   ampliado a pedido dele em seguida — a tela era pequena demais pra
+   conferir avaria/odômetro). */
+.frota-fotos-panel { max-width: min(960px, 94vw); max-height: 88vh; overflow-y: auto; padding: 22px; }
+.frota-fotos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
 .frota-foto-thumb {
   width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm);
   cursor: zoom-in; border: 1px solid var(--border);
@@ -806,14 +811,14 @@ tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
    da tela. O zoom em si (roda do mouse, pinça, duplo clique/toque,
    arrastar, botões +/-) é feito em JS (setupLightboxZoom), aplicando
    transform na .lightbox-img. */
-.lightbox-box { position: relative; width: auto; max-width: min(920px, 94vw); max-height: 92vh; padding: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.lightbox-box { position: relative; width: auto; max-width: min(1100px, 96vw); max-height: 94vh; padding: 0; background: transparent; box-shadow: none; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .lightbox-viewport {
-  position: relative; max-width: min(920px, 94vw); max-height: 80vh; overflow: hidden;
+  position: relative; max-width: min(1100px, 96vw); max-height: 86vh; overflow: hidden;
   border-radius: var(--radius-md); box-shadow: var(--shadow-lg); background: #fff;
   touch-action: none; line-height: 0;
 }
 .lightbox-img {
-  display: block; max-width: min(920px, 94vw); max-height: 80vh; width: auto; height: auto;
+  display: block; max-width: min(1100px, 96vw); max-height: 86vh; width: auto; height: auto;
   background: #fff; cursor: zoom-in; touch-action: none; user-select: none;
   transform-origin: center center; will-change: transform;
 }
@@ -825,6 +830,17 @@ tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
   cursor: pointer; box-shadow: var(--shadow-lg); z-index: 2;
 }
 .lightbox-close .ic { width: 16px; height: 16px; }
+/* Setas de navegação entre fotos (pedido do Diego, 06/10/2026) — só
+   aparecem quando o report tem mais de 1 foto (ver openFotoLightbox). */
+.lightbox-nav-btn {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 40px; height: 40px;
+  border-radius: 999px; border: none; background: rgba(10,16,13,0.5); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; backdrop-filter: blur(2px);
+}
+.lightbox-nav-btn:hover { background: rgba(10,16,13,0.72); }
+.lightbox-nav-btn .ic { width: 20px; height: 20px; }
+.lightbox-nav-prev { left: 10px; }
+.lightbox-nav-next { right: 10px; }
 .lightbox-zoom-bar {
   display: flex; align-items: center; gap: 10px; background: rgba(10,16,13,0.55); color: #fff;
   border-radius: 999px; padding: 6px 8px; backdrop-filter: blur(2px);
@@ -837,6 +853,7 @@ tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
 .lightbox-zoom-btn:disabled { opacity: .4; cursor: default; }
 .lightbox-zoom-btn .ic { width: 15px; height: 15px; }
 .lightbox-zoom-pct { font-size: 12px; font-weight: 700; min-width: 42px; text-align: center; }
+.lightbox-counter { font-size: 12px; font-weight: 700; padding-left: 4px; border-left: 1px solid rgba(255,255,255,0.3); margin-left: 2px; }
 
 @media print {
   .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura, .field-note, .header-field-notes { display: none !important; }

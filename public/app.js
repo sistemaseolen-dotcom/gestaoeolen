@@ -108,6 +108,7 @@
     alert: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4M12 17h.01"/></svg>',
     check: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>',
     chevronRight: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+    chevronLeft: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
     inbox: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11Z"/></svg>',
     file: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/></svg>',
     download: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
@@ -2128,19 +2129,28 @@
       body.innerHTML = '<div class="empty-state">' + ICONS.inbox + "<div>Nenhuma foto encontrada para esse report.</div></div>";
       return;
     }
-    body.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;">' +
-      urls.map(function (u) { return '<img src="' + esc(u) + '" loading="lazy" class="frota-foto-thumb" data-foto-url="' + esc(u) + '">'; }).join("") +
+    body.innerHTML = '<div class="frota-fotos-grid">' +
+      urls.map(function (u, i) { return '<img src="' + esc(u) + '" loading="lazy" class="frota-foto-thumb" data-foto-idx="' + i + '">'; }).join("") +
       "</div>";
-    $all("[data-foto-url]", body).forEach(function (img) {
-      img.addEventListener("click", function () { openFotoLightbox(img.getAttribute("data-foto-url")); });
+    $all("[data-foto-idx]", body).forEach(function (img) {
+      img.addEventListener("click", function () { openFotoLightbox(urls, Number(img.getAttribute("data-foto-idx"))); });
     });
   }
-  function showFrotasFotos(placa, data, label) {
+  // Tela de "Ver fotos" (pedido do Diego, 06/10/2026, ampliada em seguida a
+  // pedido dele: tela maior, navegação entre fotos no lightbox, e mostrando
+  // o KM lido + a observação de avarias daquele report no topo).
+  function showFrotasFotos(placa, data, label, km, analise) {
     var key = placa + "|" + data;
+    var infoBits = [];
+    if (km) infoBits.push('<span class="mono"><strong>KM:</strong> ' + Number(km).toLocaleString("pt-BR") + "</span>");
+    infoBits.push("<span>" + analiseBadgeHtml(analise) + "</span>");
     openModal(
-      '<div class="panel" style="max-width:720px;padding:20px;">' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
-      "<h2 style=\"margin:0;\">Fotos — " + esc(label) + "</h2>" +
+      '<div class="panel frota-fotos-panel">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:14px;">' +
+      '<div><h2 style="margin:0 0 6px;">Fotos — ' + esc(label) + "</h2>" +
+      '<div class="sub" style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;">' + infoBits.join("") + "</div>" +
+      (analise ? '<div class="sub" style="margin-top:4px;">' + esc(analise) + "</div>" : "") +
+      "</div>" +
       '<button type="button" class="btn ghost sm" id="frota-fotos-close">' + ICONS.close + "</button></div>" +
       '<div id="frota-fotos-body" class="hint">Carregando…</div>' +
       "</div>"
@@ -2165,14 +2175,16 @@
     });
   }
   function fotoBtnHtml(r) {
-    var key = r.placa + "|" + r.data;
     var label = esc(r.placa) + " — " + esc(fmtDateBR(r.data));
-    return '<button type="button" class="btn ghost sm" data-foto-placa="' + esc(r.placa) + '" data-foto-data="' + esc(r.data) + '" data-foto-label="' + label + '">Ver fotos</button>';
+    return '<button type="button" class="btn ghost sm" data-foto-placa="' + esc(r.placa) + '" data-foto-data="' + esc(r.data) + '" data-foto-label="' + label + '" data-foto-km="' + esc(r.km || "") + '" data-foto-analise="' + esc(r.analise || "") + '">Ver fotos</button>';
   }
   function bindFotoButtons(container) {
     $all("[data-foto-placa]", container).forEach(function (btn) {
       btn.addEventListener("click", function () {
-        showFrotasFotos(btn.getAttribute("data-foto-placa"), btn.getAttribute("data-foto-data"), btn.getAttribute("data-foto-label"));
+        showFrotasFotos(
+          btn.getAttribute("data-foto-placa"), btn.getAttribute("data-foto-data"), btn.getAttribute("data-foto-label"),
+          btn.getAttribute("data-foto-km"), btn.getAttribute("data-foto-analise")
+        );
       });
     });
   }
@@ -7579,23 +7591,55 @@
   function closeModal() {
     $("#modal-overlay").classList.remove("open");
   }
-  function openFotoLightbox(url) {
+  // url pode ser uma string (1 foto só, uso original — ex.: foto da galeria
+  // de auditoria) ou um array de urls + índice inicial (pedido do Diego,
+  // 06/10/2026: navegar entre as fotos de um mesmo report de Gestão de
+  // Frotas sem fechar e reabrir o lightbox).
+  function openFotoLightbox(urlOrUrls, startIndex) {
+    var urls = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
+    var idx = Math.max(0, Math.min(urls.length - 1, startIndex || 0));
+    var hasNav = urls.length > 1;
     openModal(
       '<div class="lightbox-box">' +
       '<button type="button" class="lightbox-close" id="lightbox-close" title="Fechar" aria-label="Fechar">' + ICONS.close + "</button>" +
       '<div class="lightbox-viewport" id="lightbox-viewport">' +
-      '<img src="' + esc(url) + '" alt="" class="lightbox-img" id="lightbox-img" draggable="false">' +
+      (hasNav ? '<button type="button" class="lightbox-nav-btn lightbox-nav-prev" id="lightbox-prev" title="Foto anterior" aria-label="Foto anterior">' + ICONS.chevronLeft + "</button>" : "") +
+      '<img src="' + esc(urls[idx]) + '" alt="" class="lightbox-img" id="lightbox-img" draggable="false">' +
+      (hasNav ? '<button type="button" class="lightbox-nav-btn lightbox-nav-next" id="lightbox-next" title="Próxima foto" aria-label="Próxima foto">' + ICONS.chevronRight + "</button>" : "") +
       "</div>" +
       '<div class="lightbox-zoom-bar" id="lightbox-zoom-bar">' +
       '<button type="button" class="lightbox-zoom-btn" id="lightbox-zoom-out" title="Diminuir zoom" aria-label="Diminuir zoom">' + ICONS.minus + "</button>" +
       '<span class="lightbox-zoom-pct" id="lightbox-zoom-pct">100%</span>' +
       '<button type="button" class="lightbox-zoom-btn" id="lightbox-zoom-in" title="Aumentar zoom" aria-label="Aumentar zoom">' + ICONS.plus + "</button>" +
+      (hasNav ? '<span class="lightbox-counter" id="lightbox-counter">' + (idx + 1) + " / " + urls.length + "</span>" : "") +
       "</div>" +
       "</div>"
     );
     var btn = $("#lightbox-close");
     if (btn) btn.addEventListener("click", closeModal);
-    setupLightboxZoom();
+    var zoom = setupLightboxZoom();
+    if (hasNav) {
+      function show(i) {
+        idx = ((i % urls.length) + urls.length) % urls.length;
+        var img = $("#lightbox-img");
+        if (img) img.setAttribute("src", urls[idx]);
+        var counter = $("#lightbox-counter");
+        if (counter) counter.textContent = (idx + 1) + " / " + urls.length;
+        if (zoom && zoom.reset) zoom.reset();
+      }
+      var prevBtn = $("#lightbox-prev"), nextBtn = $("#lightbox-next");
+      if (prevBtn) prevBtn.addEventListener("click", function () { show(idx - 1); });
+      if (nextBtn) nextBtn.addEventListener("click", function () { show(idx + 1); });
+      // Setas do teclado — some sozinho na próxima tecla depois que o
+      // lightbox fechar (checa se #lightbox-img ainda existe), sem precisar
+      // de um gancho de "fechar modal" próprio pra isso.
+      var onKey = function (e) {
+        if (!$("#lightbox-img")) { document.removeEventListener("keydown", onKey); return; }
+        if (e.key === "ArrowLeft") show(idx - 1);
+        else if (e.key === "ArrowRight") show(idx + 1);
+      };
+      document.addEventListener("keydown", onKey);
+    }
   }
 
   /* Zoom da foto no lightbox: roda do mouse, pinça (dois dedos) no
@@ -7722,6 +7766,10 @@
     img.addEventListener("pointerleave", function (e) { if (dragId === e.pointerId) endPointer(e); });
 
     apply();
+    // Exposto pro lightbox com navegação (openFotoLightbox): ao trocar de
+    // foto, zera o zoom/posição — senão a próxima foto abriria já ampliada
+    // e deslocada, herdando o estado da foto anterior.
+    return { reset: function () { scale = 1; tx = 0; ty = 0; apply(); } };
   }
 
   /* ---------------- Exportar para Excel ----------------
