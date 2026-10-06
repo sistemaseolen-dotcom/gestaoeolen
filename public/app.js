@@ -127,7 +127,7 @@
   /* ---------------- State ---------------- */
   var STATE = null;
   var uiState = {
-    pessoas: { q: "", status: "", page: 1 },
+    pessoas: { q: "", status: "ATIVO", page: 1 },
     equipes: { q: "", status: "", page: 1 },
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
