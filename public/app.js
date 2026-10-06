@@ -2308,19 +2308,28 @@
     return Number.isFinite(x) ? x : null;
   }
   function veiculoKmPercorridoFrota(vv) {
-    var inicio = [], fim = [];
+    var fim = [];
     (vv.kmLancamentos || []).forEach(function (l) {
       var k = numOrNullFrota(l.km);
-      if (k !== null) { inicio.push(k); fim.push(k); }
+      if (k !== null) fim.push(k);
     });
     var retirada = numOrNullFrota(vv.kmRetirada);
-    if (retirada !== null) inicio.push(retirada);
     var devolucao = numOrNullFrota(vv.kmDevolucao), atual = numOrNullFrota(vv.kmAtual);
     if (devolucao !== null) fim.push(devolucao);
     if (atual !== null) fim.push(atual);
-    if (!inicio.length || !fim.length) return 0;
-    var min = Math.min.apply(null, inicio), max = Math.max.apply(null, fim);
-    return max > min ? max - min : 0;
+    // O piso é SEMPRE a km de retirada (vinda do GPO) quando ela existe —
+    // nunca o menor lançamento manual. Achamos lançamentos com erro de
+    // digitação (ex.: "0" ou um valor bem menor que a retirada) que, se
+    // entrassem na busca do mínimo, inflavam o km percorrido em dezenas de
+    // milhares de km (foi o que gerou contratos fantasma no KM Excedido,
+    // como o de Fernando Henrique Costa e o de Elson Leite Ferreira —
+    // comparativo com a ferramenta antiga, 10/2026). O odômetro só sobe,
+    // então um lançamento abaixo da retirada é sempre erro, nunca km real.
+    // Só usamos o menor lançamento como piso quando não há retirada registrada.
+    var inicio = retirada !== null ? retirada : (fim.length ? Math.min.apply(null, fim) : null);
+    if (inicio === null || !fim.length) return 0;
+    var max = Math.max.apply(null, fim);
+    return max > inicio ? max - inicio : 0;
   }
   // KM Excedido agrupado por CONTRATO (pedido do Diego, 10/2026): um mesmo
   // contrato pode passar por várias placas substituídas ao longo do tempo.
@@ -3031,19 +3040,23 @@
       return Number.isFinite(x) ? x : null;
     }
     function veiculoKmPercorrido(vv) {
-      var inicio = [], fim = [];
+      var fim = [];
       (vv.kmLancamentos || []).forEach(function (l) {
         var k = numOrNull(l.km);
-        if (k !== null) { inicio.push(k); fim.push(k); }
+        if (k !== null) fim.push(k);
       });
       var retirada = numOrNull(vv.kmRetirada);
-      if (retirada !== null) inicio.push(retirada);
       var devolucao = numOrNull(vv.kmDevolucao), atual = numOrNull(vv.kmAtual);
       if (devolucao !== null) fim.push(devolucao);
       if (atual !== null) fim.push(atual);
-      if (!inicio.length || !fim.length) return 0;
-      var min = Math.min.apply(null, inicio), max = Math.max.apply(null, fim);
-      return max > min ? max - min : 0;
+      // Piso sempre é a km de retirada (GPO) quando existe — um lançamento
+      // manual com erro de digitação abaixo dela nunca deve puxar o km
+      // percorrido pra baixo do que realmente foi usado (ver nota em
+      // veiculoKmPercorridoFrota, mesma conta usada no KM Excedido).
+      var inicio = retirada !== null ? retirada : (fim.length ? Math.min.apply(null, fim) : null);
+      if (inicio === null || !fim.length) return 0;
+      var max = Math.max.apply(null, fim);
+      return max > inicio ? max - inicio : 0;
     }
     var totalKmContrato = veiculosContrato.reduce(function (sum, vv) { return sum + veiculoKmPercorrido(vv); }, 0);
 
