@@ -34,37 +34,60 @@ export async function GET() {
 
   const admin = supabaseAdmin();
 
-  // Auditorias só é buscada para quem tem acesso à página — diferente das
-  // demais tabelas (buscadas sempre, comportamento já existente e mantido
-  // como está pra não regredir nenhuma tela hoje em uso). Isso importa aqui
-  // em especial: um técnico de campo (acesso só a Auditorias) não precisa
-  // baixar o cadastro inteiro de pessoas/empresas/treinamentos no celular.
+  // Cada tabela de cadastro só é buscada do banco se o usuário logado tem
+  // "ver" na página correspondente (revisão de segurança pedida pelo
+  // Diego, 10/2026) — antes disso, só Auditorias e Acesso seguiam essa
+  // regra, e TODO o resto (pessoas, empresas, patrimonios, equipes,
+  // veiculos) era sempre devolvido pra qualquer usuário autenticado,
+  // mesmo que a interface escondesse a aba: um usuário com permissão só
+  // pra "ver" Auditorias, por exemplo, recebia no mesmo jeito o cadastro
+  // completo de pessoas (nome + CPF) e de veículos de toda a empresa no
+  // corpo desta resposta — só não aparecia na tela porque o app.js
+  // escondia a aba, não porque o servidor negasse o dado. Um usuário
+  // nessas condições conseguia ver tudo mesmo assim abrindo o painel de
+  // rede do navegador. Daqui pra frente, a interface E o servidor negam
+  // igual.
+  //
+  // `treinamentos` continua sendo buscado sempre, sem essa restrição por
+  // ora: a aba "Pessoas" mostra os documentos/treinamentos de cada pessoa
+  // dentro do próprio cadastro dela, e não ficou claro ainda, nesta
+  // revisão, se dá pra condicionar isso sem quebrar essa tela — precisa
+  // ser confirmado com o Diego antes de mudar.
+  const podePessoas = canView(gate.user, "pessoas");
+  const podeEmpresas = canView(gate.user, "empresas");
+  const podePatrimonio = canView(gate.user, "patrimonio");
+  const podeEquipes = canView(gate.user, "equipes");
+  const podeVeiculos = canView(gate.user, "veiculos");
+  // Auditorias só é buscada para quem tem acesso à página — comportamento
+  // já existente, mantido como está.
   const podeAuditorias = canView(gate.user, "auditorias");
   // Acesso guarda dados sensíveis (CPF e até senha de sistema de operadora)
   // — só busca do banco quando o usuário logado tem permissão "ver" nessa
   // página, mesmo padrão já usado acima para Auditorias.
   const podeAcesso = canView(gate.user, "acesso");
 
+  const vazio = () => Promise.resolve({ data: [] as any[], error: null as any });
+
   const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
-    fetchAllRows(admin, "pessoas"),
-    fetchAllRows(admin, "empresas"),
+    podePessoas ? fetchAllRows(admin, "pessoas") : vazio(),
+    podeEmpresas ? fetchAllRows(admin, "empresas") : vazio(),
     fetchAllRows(admin, "treinamentos"),
-    fetchAllRows(admin, "equipes"),
-    fetchAllRows(admin, "equipe_membros"),
-    fetchAllRows(admin, "equipe_calibracoes"),
+    podeEquipes ? fetchAllRows(admin, "equipes") : vazio(),
+    podeEquipes ? fetchAllRows(admin, "equipe_membros") : vazio(),
+    podeEquipes ? fetchAllRows(admin, "equipe_calibracoes") : vazio(),
     fetchAllRows(admin, "listas_opcoes"),
-    fetchAllRows(admin, "patrimonios"),
-    fetchAllRows(admin, "veiculos"),
-    fetchAllRows(admin, "veiculo_km_lancamentos"),
+    podePatrimonio ? fetchAllRows(admin, "patrimonios") : vazio(),
+    podeVeiculos ? fetchAllRows(admin, "veiculos") : vazio(),
+    podeVeiculos ? fetchAllRows(admin, "veiculo_km_lancamentos") : vazio(),
     podeAuditorias
       ? admin
           .from("auditorias")
           .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, tem_ca_divergente, tem_pendencia_assinatura, colaboradores, respostas, modalidade, criado_por_nome, criado_em, atualizado_em, finalizado_em")
           .order("data", { ascending: false })
-      : Promise.resolve({ data: [] as any[], error: null as any }),
+      : vazio(),
     admin.from("configuracoes").select("chave, valor"),
-    podeAcesso ? fetchAllRows(admin, "acesso_equipes") : Promise.resolve({ data: [] as any[], error: null as any }),
-    podeAcesso ? fetchAllRows(admin, "acesso_membros") : Promise.resolve({ data: [] as any[], error: null as any }),
+    podeAcesso ? fetchAllRows(admin, "acesso_equipes") : vazio(),
+    podeAcesso ? fetchAllRows(admin, "acesso_membros") : vazio(),
   ]);
 
   for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
