@@ -41,6 +41,38 @@ const nextConfig = {
     // que eles foram feitos pra funcionar.
     serverComponentsExternalPackages: ["mupdf", "tesseract.js"],
   },
+  // Cabeçalhos de segurança HTTP (pedido do Diego, 10/2026 — revisão geral
+  // de segurança). Nenhum CSP aqui de propósito: o app.js é um SPA grande
+  // com estilo/scripts inline espalhados pelo código, então uma Content-
+  // Security-Policy precisa ser desenhada com calma testando cada tela —
+  // colocar uma apressada quebraria o sistema em produção. Os cabeçalhos
+  // abaixo são seguros por padrão, não quebram nada existente:
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          // Impede que o navegador "adivinhe" o tipo de um arquivo servido
+          // (ex.: tratar um upload de foto como script) — mitiga alguns
+          // ataques de XSS via upload de arquivo.
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          // Ninguém deveria carregar o sistema dentro de um <iframe> de
+          // outro site (clickjacking) — o sistema não é embutido em nada.
+          { key: "X-Frame-Options", value: "DENY" },
+          // Não manda a URL completa (que pode ter dados sensíveis em
+          // query string) como Referer pra sites de terceiros.
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          // Bloqueia câmera/microfone/pagamento por padrão; geolocalização
+          // fica permitida só pro próprio site, porque as Auditorias usam
+          // a localização do navegador (navigator.geolocation).
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), payment=(), geolocation=(self)" },
+          // Reforça HTTPS mesmo que alguém digite http:// por engano — a
+          // Vercel já redireciona, isto é defesa em profundidade.
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+        ],
+      },
+    ];
+  },
 };
 
 module.exports = nextConfig;
