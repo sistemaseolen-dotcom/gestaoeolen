@@ -11,7 +11,8 @@ const CAMPOS_TREINAMENTO = [
 const CATEGORIAS_VALIDAS = ["treinamento", "documento"] as const;
 const SITUACOES_VALIDAS = ["", "VALIDO", "RENOVAR", "VENCIDO"] as const;
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
 
@@ -91,7 +92,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "excluir");
   if (gate.response) return gate.response;
 

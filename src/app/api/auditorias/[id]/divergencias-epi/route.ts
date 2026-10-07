@@ -8,7 +8,8 @@ import { calcularDivergenciasAuditoria, carregarFichasPorNome } from "@/lib/epiC
 // assinatura na tela). Esta rota monta os dados pras duas telas desse
 // fluxo: a lista de colaboradores com divergência (view=lista, usada só o
 // resumo) e a ficha completa de UM colaborador pra assinar (view=ficha).
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requireView("auditorias");
   if (gate.response) return gate.response;
 
@@ -52,7 +53,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   const nomesRelevantes = [...nomesComDivergencia, ...nomesPendenteAssinatura];
   const { data: pessoas } = await admin
     .from("pessoas")
-    .select("id, nome, cpf, cargo, empresa_id, empresa_nome")
+    .select("id, nome, cpf, cargo, empresa_id, empresa_nome, email, email_corporativo")
     .in("nome", nomesRelevantes);
   const pessoaPorNome = new Map((pessoas || []).map((p: any) => [p.nome, p]));
 
@@ -126,7 +127,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         qtdItensDivergentes: d.itens.length,
         pendenteAssinatura: false,
         pessoa: pessoa
-          ? { id: pessoa.id, cpf: pessoa.cpf, cargo: pessoa.cargo, empresaNome: pessoa.empresa_nome, cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null }
+          ? {
+              id: pessoa.id,
+              cpf: pessoa.cpf,
+              cargo: pessoa.cargo,
+              empresaNome: pessoa.empresa_nome,
+              cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null,
+              // Assinatura eletrônica (Docsales) exige e-mail do
+              // signatário — prioriza o corporativo (mais provável de
+              // estar ativo/monitorado) e cai pro pessoal se não tiver.
+              email: pessoa.email_corporativo || pessoa.email || null,
+            }
           : null,
         itens,
       };
@@ -148,7 +159,17 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
         qtdItensDivergentes: 0,
         pendenteAssinatura: true,
         pessoa: pessoa
-          ? { id: pessoa.id, cpf: pessoa.cpf, cargo: pessoa.cargo, empresaNome: pessoa.empresa_nome, cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null }
+          ? {
+              id: pessoa.id,
+              cpf: pessoa.cpf,
+              cargo: pessoa.cargo,
+              empresaNome: pessoa.empresa_nome,
+              cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null,
+              // Assinatura eletrônica (Docsales) exige e-mail do
+              // signatário — prioriza o corporativo (mais provável de
+              // estar ativo/monitorado) e cai pro pessoal se não tiver.
+              email: pessoa.email_corporativo || pessoa.email || null,
+            }
           : null,
         itens: itensAtuais.map((it) => ({
           especificacao: it.especificacao,

@@ -5,7 +5,8 @@ import { isAdmin } from "@/lib/permissions";
 
 // id é o uuid do usuário (auth.users.id) — nunca Number() aqui, ao contrário
 // das outras entidades que usam bigint.
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const currentUser = await getCurrentUser();
   if (!currentUser) return unauthorized();
   if (!isAdmin(currentUser)) return forbidden();

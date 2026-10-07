@@ -94,7 +94,8 @@ async function resolveEmpresaNome(empresaId: number | null): Promise<{ empresa_i
   return { empresa_id: empresaId, empresa_nome: empresaTitle(data) };
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("pessoas", "editar");
   if (gate.response) return gate.response;
 
@@ -173,7 +174,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("pessoas", "excluir");
   if (gate.response) return gate.response;
 

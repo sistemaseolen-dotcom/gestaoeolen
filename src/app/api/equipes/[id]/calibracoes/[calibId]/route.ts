@@ -47,7 +47,8 @@ function resumoCalibracao(data: string | null, status: string | null): string | 
 
 const STATUS_VALIDOS = ["OK", "IRREGULAR"] as const;
 
-export async function PATCH(req: Request, { params }: { params: { id: string; calibId: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string; calibId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("equipes", "editar");
   if (gate.response) return gate.response;
 

@@ -4,7 +4,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdmin } from "@/lib/permissions";
 
 // id é o uuid do usuário — nunca Number() aqui.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const currentUser = await getCurrentUser();
   if (!currentUser) return unauthorized();
   if (!isAdmin(currentUser)) return forbidden();

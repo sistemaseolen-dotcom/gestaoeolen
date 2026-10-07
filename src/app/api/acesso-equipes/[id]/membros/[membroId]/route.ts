@@ -3,7 +3,8 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { montarPatchMembro } from "@/lib/acesso";
 
-export async function PATCH(req: Request, { params }: { params: { id: string; membroId: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string; membroId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("acesso", "editar");
   if (gate.response) return gate.response;
 
@@ -72,7 +73,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string; me
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string; membroId: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string; membroId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("acesso", "editar");
   if (gate.response) return gate.response;
 

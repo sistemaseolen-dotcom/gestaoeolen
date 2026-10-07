@@ -18,7 +18,8 @@ function parseValorInput(v: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("patrimonio", "editar");
   if (gate.response) return gate.response;
 
@@ -158,7 +159,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("patrimonio", "excluir");
   if (gate.response) return gate.response;
 

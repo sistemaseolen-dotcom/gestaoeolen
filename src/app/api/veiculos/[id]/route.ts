@@ -53,7 +53,8 @@ function dateOrNull(v: any): string | null {
   return s || null;
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("veiculos", "editar");
   if (gate.response) return gate.response;
 
@@ -148,7 +149,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("veiculos", "excluir");
   if (gate.response) return gate.response;
 

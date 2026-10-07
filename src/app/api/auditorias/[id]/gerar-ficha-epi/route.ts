@@ -33,7 +33,8 @@ type ItemBody = {
 //     o GPO (sistema do cliente) não tem escrita automatizada, só leitura
 //     (ver src/lib/gpoSync.ts), então esse upload lá é manual; o indicador
 //     do Painel usa essa fila pra avisar o que ainda falta subir.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("auditorias", "editar");
   if (gate.response) return gate.response;
 

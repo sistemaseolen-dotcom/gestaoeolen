@@ -44,7 +44,8 @@ function sanitizeFilename(name: string): string {
 // (sem policy pública), então o front-end nunca lê o Storage direto, sempre
 // passa por aqui pra pegar um link de curta duração (60s, só o necessário
 // pra abrir/baixar).
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "ver");
   if (gate.response) return gate.response;
 
@@ -83,7 +84,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 // ver o comentário grande no topo do arquivo. Não toca no banco nem remove
 // o anexo antigo ainda (só o passo 2, /concluir, faz isso — depois de
 // confirmar que o arquivo novo realmente chegou no storage).
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
 
@@ -137,7 +139,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   return NextResponse.json({ uploadUrl: url, path });
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
 

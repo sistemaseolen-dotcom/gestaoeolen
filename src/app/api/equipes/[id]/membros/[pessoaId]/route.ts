@@ -30,8 +30,8 @@ async function auditMembro(opts: {
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { id: string; pessoaId: string } }
-) {
+  context: { params: Promise<{ id: string; pessoaId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("equipes", "editar");
   if (gate.response) return gate.response;
 

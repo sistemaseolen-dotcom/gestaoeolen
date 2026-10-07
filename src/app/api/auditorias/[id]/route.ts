@@ -20,7 +20,8 @@ function up(v: any): string | null {
 // Detalhe completo: a auditoria + as fotos já com um link assinado (60s) pra
 // cada uma, de uma vez só — evita 1 requisição por miniatura (podem ser até
 // ~46 fotos numa única auditoria com 3 colaboradores).
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requireView("auditorias");
   if (gate.response) return gate.response;
 
@@ -51,7 +52,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   return NextResponse.json({ ...auditoria, fotos: fotosComUrl });
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("auditorias", "editar");
   if (gate.response) return gate.response;
 
@@ -150,7 +152,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("auditorias", "excluir");
   if (gate.response) return gate.response;
 

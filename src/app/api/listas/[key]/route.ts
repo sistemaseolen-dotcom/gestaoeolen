@@ -48,7 +48,8 @@ async function auditLista(opts: {
   if (error) throw error;
 }
 
-export async function POST(req: Request, { params }: { params: { key: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ key: string }> }) {
+  const params = await context.params;
   if (!isListaKey(params.key)) {
     return NextResponse.json({ error: "Lista inválida." }, { status: 400 });
   }
@@ -97,7 +98,8 @@ export async function POST(req: Request, { params }: { params: { key: string } }
   return NextResponse.json(data, { status: 201 });
 }
 
-export async function DELETE(req: Request, { params }: { params: { key: string } }) {
+export async function DELETE(req: Request, context: { params: Promise<{ key: string }> }) {
+  const params = await context.params;
   if (!isListaKey(params.key)) {
     return NextResponse.json({ error: "Lista inválida." }, { status: 400 });
   }

@@ -7,7 +7,8 @@ function fmtDateSimple(iso: string): string {
   return d && m && y ? `${d}/${m}/${y}` : iso;
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string; lancamentoId: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string; lancamentoId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("veiculos", "editar");
   if (gate.response) return gate.response;
 

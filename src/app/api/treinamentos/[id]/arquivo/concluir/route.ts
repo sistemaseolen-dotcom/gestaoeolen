@@ -12,7 +12,8 @@ import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
 // na palavra do navegador), só ENTÃO remove o anexo antigo, atualiza o banco
 // e roda o OCR da Ficha de EPI se for o caso (igual o POST fazia antes desta
 // rota existir).
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
 

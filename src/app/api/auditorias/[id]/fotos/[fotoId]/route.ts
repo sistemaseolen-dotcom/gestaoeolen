@@ -3,7 +3,8 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 
-export async function DELETE(_req: Request, { params }: { params: { id: string; fotoId: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string; fotoId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("auditorias", "editar");
   if (gate.response) return gate.response;
 

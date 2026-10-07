@@ -8,7 +8,8 @@ const CAMPOS_ACESSO_EQUIPE = [
   "nome_equipe", "operadora", "projetos", "regionais", "atividade", "empresa", "status", "validade", "contrato",
 ] as const;
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("acesso", "editar");
   if (gate.response) return gate.response;
 
@@ -82,7 +83,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("acesso", "excluir");
   if (gate.response) return gate.response;
 

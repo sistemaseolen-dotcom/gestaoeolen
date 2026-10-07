@@ -15,7 +15,8 @@ import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
 // reenviar o mesmo arquivo, o que é confuso e fácil de fazer errado, já que
 // "Ver anexo" não reenvia nada) resolvia. Esta rota resolve isso direto:
 // pega o arquivo que já está no Storage e lê de novo, agora.
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
 

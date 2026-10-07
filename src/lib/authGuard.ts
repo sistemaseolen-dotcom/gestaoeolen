@@ -10,7 +10,7 @@ import { canDo, canView, type Action, type Page, type UsuarioRow } from "./permi
  * inativo — todo route handler deve tratar isso como 401.
  */
 export async function getCurrentUser(): Promise<UsuarioRow | null> {
-  const sessionClient = supabaseServerSession();
+  const sessionClient = await supabaseServerSession();
   const {
     data: { user: authUser },
   } = await sessionClient.auth.getUser();

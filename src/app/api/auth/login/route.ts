@@ -72,7 +72,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const sessionClient = supabaseServerSession();
+  const sessionClient = await supabaseServerSession();
   const { data, error } = await sessionClient.auth.signInWithPassword({ email, password: senha });
 
   if (error || !data.user) {

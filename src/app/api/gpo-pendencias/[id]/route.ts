@@ -4,7 +4,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // Marca (ou desmarca) uma ficha regenerada como já atualizada manualmente
 // no GPO — botão "Marcar como atualizado" do indicador no Painel.
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("documentos", "editar");
   if (gate.response) return gate.response;
 

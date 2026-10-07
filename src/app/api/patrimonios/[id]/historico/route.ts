@@ -7,7 +7,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // geradas aqui quando o status/responsável mudam por edição manual (ver
 // gpoSync.ts e src/app/api/patrimonios/[id]/route.ts). Diferente do
 // histórico de alterações genérico (/api/audit-log), que é por campo.
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requireView("patrimonio");
   if (gate.response) return gate.response;
 

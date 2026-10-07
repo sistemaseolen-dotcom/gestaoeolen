@@ -31,7 +31,8 @@ async function auditMembro(opts: {
   if (error) throw error;
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("acesso", "editar");
   if (gate.response) return gate.response;
 

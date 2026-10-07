@@ -40,7 +40,8 @@ async function auditKmLancamento(opts: {
   if (error) throw error;
 }
 
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("veiculos", "editar");
   if (gate.response) return gate.response;
 

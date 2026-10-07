@@ -12,7 +12,8 @@ function sanitizeFilename(name: string): string {
   return name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
 }
 
-export async function GET(_req: Request, { params }: { params: { id: string; calibId: string } }) {
+export async function GET(_req: Request, context: { params: Promise<{ id: string; calibId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("equipes", "ver");
   if (gate.response) return gate.response;
 
@@ -39,7 +40,8 @@ export async function GET(_req: Request, { params }: { params: { id: string; cal
   return NextResponse.json({ url, nome: calib.arquivo_nome });
 }
 
-export async function POST(req: Request, { params }: { params: { id: string; calibId: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string; calibId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("equipes", "editar");
   if (gate.response) return gate.response;
 
@@ -129,7 +131,8 @@ export async function POST(req: Request, { params }: { params: { id: string; cal
   return NextResponse.json(after);
 }
 
-export async function DELETE(_req: Request, { params }: { params: { id: string; calibId: string } }) {
+export async function DELETE(_req: Request, context: { params: Promise<{ id: string; calibId: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("equipes", "editar");
   if (gate.response) return gate.response;
 

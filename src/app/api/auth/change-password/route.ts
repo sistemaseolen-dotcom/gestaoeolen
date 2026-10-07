@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // forçando troca, igual ao comportamento antigo do app.js) quanto numa
 // troca de senha voluntária.
 export async function POST(req: Request) {
-  const sessionClient = supabaseServerSession();
+  const sessionClient = await supabaseServerSession();
   const {
     data: { user: authUser },
   } = await sessionClient.auth.getUser();

@@ -17,7 +17,8 @@ function extensaoDe(nome: string, tipo: string): string {
 // único dentro da auditoria (ex.: foto_torre, foto_ca_capacete_1,
 // assinatura_inspetor). Faz upsert: se já existia uma foto nesse slot, o
 // arquivo antigo é removido do Storage antes de subir o novo.
-export async function POST(req: Request, { params }: { params: { id: string } }) {
+export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   const gate = await requirePermission("auditorias", "editar");
   if (gate.response) return gate.response;
 

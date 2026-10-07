@@ -4,8 +4,11 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export function supabaseServerSession() {
-  const cookieStore = cookies();
+// A partir do Next.js 16, cookies() passou a ser assíncrono (retorna uma
+// Promise) — por isso esta função também precisa ser assíncrona agora, e
+// todo lugar que a chama precisa usar `await`.
+export async function supabaseServerSession() {
+  const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
