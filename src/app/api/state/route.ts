@@ -48,11 +48,6 @@ export async function GET() {
   // rede do navegador. Daqui pra frente, a interface E o servidor negam
   // igual.
   //
-  // `treinamentos` continua sendo buscado sempre, sem essa restrição por
-  // ora: a aba "Pessoas" mostra os documentos/treinamentos de cada pessoa
-  // dentro do próprio cadastro dela, e não ficou claro ainda, nesta
-  // revisão, se dá pra condicionar isso sem quebrar essa tela — precisa
-  // ser confirmado com o Diego antes de mudar.
   const podePessoas = canView(gate.user, "pessoas");
   const podeEmpresas = canView(gate.user, "empresas");
   const podePatrimonio = canView(gate.user, "patrimonio");
@@ -61,6 +56,18 @@ export async function GET() {
   // Auditorias só é buscada para quem tem acesso à página — comportamento
   // já existente, mantido como está.
   const podeAuditorias = canView(gate.user, "auditorias");
+  // `treinamentos` não tem uma única página "dona": confirmado lendo o
+  // app.js (10/2026) que esse mesmo array é usado em três telas diferentes,
+  // cada uma com sua própria permissão —
+  //   1. Painel/lista de Treinamentos (nav "Painel") -> canView("painel")
+  //   2. Ficha da pessoa, dentro de Pessoas (pessoaTreinamentos()) -> "pessoas"
+  //   3. Divergência de Ficha de EPI, dentro de Auditorias
+  //      (buscarFichaEpiPessoa()) -> "auditorias"
+  // Gatear só por "painel" (como cheguei a considerar antes) quebraria a
+  // ficha da pessoa e a auditoria pra quem só tem uma dessas duas outras
+  // permissões. Por isso o OR das três: só fica de fora quem não tem
+  // nenhuma delas.
+  const podeTreinamentos = canView(gate.user, "painel") || podePessoas || podeAuditorias;
   // Acesso guarda dados sensíveis (CPF e até senha de sistema de operadora)
   // — só busca do banco quando o usuário logado tem permissão "ver" nessa
   // página, mesmo padrão já usado acima para Auditorias.
@@ -71,7 +78,7 @@ export async function GET() {
   const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
     podePessoas ? fetchAllRows(admin, "pessoas") : vazio(),
     podeEmpresas ? fetchAllRows(admin, "empresas") : vazio(),
-    fetchAllRows(admin, "treinamentos"),
+    podeTreinamentos ? fetchAllRows(admin, "treinamentos") : vazio(),
     podeEquipes ? fetchAllRows(admin, "equipes") : vazio(),
     podeEquipes ? fetchAllRows(admin, "equipe_membros") : vazio(),
     podeEquipes ? fetchAllRows(admin, "equipe_calibracoes") : vazio(),
