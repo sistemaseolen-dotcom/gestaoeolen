@@ -371,6 +371,13 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
 .pill.neutral { background: var(--neutral-soft); color: var(--neutral-ink); }
 .pill.info { background: var(--accent-soft); color: var(--accent-soft-ink); }
 .tag { display: inline-flex; padding: 2px 8px; border-radius: 999px; background: var(--surface-alt); color: var(--ink-soft); font-size: 11px; font-weight: 600; }
+/* Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego, 10/2026)
+   -- mesmas cores por cliente já usadas no gráfico de auditorias por
+   cliente (--cliente-*), só que aqui como chip de texto, não barra/legenda. */
+.tag.cliente-nokia { background: color-mix(in srgb, var(--cliente-nokia) 16%, transparent); color: var(--cliente-nokia); }
+.tag.cliente-ericsson { background: color-mix(in srgb, var(--cliente-ericsson) 16%, transparent); color: var(--cliente-ericsson); }
+.tag.cliente-huawei { background: color-mix(in srgb, var(--cliente-huawei) 16%, transparent); color: var(--cliente-huawei); }
+.tag.cliente-telefonica { background: color-mix(in srgb, var(--cliente-telefonica) 16%, transparent); color: var(--cliente-telefonica); }
 
 /* Modal de detalhe do alerta de KM (Gestão de Frotas > Reports). O bug
    original era reusar a classe .pill — ela tem white-space: nowrap, então a

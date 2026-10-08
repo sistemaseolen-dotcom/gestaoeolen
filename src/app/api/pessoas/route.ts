@@ -13,6 +13,9 @@ const CAMPOS_PESSOA = [
   // Credenciais de acesso ao sistema do cliente (pedido do Diego, 10/2026):
   // Ericsson usa Isignum, Huawei usa ISDP.
   "isignum_id", "isignum_senha", "isdp_id", "isdp_senha",
+  // Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego,
+  // 10/2026) -- array, pode ter mais de uma ao mesmo tempo.
+  "contas",
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -71,6 +74,7 @@ function pessoaFromBody(body: any): Record<string, any> {
     isignum_senha: body?.isignumSenha,
     isdp_id: body?.isdpId,
     isdp_senha: body?.isdpSenha,
+    contas: Array.isArray(body?.contas) ? body.contas : [],
   };
 }
 

@@ -796,8 +796,31 @@
       // Credenciais de acesso ao sistema do cliente (pedido do Diego,
       // 10/2026): Ericsson usa Isignum, Huawei usa ISDP.
       isignumId: row.isignum_id, isignumSenha: row.isignum_senha,
-      isdpId: row.isdp_id, isdpSenha: row.isdp_senha
+      isdpId: row.isdp_id, isdpSenha: row.isdp_senha,
+      // Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego,
+      // 10/2026) — diferente de "projeto" (um valor só, de preenchimento
+      // livre): aqui é sempre um dos 4 clientes fixos, e pode ter mais de
+      // um marcado ao mesmo tempo.
+      contas: row.contas || []
     };
+  }
+  // Clientes/contas que uma pessoa pode estar ativa (pedido do Diego,
+  // 10/2026) — mesmas 4 cores já usadas no gráfico de auditorias por
+  // cliente (ver clienteDefs em renderAuditoriasPainel), reaproveitadas
+  // aqui como chip de texto na lista/detalhe/form de Pessoas.
+  var CONTA_CLIENTE_DEFS = [
+    ["ERICSSON", "cliente-ericsson", "Ericsson"],
+    ["HUAWEI", "cliente-huawei", "Huawei"],
+    ["TELEFONICA", "cliente-telefonica", "Telefônica"],
+    ["NOKIA", "cliente-nokia", "Nokia"]
+  ];
+  var CONTA_OPTS = CONTA_CLIENTE_DEFS.map(function (d) { return d[0]; });
+  function contaTagsHtml(contas) {
+    if (!contas || !contas.length) return '<span class="hint">—</span>';
+    return contas.map(function (c) {
+      var def = CONTA_CLIENTE_DEFS.filter(function (d) { return d[0] === c; })[0];
+      return '<span class="tag' + (def ? " " + def[1] : "") + '">' + esc(def ? def[2] : c) + "</span>";
+    }).join(" ");
   }
   function mapEmpresaFromApi(row) {
     if (!row) return row;
@@ -1451,7 +1474,7 @@
       return all.filter(function (p) {
         if (ui.status && p.status !== ui.status) return false;
         if (!ui.q) return true;
-        var hay = normalize([p.nome, p.cargo, p.cpf, p.empresaNome, p.regional, p.projeto, p.email].join(" "));
+        var hay = normalize([p.nome, p.cargo, p.cpf, p.empresaNome, p.regional, p.projeto, p.email, (p.contas || []).join(" ")].join(" "));
         return hay.indexOf(normalize(ui.q)) !== -1;
       });
     }
@@ -1472,6 +1495,7 @@
           '<td>' + esc(p.empresaNome || "—") + '</td>' +
           '<td>' + esc(p.regional || "—") + '</td>' +
           '<td>' + esc(p.projeto || "—") + '</td>' +
+          '<td>' + contaTagsHtml(p.contas) + '</td>' +
           '<td>' + (venc ? '<span class="pill danger">' + venc + ' vencido' + (venc > 1 ? "s" : "") + '</span>' : '<span class="hint">—</span>') + '</td>' +
           '<td>' + statusPillGeneric(p.status) + '</td>' +
           "</tr>";
@@ -1483,11 +1507,11 @@
         distinctStatuses(STATE.pessoas).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") +
         "</select>";
 
-      var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto", "Treinamentos vencidos", "Status"];
+      var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto", "Conta(s)", "Treinamentos vencidos", "Status"];
       var exportRows = filtered.map(function (p) {
         var tr = p.status === "ATIVO" ? pessoaTreinamentos(p.id) : [];
         var venc = tr.filter(function (t) { return trainingStatus(t).code === "VENCIDO"; }).length;
-        return [p.nome || "", p.cargo || "", p.empresaNome || "", p.regional || "", p.projeto || "", venc, p.status || ""];
+        return [p.nome || "", p.cargo || "", p.empresaNome || "", p.regional || "", p.projeto || "", (p.contas || []).join(", "), venc, p.status || ""];
       });
 
       main.innerHTML =
@@ -1495,7 +1519,7 @@
         (canDo("pessoas", "criar") ? '<button class="btn primary" id="btn-new-pessoa">' + ICONS.plus + "Nova pessoa</button>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Regional</th><th>Projeto</th><th>Treinamentos</th><th>Status</th>",
+          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Regional</th><th>Projeto</th><th>Conta(s)</th><th>Treinamentos</th><th>Status</th>",
           bodyHtml: body,
           count: filtered.length,
           page: pg.page,
@@ -1543,6 +1567,7 @@
       detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
+      '<div class="detail-item"><span class="k">Conta(s)</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Contato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("E-mail", p.email, "email") + detailItem("Telefone", p.telefone, "telefone") + detailItem("E-mail corporativo", p.emailCorporativo, "email_corporativo") + detailItem("Telefone corporativo", p.telefoneCorporativo, "telefone_corporativo") +
@@ -1737,6 +1762,7 @@
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
       field("Matrícula eSocial", "matriculaESocial", "text", p) +
+      checkboxGroupField("Conta(s)", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(p ? p.observacao : "") + "</textarea></div>" +
       "</div></div>" +
       '<div class="tab-pane" data-pane="doc"><div class="field-grid">' +
@@ -1784,6 +1810,7 @@
       camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });
       body.valorHora = Number(fd.get("valorHora") || 0);
       body.salarioBruto = Number(fd.get("salarioBruto") || 0);
+      body.contas = fd.getAll("contas");
       var empId = fd.get("empresaId");
       body.empresaId = empId ? Number(empId) : null;
       if (!body.nome) { toast("Informe o nome da pessoa.", "error"); activateFormTab("geral"); return; }
