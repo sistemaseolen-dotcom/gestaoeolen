@@ -10,6 +10,9 @@ const CAMPOS_PESSOA = [
   "email", "telefone", "email_corporativo", "telefone_corporativo", "cep", "endereco",
   "numero", "complemento", "bairro", "municipio", "estado", "mei", "numero_contrato",
   "validade_contrato", "observacao", "empresa_id", "valor_hora", "salario_bruto",
+  // Credenciais de acesso ao sistema do cliente (pedido do Diego, 10/2026):
+  // Ericsson usa Isignum, Huawei usa ISDP.
+  "isignum_id", "isignum_senha", "isdp_id", "isdp_senha",
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -64,6 +67,10 @@ function pessoaFromBody(body: any): Record<string, any> {
     salario_bruto: body?.salarioBruto,
     projeto: body?.projeto,
     operadora: body?.operadora,
+    isignum_id: body?.isignumId,
+    isignum_senha: body?.isignumSenha,
+    isdp_id: body?.isdpId,
+    isdp_senha: body?.isdpSenha,
   };
 }
 

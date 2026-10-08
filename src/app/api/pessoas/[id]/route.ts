@@ -11,6 +11,9 @@ const CAMPOS_PESSOA = [
   "email", "telefone", "email_corporativo", "telefone_corporativo", "cep", "endereco",
   "numero", "complemento", "bairro", "municipio", "estado", "mei", "numero_contrato",
   "validade_contrato", "observacao", "empresa_id", "valor_hora", "salario_bruto",
+  // Credenciais de acesso ao sistema do cliente (pedido do Diego, 10/2026):
+  // Ericsson usa Isignum, Huawei usa ISDP.
+  "isignum_id", "isignum_senha", "isdp_id", "isdp_senha",
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -66,6 +69,10 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
     salarioBruto: "salario_bruto",
     projeto: "projeto",
     operadora: "operadora",
+    isignumId: "isignum_id",
+    isignumSenha: "isignum_senha",
+    isdpId: "isdp_id",
+    isdpSenha: "isdp_senha",
   };
   const out: Record<string, any> = {};
   for (const [bodyKey, column] of Object.entries(map)) {
