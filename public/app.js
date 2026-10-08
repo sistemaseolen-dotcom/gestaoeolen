@@ -128,7 +128,11 @@
   /* ---------------- State ---------------- */
   var STATE = null;
   var uiState = {
-    pessoas: { q: "", status: "ATIVO", page: 1 },
+    // cargoFiltro "OPERACIONAIS" é o padrão pedido pelo Diego (10/2026): a
+    // tela de Pessoas abre mostrando só os cargos operacionais de campo
+    // (mesma lista de CARGOS_COM_DOCS_OBRIGATORIOS); "" mostra todo mundo, e
+    // qualquer outro valor filtra por um cargo específico.
+    pessoas: { q: "", status: "ATIVO", cargoFiltro: "OPERACIONAIS", page: 1 },
     equipes: { q: "", status: "", page: 1 },
     empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
@@ -618,6 +622,18 @@
       if (v && !set[v]) { set[v] = true; out.push(v); }
     });
     out.sort(function (a, b) { return a === "ATIVO" ? -1 : b === "ATIVO" ? 1 : a.localeCompare(b); });
+    return out;
+  }
+  // Cargos distintos cadastrados (pra popular o filtro de cargo em
+  // Pessoas) — ordenado alfabeticamente, sem distinção do que é
+  // "operacional" (isso o próprio filtro decide via CARGOS_COM_DOCS_OBRIGATORIOS).
+  function distinctCargos(list) {
+    var set = {}, out = [];
+    (list || []).forEach(function (x) {
+      var v = (x.cargo || "").trim();
+      if (v && !set[v]) { set[v] = true; out.push(v); }
+    });
+    out.sort(function (a, b) { return a.localeCompare(b); });
     return out;
   }
   function isPessoaAtiva(pessoaId) {
@@ -1473,6 +1489,11 @@
       var all = STATE.pessoas.slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
       return all.filter(function (p) {
         if (ui.status && p.status !== ui.status) return false;
+        if (ui.cargoFiltro === "OPERACIONAIS") {
+          if (CARGOS_COM_DOCS_OBRIGATORIOS.indexOf((p.cargo || "").toUpperCase()) === -1) return false;
+        } else if (ui.cargoFiltro && p.cargo !== ui.cargoFiltro) {
+          return false;
+        }
         if (!ui.q) return true;
         var hay = normalize([p.nome, p.cargo, p.cpf, p.empresaNome, p.regional, p.projeto, p.email, (p.contas || []).join(" ")].join(" "));
         return hay.indexOf(normalize(ui.q)) !== -1;
@@ -1505,6 +1526,14 @@
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="pessoas-q" placeholder="Buscar por nome, cargo, CPF, empresa…" value="' + esc(ui.q) + '"></div>' +
         '<select class="filter" id="pessoas-status"><option value="">Todos os status</option>' +
         distinctStatuses(STATE.pessoas).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") +
+        "</select>" +
+        // Pedido do Diego (10/2026): a lista abre mostrando só os cargos
+        // operacionais de campo; "Todos os cargos" ou um cargo específico
+        // só aparecem se a pessoa escolher aqui.
+        '<select class="filter" id="pessoas-cargo-filtro">' +
+        '<option value="OPERACIONAIS"' + (ui.cargoFiltro === "OPERACIONAIS" ? " selected" : "") + '>Cargos operacionais</option>' +
+        '<option value=""' + (ui.cargoFiltro === "" ? " selected" : "") + '>Todos os cargos</option>' +
+        distinctCargos(STATE.pessoas).map(function (c) { return '<option value="' + esc(c) + '"' + (ui.cargoFiltro === c ? " selected" : "") + '>' + esc(c) + '</option>'; }).join("") +
         "</select>";
 
       var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto atual", "Contas Ativas", "Treinamentos vencidos", "Status"];
@@ -1532,6 +1561,7 @@
       if ($("#btn-new-pessoa")) $("#btn-new-pessoa").addEventListener("click", function () { openPessoaForm(null); });
       $("#pessoas-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
       $("#pessoas-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
+      $("#pessoas-cargo-filtro").addEventListener("change", function (e) { ui.cargoFiltro = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) {
         row.addEventListener("click", function () { navigate("#/pessoas/" + row.getAttribute("data-id")); });
       });
