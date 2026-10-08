@@ -130,8 +130,8 @@
   var uiState = {
     // cargoFiltro "OPERACIONAIS" é o padrão pedido pelo Diego (10/2026): a
     // tela de Pessoas abre mostrando só os cargos operacionais de campo
-    // (mesma lista de CARGOS_COM_DOCS_OBRIGATORIOS); "" mostra todo mundo, e
-    // qualquer outro valor filtra por um cargo específico.
+    // (mesma lista de CARGOS_PAINEL, que já inclui Tec. Segurança); ""
+    // mostra todo mundo, e qualquer outro valor filtra por um cargo específico.
     pessoas: { q: "", status: "ATIVO", cargoFiltro: "OPERACIONAIS", page: 1 },
     equipes: { q: "", status: "", page: 1 },
     empresas: { q: "", status: "", page: 1 },
@@ -626,7 +626,7 @@
   }
   // Cargos distintos cadastrados (pra popular o filtro de cargo em
   // Pessoas) — ordenado alfabeticamente, sem distinção do que é
-  // "operacional" (isso o próprio filtro decide via CARGOS_COM_DOCS_OBRIGATORIOS).
+  // "operacional" (isso o próprio filtro decide via CARGOS_PAINEL).
   function distinctCargos(list) {
     var set = {}, out = [];
     (list || []).forEach(function (x) {
@@ -1490,7 +1490,7 @@
       return all.filter(function (p) {
         if (ui.status && p.status !== ui.status) return false;
         if (ui.cargoFiltro === "OPERACIONAIS") {
-          if (CARGOS_COM_DOCS_OBRIGATORIOS.indexOf((p.cargo || "").toUpperCase()) === -1) return false;
+          if (CARGOS_PAINEL.indexOf(cargoNorm(p)) === -1) return false;
         } else if (ui.cargoFiltro && p.cargo !== ui.cargoFiltro) {
           return false;
         }
