@@ -1537,11 +1537,47 @@
         distinctCargos(STATE.pessoas).map(function (c) { return '<option value="' + esc(c) + '"' + (ui.cargoFiltro === c ? " selected" : "") + '>' + esc(c) + '</option>'; }).join("") +
         "</select>";
 
-      var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto atual", "Contas Ativas", "Treinamentos vencidos", "Status"];
+      // Pedido do Diego (10/2026): o extrato de Pessoas precisa trazer todas
+      // as informações do cadastro, cobrindo as 5 abas do formulário (Geral,
+      // Documentos, Contato, Contrato e Acessos de cliente) — não só as
+      // colunas visíveis na lista.
+      var exportHeaders = [
+        // Geral
+        "Nome", "Cargo", "Cargo ASO", "Status", "Regional", "Projeto atual", "Operadora",
+        "Cadastro (origem)", "Coordenador", "Tipo de pessoa", "Empresa",
+        "Data de admissão", "Data de desligamento", "Matrícula eSocial", "Contas Ativas", "Observação",
+        // Documentos
+        "CPF", "RG", "Data de nascimento", "PIS", "CNH", "Validade CNH", "Escolaridade", "Estado civil",
+        // Contato
+        "E-mail", "Telefone", "E-mail corporativo", "Telefone corporativo", "CEP", "Endereço",
+        "Número", "Complemento", "Bairro", "Município", "Estado",
+        // Contrato
+        "MEI", "Nº contrato", "Validade do contrato", "Valor hora", "Salário bruto",
+        // Acessos de cliente
+        "ID Isignum (Ericsson)", "ID ISDP (Huawei)",
+        // Extra (não é campo de cadastro, mas útil no extrato)
+        "Treinamentos vencidos",
+      ];
       var exportRows = filtered.map(function (p) {
         var tr = p.status === "ATIVO" ? pessoaTreinamentos(p.id) : [];
         var venc = tr.filter(function (t) { return trainingStatus(t).code === "VENCIDO"; }).length;
-        return [p.nome || "", p.cargo || "", p.empresaNome || "", p.regional || "", p.projeto || "", (p.contas || []).join(", "), venc, p.status || ""];
+        return [
+          // Geral
+          p.nome || "", p.cargo || "", p.cargoAso || "", p.status || "", p.regional || "", p.projeto || "", p.operadora || "",
+          p.cadastro || "", p.coordenador || "", p.tipoPessoa || "", p.empresaNome || "",
+          fmtDateBR(p.dataAdmissao), fmtDateBR(p.dataDemissao), p.matriculaESocial || "", (p.contas || []).join(", "), p.observacao || "",
+          // Documentos
+          p.cpf || "", p.rg || "", fmtDateBR(p.dataNascimento), p.pis || "", p.cnh || "", fmtDateBR(p.dataValidadeCNH), p.escolaridade || "", p.estadoCivil || "",
+          // Contato
+          p.email || "", p.telefone || "", p.emailCorporativo || "", p.telefoneCorporativo || "", p.cep || "", p.endereco || "",
+          p.numero || "", p.complemento || "", p.bairro || "", p.municipio || "", p.estado || "",
+          // Contrato
+          p.mei || "", p.numeroContrato || "", fmtDateBR(p.validadeContrato), fmtMoney(p.valorHora), fmtMoney(p.salarioBruto),
+          // Acessos de cliente
+          p.isignumId || "", p.isdpId || "",
+          // Extra
+          venc,
+        ];
       });
 
       main.innerHTML =
