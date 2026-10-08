@@ -1142,11 +1142,15 @@
       '<div class="field"><label>E-mail</label><input type="email" name="email" autocomplete="username" required></div>' +
       '<div class="field"><label>Senha</label><input type="password" name="senha" autocomplete="current-password" required></div>' +
       '<button type="submit" class="btn primary" style="width:100%;margin-top:8px;">Entrar</button>' +
+      '<button type="button" class="link-btn" id="esqueci-senha-link" style="align-self:flex-start;margin-top:-2px;">Esqueci minha senha</button>' +
       "</form></div></div>";
     showAuthOverlay(html);
     var emailInput = $('#login-form input[name="email"]');
     if (emailInput) emailInput.focus();
     var submitBtn = $('#login-form button[type="submit"]');
+    $("#esqueci-senha-link").addEventListener("click", function () {
+      openEsqueciSenhaModal((emailInput && emailInput.value) || "");
+    });
     $("#login-form").addEventListener("submit", function (ev) {
       ev.preventDefault();
       var fd = new FormData(ev.target);
@@ -1154,6 +1158,95 @@
       var senha = (fd.get("senha") || "").toString();
       if (submitBtn) submitBtn.disabled = true;
       apiFetch("/api/auth/login", { method: "POST", body: { email: email, senha: senha }, silentAuth: true })
+        .then(function (data) {
+          // Dispositivo diferente do habitual — pede o código de 6 números
+          // antes de considerar logado (ver POST /api/auth/login).
+          if (data && data.verificacaoDispositivoNecessaria) {
+            renderVerificarDispositivoScreen(email);
+            return null;
+          }
+          CURRENT_USER = mapUsuarioFromApi(data.usuario);
+          return loadState();
+        })
+        .then(function (data) {
+          if (!data) return; // veio do branch de verificação de dispositivo
+          STATE = data;
+          ensureListasSeed();
+          render();
+        })
+        .catch(function (err) {
+          renderLoginScreen((err && err.message) || "E-mail ou senha inválidos.");
+        });
+    });
+  }
+  // "Esqueci minha senha" (revisão de segurança, 10/2026) — modal simples
+  // sobre a tela de login. A resposta do servidor é sempre a mesma frase
+  // (anti-enumeração), então o modal de confirmação não diz se o e-mail
+  // existe ou não no sistema.
+  function openEsqueciSenhaModal(prefillEmail) {
+    var html =
+      '<div class="modal-box">' +
+      "<h3>Esqueci minha senha</h3>" +
+      "<p>Informe seu e-mail cadastrado. Se ele existir no sistema, você vai receber um link para redefinir a senha.</p>" +
+      '<form id="esqueci-senha-form">' +
+      '<div class="field"><label>E-mail</label><input type="email" name="email" value="' + esc(prefillEmail || "") + '" autocomplete="username" required></div>' +
+      '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button>' +
+      '<button type="submit" class="btn primary">Enviar link</button></div>' +
+      "</form></div>";
+    openModal(html);
+    var emailInput = $('#esqueci-senha-form input[name="email"]');
+    if (emailInput) emailInput.focus();
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#esqueci-senha-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var fd = new FormData(ev.target);
+      var email = (fd.get("email") || "").toString().trim();
+      var submitBtn = $('#esqueci-senha-form button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      apiFetch("/api/auth/forgot-password", { method: "POST", body: { email: email }, silentAuth: true })
+        .then(function (data) {
+          var html2 =
+            '<div class="modal-box">' +
+            "<h3>Verifique seu e-mail</h3>" +
+            "<p>" + esc((data && data.mensagem) || "Se este e-mail estiver cadastrado, você vai receber um link para redefinir sua senha em alguns minutos.") + "</p>" +
+            '<div class="modal-actions"><button type="button" class="btn primary" id="modal-ok">Entendi</button></div>' +
+            "</div>";
+          openModal(html2);
+          $("#modal-ok").addEventListener("click", closeModal);
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          toast((err && err.message) || "Não foi possível enviar o link. Tente novamente.", "error");
+        });
+    });
+  }
+  // Tela de código de verificação de dispositivo desconhecido (revisão de
+  // segurança, 10/2026, pedido do Diego). Aparece no lugar da tela normal
+  // de login quando POST /api/auth/login responde
+  // {verificacaoDispositivoNecessaria:true} — a sessão do Supabase Auth já
+  // existe nesse ponto, só falta confirmar o código pra liberar o acesso.
+  function renderVerificarDispositivoScreen(email) {
+    var html = authBrandHtml() +
+      '<div class="auth-form-panel"><div class="auth-card">' +
+      "<h2>Confirme este dispositivo</h2>" +
+      '<div class="hint" style="margin-bottom:12px;">Detectamos um login num dispositivo diferente do habitual. Mandamos um código de 6 números para <strong>' +
+      esc(email || "") + '</strong> — digite ele abaixo.</div>' +
+      '<form id="verificar-dispositivo-form">' +
+      '<div class="field"><label>Código de verificação</label><input type="text" name="codigo" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required></div>' +
+      '<button type="submit" class="btn primary" style="width:100%;margin-top:8px;">Confirmar</button>' +
+      '<button type="button" class="link-btn" id="reenviar-codigo-link" style="align-self:flex-start;margin-top:-2px;">Reenviar código</button>' +
+      '<button type="button" class="link-btn" id="cancelar-verificacao-link" style="align-self:flex-start;">Usar outra conta</button>' +
+      "</form></div></div>";
+    showAuthOverlay(html);
+    var codigoInput = $('#verificar-dispositivo-form input[name="codigo"]');
+    if (codigoInput) codigoInput.focus();
+    var submitBtn = $('#verificar-dispositivo-form button[type="submit"]');
+    $("#verificar-dispositivo-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var fd = new FormData(ev.target);
+      var codigo = (fd.get("codigo") || "").toString().trim();
+      if (submitBtn) submitBtn.disabled = true;
+      apiFetch("/api/auth/verificar-dispositivo", { method: "POST", body: { codigo: codigo }, silentAuth: true })
         .then(function (data) {
           CURRENT_USER = mapUsuarioFromApi(data.usuario);
           return loadState();
@@ -1164,7 +1257,53 @@
           render();
         })
         .catch(function (err) {
-          renderLoginScreen((err && err.message) || "E-mail ou senha inválidos.");
+          if (submitBtn) submitBtn.disabled = false;
+          toast((err && err.message) || "Código inválido.", "error");
+        });
+    });
+    $("#reenviar-codigo-link").addEventListener("click", function () {
+      apiFetch("/api/auth/reenviar-codigo-dispositivo", { method: "POST", silentAuth: true })
+        .then(function () { toast("Enviamos um novo código para seu e-mail.", "success"); })
+        .catch(function (err) { toast((err && err.message) || "Não foi possível reenviar o código.", "error"); });
+    });
+    $("#cancelar-verificacao-link").addEventListener("click", function () {
+      apiFetch("/api/auth/logout", { method: "POST" }).catch(function () { /* segue mesmo se falhar */ }).then(function () {
+        CURRENT_USER = null;
+        renderLoginScreen();
+      });
+    });
+  }
+  // Tela de redefinição de senha a partir do link mandado por e-mail
+  // (#/redefinir-senha/:token) — acessível mesmo deslogado, ver render().
+  function renderRedefinirSenhaScreen(token) {
+    var html = authBrandHtml() +
+      '<div class="auth-form-panel"><div class="auth-card">' +
+      "<h2>Escolha uma nova senha</h2>" +
+      '<form id="redefinir-senha-form">' +
+      '<div class="field"><label>Nova senha</label><input type="password" name="nova" autocomplete="new-password" minlength="6" required></div>' +
+      '<div class="field"><label>Confirmar nova senha</label><input type="password" name="confirmar" autocomplete="new-password" minlength="6" required></div>' +
+      '<button type="submit" class="btn primary" style="width:100%;margin-top:8px;">Salvar nova senha</button>' +
+      "</form></div></div>";
+    showAuthOverlay(html);
+    var novaInput = $('#redefinir-senha-form input[name="nova"]');
+    if (novaInput) novaInput.focus();
+    var submitBtn = $('#redefinir-senha-form button[type="submit"]');
+    $("#redefinir-senha-form").addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var fd = new FormData(ev.target);
+      var nova = (fd.get("nova") || "").toString();
+      var conf = (fd.get("confirmar") || "").toString();
+      if (nova.length < 6) { toast("A senha deve ter pelo menos 6 caracteres.", "error"); return; }
+      if (nova !== conf) { toast("As senhas não coincidem.", "error"); return; }
+      if (submitBtn) submitBtn.disabled = true;
+      apiFetch("/api/auth/reset-password", { method: "POST", body: { token: token, nova: nova, confirmar: conf }, silentAuth: true })
+        .then(function () {
+          toast("Senha redefinida. Faça login com a nova senha.", "success");
+          navigate("#/");
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          toast((err && err.message) || "Não foi possível redefinir a senha.", "error");
         });
     });
   }
@@ -8268,11 +8407,17 @@
 
   function render() {
     if (!STATE) return;
+    var route = currentRoute();
+    // Link de "esqueci minha senha" (#/redefinir-senha/:token) precisa
+    // funcionar mesmo deslogado — checa antes do resto do gate de login.
+    if (!CURRENT_USER && route.view === "redefinir-senha" && route.id) {
+      renderRedefinirSenhaScreen(route.id);
+      return;
+    }
     if (!CURRENT_USER) { renderLoginScreen(); return; }
     if (CURRENT_USER.mustChangePassword) { renderTrocarSenhaScreen(); return; }
     hideAuthOverlay();
     renderShell();
-    var route = currentRoute();
     var main = $("#app-main");
     var hashEmpty = !location.hash || location.hash === "#" || location.hash === "#/";
 

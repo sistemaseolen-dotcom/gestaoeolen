@@ -26,6 +26,10 @@ export interface UsuarioRow {
   ativo: boolean;
   permissoes: PermissoesMatrix;
   must_change_password: boolean;
+  // Id do dispositivo marcado como confiável pra este usuário (ver
+  // src/lib/deviceCookie.ts) — usado só pelo gate de verificação em
+  // getCurrentUser(), nunca por telas/permissões em si.
+  dispositivo_confiavel_id?: string | null;
 }
 
 export function isAdmin(u: UsuarioRow | null | undefined): boolean {
