@@ -22,7 +22,7 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     observacao: "Observação", empresa_id: "Empresa", valor_hora: "Valor hora", salario_bruto: "Salário bruto",
     isignum_id: "ID Isignum (Ericsson)", isignum_senha: "Senha Isignum (Ericsson)",
     isdp_id: "ID ISDP (Huawei)", isdp_senha: "Senha ISDP (Huawei)",
-    contas: "Conta(s)",
+    contas: "Contas Ativas",
   },
   equipe: {
     nome: "Nome", regional: "Regional", projeto: "Projeto", operadora: "Operadora", status: "Status",

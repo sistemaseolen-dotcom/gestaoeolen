@@ -1507,7 +1507,7 @@
         distinctStatuses(STATE.pessoas).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + '</option>'; }).join("") +
         "</select>";
 
-      var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto", "Conta(s)", "Treinamentos vencidos", "Status"];
+      var exportHeaders = ["Nome", "Cargo", "Empresa", "Regional", "Projeto atual", "Contas Ativas", "Treinamentos vencidos", "Status"];
       var exportRows = filtered.map(function (p) {
         var tr = p.status === "ATIVO" ? pessoaTreinamentos(p.id) : [];
         var venc = tr.filter(function (t) { return trainingStatus(t).code === "VENCIDO"; }).length;
@@ -1519,7 +1519,7 @@
         (canDo("pessoas", "criar") ? '<button class="btn primary" id="btn-new-pessoa">' + ICONS.plus + "Nova pessoa</button>" : "") + "</div>" +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Regional</th><th>Projeto</th><th>Conta(s)</th><th>Treinamentos</th><th>Status</th>",
+          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Regional</th><th>Projeto atual</th><th>Contas Ativas</th><th>Treinamentos</th><th>Status</th>",
           bodyHtml: body,
           count: filtered.length,
           page: pg.page,
@@ -1567,7 +1567,7 @@
       detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
-      '<div class="detail-item"><span class="k">Conta(s)</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
+      '<div class="detail-item"><span class="k">Contas Ativas</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Contato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("E-mail", p.email, "email") + detailItem("Telefone", p.telefone, "telefone") + detailItem("E-mail corporativo", p.emailCorporativo, "email_corporativo") + detailItem("Telefone corporativo", p.telefoneCorporativo, "telefone_corporativo") +
@@ -1762,7 +1762,7 @@
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
       field("Matrícula eSocial", "matriculaESocial", "text", p) +
-      checkboxGroupField("Conta(s)", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
+      checkboxGroupField("Contas Ativas", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(p ? p.observacao : "") + "</textarea></div>" +
       "</div></div>" +
       '<div class="tab-pane" data-pane="doc"><div class="field-grid">' +
