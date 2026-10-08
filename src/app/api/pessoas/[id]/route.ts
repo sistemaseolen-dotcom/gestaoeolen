@@ -12,8 +12,9 @@ const CAMPOS_PESSOA = [
   "numero", "complemento", "bairro", "municipio", "estado", "mei", "numero_contrato",
   "validade_contrato", "observacao", "empresa_id", "valor_hora", "salario_bruto",
   // Credenciais de acesso ao sistema do cliente (pedido do Diego, 10/2026):
-  // Ericsson usa Isignum, Huawei usa ISDP.
-  "isignum_id", "isignum_senha", "isdp_id", "isdp_senha",
+  // Ericsson usa Isignum, Huawei usa ISDP. Só o ID é armazenado — por
+  // pedido do Diego (10/2026) o campo de senha foi removido.
+  "isignum_id", "isdp_id",
   // Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego,
   // 10/2026) -- array, pode ter mais de uma ao mesmo tempo.
   "contas",
@@ -73,9 +74,7 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
     projeto: "projeto",
     operadora: "operadora",
     isignumId: "isignum_id",
-    isignumSenha: "isignum_senha",
     isdpId: "isdp_id",
-    isdpSenha: "isdp_senha",
     contas: "contas",
   };
   const out: Record<string, any> = {};

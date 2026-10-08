@@ -810,9 +810,10 @@
       observacao: row.observacao, empresaId: row.empresa_id, empresaNome: row.empresa_nome,
       valorHora: row.valor_hora, salarioBruto: row.salario_bruto,
       // Credenciais de acesso ao sistema do cliente (pedido do Diego,
-      // 10/2026): Ericsson usa Isignum, Huawei usa ISDP.
-      isignumId: row.isignum_id, isignumSenha: row.isignum_senha,
-      isdpId: row.isdp_id, isdpSenha: row.isdp_senha,
+      // 10/2026): Ericsson usa Isignum, Huawei usa ISDP. Só o ID é
+      // armazenado/exibido — a senha não fica no sistema (pedido do Diego).
+      isignumId: row.isignum_id,
+      isdpId: row.isdp_id,
       // Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego,
       // 10/2026) — diferente de "projeto" (um valor só, de preenchimento
       // livre): aqui é sempre um dos 4 clientes fixos, e pode ter mais de
@@ -1608,8 +1609,8 @@
       detailItem("Valor hora", fmtMoney(p.valorHora), "valor_hora") + detailItem("Salário bruto", fmtMoney(p.salarioBruto), "salario_bruto") + detailItem("CNH", p.cnh + (p.dataValidadeCNH ? " · venc. " + fmtDateBR(p.dataValidadeCNH) : ""), "cnh") +
       "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") + "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Acessos de cliente</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("ID Isignum (Ericsson)", p.isignumId, "isignum_id") + detailItem("Senha Isignum (Ericsson)", p.isignumSenha, "isignum_senha") +
-      detailItem("ID ISDP (Huawei)", p.isdpId, "isdp_id") + detailItem("Senha ISDP (Huawei)", p.isdpSenha, "isdp_senha") +
+      detailItem("ID Isignum (Ericsson)", p.isignumId, "isignum_id") +
+      detailItem("ID ISDP (Huawei)", p.isdpId, "isdp_id") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Equipes</h3></div><div class="panel-body pad">' +
       (eqs.length ? eqs.map(function (e) {
@@ -1816,8 +1817,8 @@
       '<div class="tab-pane" data-pane="acessos">' +
       '<div class="hint" style="margin-bottom:10px;">Credenciais de acesso ao sistema do cliente — usadas quando esta pessoa atua em projetos Ericsson ou Huawei.</div>' +
       '<div class="field-grid">' +
-      field("ID Isignum (Ericsson)", "isignumId", "text", p) + field("Senha Isignum (Ericsson)", "isignumSenha", "text", p) +
-      field("ID ISDP (Huawei)", "isdpId", "text", p) + field("Senha ISDP (Huawei)", "isdpSenha", "text", p) +
+      field("ID Isignum (Ericsson)", "isignumId", "text", p) +
+      field("ID ISDP (Huawei)", "isdpId", "text", p) +
       "</div></div>" +
       "</form>" +
       '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="pessoa-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
@@ -1834,7 +1835,7 @@
         "dataAdmissao", "dataDemissao", "matriculaESocial", "cpf", "rg", "dataNascimento", "pis", "cnh", "dataValidadeCNH",
         "escolaridade", "estadoCivil", "email", "telefone", "emailCorporativo", "telefoneCorporativo", "cep", "endereco",
         "numero", "complemento", "bairro", "municipio", "estado", "mei", "numeroContrato", "validadeContrato", "observacao",
-        "isignumId", "isignumSenha", "isdpId", "isdpSenha"];
+        "isignumId", "isdpId"];
       var camposData = ["dataAdmissao", "dataDemissao", "dataNascimento", "dataValidadeCNH", "validadeContrato"];
       camposEditaveis.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
       camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });

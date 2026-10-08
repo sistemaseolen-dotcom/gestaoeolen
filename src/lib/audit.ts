@@ -20,8 +20,8 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     complemento: "Complemento", bairro: "Bairro", municipio: "Município", estado: "Estado", mei: "MEI",
     numero_contrato: "Número do contrato", validade_contrato: "Validade do contrato",
     observacao: "Observação", empresa_id: "Empresa", valor_hora: "Valor hora", salario_bruto: "Salário bruto",
-    isignum_id: "ID Isignum (Ericsson)", isignum_senha: "Senha Isignum (Ericsson)",
-    isdp_id: "ID ISDP (Huawei)", isdp_senha: "Senha ISDP (Huawei)",
+    isignum_id: "ID Isignum (Ericsson)",
+    isdp_id: "ID ISDP (Huawei)",
     contas: "Contas Ativas",
   },
   equipe: {
