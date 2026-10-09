@@ -61,6 +61,42 @@
   // Regional de Pessoas (pedido do Diego, 05/10/2026): virou um select de
   // opções fixas (antes era texto livre) — em ordem alfabética.
   var REGIONAL_OPTS = ["CO", "ES", "MG", "NE", "NO", "RJ", "SP", "SUL"];
+  // Estado (UF) em que a pessoa atua (pedido do Diego, 10/2026) — campo novo
+  // na aba Geral, ao lado de Regional. Lista fixa com as 27 UFs do Brasil,
+  // em ordem alfabética pelo nome.
+  var UF_BRASIL = [
+    ["AC", "Acre"], ["AL", "Alagoas"], ["AP", "Amapá"], ["AM", "Amazonas"], ["BA", "Bahia"],
+    ["CE", "Ceará"], ["DF", "Distrito Federal"], ["ES", "Espírito Santo"], ["GO", "Goiás"],
+    ["MA", "Maranhão"], ["MT", "Mato Grosso"], ["MS", "Mato Grosso do Sul"], ["MG", "Minas Gerais"],
+    ["PA", "Pará"], ["PB", "Paraíba"], ["PR", "Paraná"], ["PE", "Pernambuco"], ["PI", "Piauí"],
+    ["RJ", "Rio de Janeiro"], ["RN", "Rio Grande do Norte"], ["RS", "Rio Grande do Sul"],
+    ["RO", "Rondônia"], ["RR", "Roraima"], ["SC", "Santa Catarina"], ["SP", "São Paulo"],
+    ["SE", "Sergipe"], ["TO", "Tocantins"],
+  ];
+  // De qual UF pra qual Regional (ver REGIONAL_OPTS acima) — pedido do Diego
+  // (10/2026): ao escolher o estado no formulário, a Regional é preenchida
+  // sozinha a partir deste mapa. SP/RJ/MG/ES têm regional própria (mesmo
+  // nome da UF); os demais estados entram na regional do seu macro-grupo
+  // (Norte, Nordeste, Centro-Oeste ou Sul).
+  var UF_PARA_REGIONAL = {
+    SP: "SP", RJ: "RJ", MG: "MG", ES: "ES",
+    AC: "NO", AP: "NO", AM: "NO", PA: "NO", RO: "NO", RR: "NO", TO: "NO",
+    AL: "NE", BA: "NE", CE: "NE", MA: "NE", PB: "NE", PE: "NE", PI: "NE", RN: "NE", SE: "NE",
+    DF: "CO", GO: "CO", MT: "CO", MS: "CO",
+    PR: "SUL", RS: "SUL", SC: "SUL",
+  };
+  function ufNome(sigla) {
+    var par = UF_BRASIL.filter(function (u) { return u[0] === sigla; })[0];
+    return par ? par[1] : "";
+  }
+  function ufSelectField(label, name, current, opts2) {
+    opts2 = opts2 || {};
+    var emptyOpt = '<option value="">' + esc(opts2.emptyLabel || "— Selecione —") + "</option>";
+    var options = UF_BRASIL.map(function (u) {
+      return '<option value="' + esc(u[0]) + '"' + (u[0] === current ? " selected" : "") + '>' + esc(u[0] + " — " + u[1]) + "</option>";
+    }).join("");
+    return '<div class="field"><label>' + esc(label) + '</label><select name="' + name + '" id="' + name + '"' + (opts2.required ? " required" : "") + ">" + emptyOpt + options + "</select></div>";
+  }
   // Cargos que disparam a criação automática dos documentos obrigatórios abaixo. Fixo de propósito:
   // cargos novos criados depois em Administrador → Listas NÃO entram aqui automaticamente — os
   // documentos, nesse caso, só são adicionados manualmente.
@@ -798,6 +834,9 @@
     if (!row) return row;
     return {
       id: row.id, nome: row.nome, cargo: row.cargo, cargoAso: row.cargo_aso, status: row.status, regional: row.regional,
+      // Estado (UF) em que a pessoa atua (pedido do Diego, 10/2026) — não
+      // confundir com `estado`, que é o estado do endereço (aba Contato).
+      estadoAtuacao: row.estado_atuacao,
       projeto: row.projeto, operadora: row.operadora, cadastro: row.cadastro, coordenador: row.coordenador,
       tipoPessoa: row.tipo_pessoa, dataAdmissao: row.data_admissao, dataDemissao: row.data_demissao,
       matriculaESocial: row.matricula_esocial, cpf: row.cpf, rg: row.rg, dataNascimento: row.data_nascimento,
@@ -1543,7 +1582,7 @@
       // colunas visíveis na lista.
       var exportHeaders = [
         // Geral
-        "Nome", "Cargo", "Cargo ASO", "Status", "Regional", "Projeto atual", "Operadora",
+        "Nome", "Cargo", "Cargo ASO", "Status", "Estado (atuação)", "Regional", "Projeto atual", "Operadora",
         "Cadastro (origem)", "Coordenador", "Tipo de pessoa", "Empresa",
         "Data de admissão", "Data de desligamento", "Matrícula eSocial", "Contas Ativas", "Observação",
         // Documentos
@@ -1563,7 +1602,7 @@
         var venc = tr.filter(function (t) { return trainingStatus(t).code === "VENCIDO"; }).length;
         return [
           // Geral
-          p.nome || "", p.cargo || "", p.cargoAso || "", p.status || "", p.regional || "", p.projeto || "", p.operadora || "",
+          p.nome || "", p.cargo || "", p.cargoAso || "", p.status || "", p.estadoAtuacao || "", p.regional || "", p.projeto || "", p.operadora || "",
           p.cadastro || "", p.coordenador || "", p.tipoPessoa || "", p.empresaNome || "",
           fmtDateBR(p.dataAdmissao), fmtDateBR(p.dataDemissao), p.matriculaESocial || "", (p.contas || []).join(", "), p.observacao || "",
           // Documentos
@@ -1632,6 +1671,7 @@
       '<div class="panel"><div class="panel-head"><h3>Dados gerais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("CPF", p.cpf, "cpf") + detailItem("RG", p.rg, "rg") + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento), "data_nascimento") +
       detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
+      detailItem("Estado (atuação)", p.estadoAtuacao ? p.estadoAtuacao + " — " + ufNome(p.estadoAtuacao) : "", "estado_atuacao") + detailItem("Regional", p.regional, "regional") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
       '<div class="detail-item"><span class="k">Contas Ativas</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
@@ -1823,6 +1863,7 @@
       field("Nome completo *", "nome", "text", p, { required: true, span2: true }) +
       cargoSelectField(p) + selectField("Cargo ASO", "cargoAso", listaOptions("cargoAso"), p ? p.cargoAso : "", { allowEmpty: true }) +
       selectField("Status *", "status", listaOptions("statusPessoa"), p ? p.status : "ATIVO", { required: true }) +
+      ufSelectField("Estado (atuação)", "estadoAtuacao", p ? p.estadoAtuacao : "") +
       selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
       field("Operadora", "operadora", "text", p) + field("Cadastro (origem)", "cadastro", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
@@ -1862,12 +1903,24 @@
     openDrawer(html);
     setupTabs();
     bindCepLookup($("#pessoa-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
+    // Ao escolher o Estado (atuação), a Regional é preenchida sozinha a
+    // partir do UF_PARA_REGIONAL (pedido do Diego, 10/2026). Só sobrescreve
+    // a Regional se houver um mapeamento pra aquele UF — o usuário ainda
+    // pode trocar a Regional manualmente depois, se precisar.
+    var estadoAtuacaoEl = $("#pessoa-form [name=estadoAtuacao]");
+    var regionalEl = $("#pessoa-form [name=regional]");
+    if (estadoAtuacaoEl && regionalEl) {
+      estadoAtuacaoEl.addEventListener("change", function () {
+        var reg = UF_PARA_REGIONAL[estadoAtuacaoEl.value];
+        if (reg) regionalEl.value = reg;
+      });
+    }
     $("#pessoa-form").addEventListener("submit", function (e) {
       e.preventDefault();
       if (!canDo("pessoas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
       var fd = new FormData(e.target);
       var body = {};
-      var camposEditaveis = ["nome", "cargo", "cargoAso", "status", "regional", "projeto", "operadora", "cadastro", "coordenador", "tipoPessoa",
+      var camposEditaveis = ["nome", "cargo", "cargoAso", "status", "regional", "estadoAtuacao", "projeto", "operadora", "cadastro", "coordenador", "tipoPessoa",
         "dataAdmissao", "dataDemissao", "matriculaESocial", "cpf", "rg", "dataNascimento", "pis", "cnh", "dataValidadeCNH",
         "escolaridade", "estadoCivil", "email", "telefone", "emailCorporativo", "telefoneCorporativo", "cep", "endereco",
         "numero", "complemento", "bairro", "municipio", "estado", "mei", "numeroContrato", "validadeContrato", "observacao",

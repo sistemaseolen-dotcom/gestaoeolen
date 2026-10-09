@@ -5,7 +5,7 @@ import { auditDiffFields, auditDelete } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
 
 const CAMPOS_PESSOA = [
-  "nome", "cargo", "cargo_aso", "status", "regional", "projeto", "operadora", "cadastro", "coordenador",
+  "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
   "tipo_pessoa", "data_admissao", "data_demissao", "matricula_esocial", "cpf", "rg",
   "data_nascimento", "pis", "cnh", "data_validade_cnh", "escolaridade", "estado_civil",
   "email", "telefone", "email_corporativo", "telefone_corporativo", "cep", "endereco",
@@ -38,6 +38,7 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
     nome: "nome",
     tipoPessoa: "tipo_pessoa",
     regional: "regional",
+    estadoAtuacao: "estado_atuacao",
     cadastro: "cadastro",
     dataAdmissao: "data_admissao",
     dataDemissao: "data_demissao",
@@ -80,7 +81,7 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [bodyKey, column] of Object.entries(map)) {
     if (Object.prototype.hasOwnProperty.call(body || {}, bodyKey)) {
-      out[column] = bodyKey === "regional" || bodyKey === "coordenador" ? upperOrSame(body[bodyKey]) : body[bodyKey];
+      out[column] = bodyKey === "regional" || bodyKey === "coordenador" || bodyKey === "estadoAtuacao" ? upperOrSame(body[bodyKey]) : body[bodyKey];
     }
   }
   return out;

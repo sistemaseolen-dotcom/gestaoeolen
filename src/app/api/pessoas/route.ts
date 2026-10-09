@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 
 const CAMPOS_PESSOA = [
-  "nome", "cargo", "cargo_aso", "status", "regional", "projeto", "operadora", "cadastro", "coordenador",
+  "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
   "tipo_pessoa", "data_admissao", "data_demissao", "matricula_esocial", "cpf", "rg",
   "data_nascimento", "pis", "cnh", "data_validade_cnh", "escolaridade", "estado_civil",
   "email", "telefone", "email_corporativo", "telefone_corporativo", "cep", "endereco",
@@ -35,6 +35,7 @@ function pessoaFromBody(body: any): Record<string, any> {
     nome: body?.nome,
     tipo_pessoa: body?.tipoPessoa,
     regional: upperOrSame(body?.regional),
+    estado_atuacao: upperOrSame(body?.estadoAtuacao),
     cadastro: body?.cadastro,
     data_admissao: body?.dataAdmissao,
     data_demissao: body?.dataDemissao,

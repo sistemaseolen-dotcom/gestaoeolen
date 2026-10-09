@@ -10,7 +10,9 @@ export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuari
 // Rótulos amigáveis por campo, por entidade — espelha FIELD_LABELS do app.js.
 export const FIELD_LABELS: Record<string, Record<string, string>> = {
   pessoa: {
-    nome: "Nome", cargo: "Cargo", status: "Status", regional: "Regional", projeto: "Projeto",
+    nome: "Nome", cargo: "Cargo", status: "Status", regional: "Regional",
+    estado_atuacao: "Estado (atuação)",
+    projeto: "Projeto",
     operadora: "Operadora", cadastro: "Cadastro", coordenador: "Coordenador", tipo_pessoa: "Tipo de pessoa",
     data_admissao: "Data de admissão", data_demissao: "Data de demissão", matricula_esocial: "Matrícula eSocial",
     cpf: "CPF", rg: "RG", data_nascimento: "Data de nascimento", pis: "PIS", cnh: "CNH",
