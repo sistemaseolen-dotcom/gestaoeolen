@@ -5,6 +5,7 @@ import { supabaseServerSession } from "@/lib/supabaseServerSession";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { DEVICE_COOKIE } from "@/lib/deviceCookie";
 import { enviarEmail } from "@/lib/msGraphMail";
+import { logAcesso } from "@/lib/accessLog";
 
 // Reenvia o código de verificação de dispositivo (caso o primeiro e-mail
 // demore ou se perca) — com um intervalo mínimo entre reenvios pra não virar
@@ -77,6 +78,8 @@ export async function POST() {
     console.error("Falha ao reenviar código de verificação de dispositivo:", e);
     return NextResponse.json({ error: "Não foi possível enviar o código. Tente novamente em alguns instantes." }, { status: 500 });
   }
+
+  await logAcesso({ usuarioId: authUser.id, usuarioEmail: perfil.email, acao: "dispositivo:codigo_reenviado" });
 
   return NextResponse.json({ ok: true });
 }

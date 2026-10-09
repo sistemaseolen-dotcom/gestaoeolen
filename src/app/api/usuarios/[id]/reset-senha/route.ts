@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorized, forbidden } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdmin } from "@/lib/permissions";
+import { logAcesso } from "@/lib/accessLog";
 
 // id é o uuid do usuário — nunca Number() aqui.
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -40,6 +41,15 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
+
+  const { data: alvo } = await admin.from("usuarios").select("nome, email").eq("id", id).maybeSingle();
+  await logAcesso({
+    usuarioId: currentUser.id,
+    usuarioNome: currentUser.nome,
+    usuarioEmail: currentUser.email,
+    acao: "usuarios:resetar_senha",
+    detalhe: `Redefiniu a senha de ${alvo?.nome || id} (${alvo?.email || "e-mail desconhecido"}).`,
+  });
 
   return NextResponse.json({ ok: true });
 }

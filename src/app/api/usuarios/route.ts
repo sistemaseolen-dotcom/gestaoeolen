@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorized, forbidden } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdmin, emptyPermissoes } from "@/lib/permissions";
+import { logAcesso } from "@/lib/accessLog";
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -95,6 +96,14 @@ export async function POST(req: Request) {
     para: null,
     usuario_id: user.id,
     usuario_nome: user.nome,
+  });
+
+  await logAcesso({
+    usuarioId: user.id,
+    usuarioNome: user.nome,
+    usuarioEmail: user.email,
+    acao: "usuarios:criar",
+    detalhe: `Criou o usuário ${nome} (${email}).`,
   });
 
   return NextResponse.json(perfil, { status: 201 });

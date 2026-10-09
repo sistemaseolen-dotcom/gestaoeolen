@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseServerSession } from "@/lib/supabaseServerSession";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { logAcesso } from "@/lib/accessLog";
 
 // Troca a própria senha — usado tanto no fluxo de "senha temporária" (login
 // forçando troca, igual ao comportamento antigo do app.js) quanto numa
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
   }
 
   await admin.from("usuarios").update({ must_change_password: false }).eq("id", authUser.id);
+
+  await logAcesso({ usuarioId: authUser.id, usuarioEmail: authUser.email, acao: "senha:alterada" });
 
   return NextResponse.json({ ok: true });
 }

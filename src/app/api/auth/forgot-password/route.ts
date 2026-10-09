@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enviarEmail } from "@/lib/msGraphMail";
+import { logAcesso } from "@/lib/accessLog";
 
 // "Esqueci minha senha" (revisão de segurança, 10/2026) — gera um token de
 // uso único e manda por e-mail via Microsoft Graph (ver src/lib/msGraphMail.ts,
@@ -36,10 +37,20 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   // Mesma resposta exista ou não o usuário, ativo ou não — quem pergunta
-  // não pode descobrir se um e-mail está cadastrado só por isso.
+  // não pode descobrir se um e-mail está cadastrado só por isso. O log
+  // técnico interno (nunca exposto na resposta) ainda guarda a diferença,
+  // pra permitir rastrear tentativas contra e-mails que não existem.
   if (!usuario || !usuario.ativo) {
+    await logAcesso({ usuarioEmail: email, acao: "esqueci_senha:nao_encontrado" });
     return NextResponse.json(RESPOSTA_PADRAO);
   }
+
+  await logAcesso({
+    usuarioId: usuario.id,
+    usuarioNome: usuario.nome,
+    usuarioEmail: usuario.email,
+    acao: "esqueci_senha:solicitado",
+  });
 
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, unauthorized, forbidden } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdmin } from "@/lib/permissions";
+import { logAcesso } from "@/lib/accessLog";
 
 // id é o uuid do usuário (auth.users.id) — nunca Number() aqui, ao contrário
 // das outras entidades que usam bigint.
@@ -99,6 +100,14 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     para: null,
     usuario_id: currentUser.id,
     usuario_nome: currentUser.nome,
+  });
+
+  await logAcesso({
+    usuarioId: currentUser.id,
+    usuarioNome: currentUser.nome,
+    usuarioEmail: currentUser.email,
+    acao: "usuarios:editar",
+    detalhe: `Editou o usuário ${after.nome} (campos: ${Object.keys(patch).join(", ") || "nenhum"}).`,
   });
 
   return NextResponse.json(after);

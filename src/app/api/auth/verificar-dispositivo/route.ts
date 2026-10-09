@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { supabaseServerSession } from "@/lib/supabaseServerSession";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { DEVICE_COOKIE, DEVICE_COOKIE_OPTIONS } from "@/lib/deviceCookie";
+import { logAcesso } from "@/lib/accessLog";
 
 // Confirma o código de 6 números mandado por e-mail quando o login veio de
 // um dispositivo desconhecido (ver POST /api/auth/login). Lê a sessão do
@@ -47,16 +48,19 @@ export async function POST(req: Request) {
     .maybeSingle();
 
   if (!registro || new Date(registro.expira_em).getTime() <= Date.now()) {
+    await logAcesso({ usuarioId: authUser.id, usuarioEmail: authUser.email, acao: "dispositivo:codigo_expirado" });
     return NextResponse.json({ error: "Código expirado. Peça um novo código." }, { status: 400 });
   }
 
   if (registro.tentativas >= MAX_TENTATIVAS) {
+    await logAcesso({ usuarioId: authUser.id, usuarioEmail: authUser.email, acao: "dispositivo:bloqueado" });
     return NextResponse.json({ error: "Muitas tentativas incorretas. Peça um novo código." }, { status: 429 });
   }
 
   const codigoHash = crypto.createHash("sha256").update(codigo).digest("hex");
   if (codigoHash !== registro.codigo_hash) {
     await admin.from("login_verificacoes").update({ tentativas: registro.tentativas + 1 }).eq("id", registro.id);
+    await logAcesso({ usuarioId: authUser.id, usuarioEmail: authUser.email, acao: "dispositivo:codigo_invalido" });
     return NextResponse.json({ error: "Código inválido." }, { status: 401 });
   }
 
@@ -76,6 +80,13 @@ export async function POST(req: Request) {
     .select("id, nome, email, role, ativo, permissoes, must_change_password")
     .eq("id", authUser.id)
     .maybeSingle();
+
+  await logAcesso({
+    usuarioId: authUser.id,
+    usuarioNome: perfil?.nome,
+    usuarioEmail: perfil?.email || authUser.email,
+    acao: "dispositivo:verificado",
+  });
 
   const response = NextResponse.json({ usuario: perfil });
   response.cookies.set(DEVICE_COOKIE, deviceId, DEVICE_COOKIE_OPTIONS);

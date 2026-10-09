@@ -5,6 +5,7 @@ import { supabaseServerSession } from "@/lib/supabaseServerSession";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { DEVICE_COOKIE, DEVICE_COOKIE_OPTIONS, DEVICE_COOKIE_PENDING_OPTIONS } from "@/lib/deviceCookie";
 import { enviarEmail } from "@/lib/msGraphMail";
+import { logAcesso } from "@/lib/accessLog";
 
 // Rate limiting do login (revisão de segurança, 10/2026) — sem isso, nada
 // impedia tentar senhas repetidamente contra um e-mail conhecido além do
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
 
   const bloqueio = await verificarBloqueio(email);
   if (bloqueio.bloqueado) {
+    await logAcesso({ usuarioEmail: email, acao: "login:bloqueado" });
     return NextResponse.json(
       { error: `Muitas tentativas de login. Tente novamente em ${bloqueio.minutosRestantes} minuto(s).` },
       { status: 429 }
@@ -95,6 +97,7 @@ export async function POST(req: Request) {
 
   if (error || !data.user) {
     await registrarTentativaFalha(email);
+    await logAcesso({ usuarioEmail: email, acao: "login:falha" });
     return NextResponse.json({ error: "E-mail ou senha inválidos." }, { status: 401 });
   }
 
@@ -132,6 +135,14 @@ export async function POST(req: Request) {
       .update({ dispositivo_confiavel_id: novoDeviceId, dispositivo_atualizado_em: agora, ultimo_login_em: agora })
       .eq("id", perfil.id);
 
+    await logAcesso({
+      usuarioId: perfil.id,
+      usuarioNome: perfil.nome,
+      usuarioEmail: perfil.email,
+      acao: "login:sucesso",
+      detalhe: "Dispositivo confiado automaticamente (primeiro login com verificação de dispositivo ativa).",
+    });
+
     const response = NextResponse.json({ usuario: perfilSemDevice });
     response.cookies.set(DEVICE_COOKIE, novoDeviceId, DEVICE_COOKIE_OPTIONS);
     return response;
@@ -140,6 +151,7 @@ export async function POST(req: Request) {
   // Dispositivo já confiável — login normal.
   if (deviceIdAtual && deviceIdAtual === dispositivo_confiavel_id) {
     await admin.from("usuarios").update({ ultimo_login_em: agora }).eq("id", perfil.id);
+    await logAcesso({ usuarioId: perfil.id, usuarioNome: perfil.nome, usuarioEmail: perfil.email, acao: "login:sucesso" });
     return NextResponse.json({ usuario: perfilSemDevice });
   }
 
@@ -177,6 +189,14 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
+
+  await logAcesso({
+    usuarioId: perfil.id,
+    usuarioNome: perfil.nome,
+    usuarioEmail: perfil.email,
+    acao: "login:dispositivo_pendente",
+    detalhe: "Senha correta, mas de um dispositivo diferente do confiável — aguardando código por e-mail.",
+  });
 
   const response = NextResponse.json({ verificacaoDispositivoNecessaria: true });
   response.cookies.set(DEVICE_COOKIE, candidatoDeviceId, DEVICE_COOKIE_PENDING_OPTIONS);

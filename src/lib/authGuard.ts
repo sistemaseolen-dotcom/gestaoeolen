@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { supabaseServerSession } from "./supabaseServerSession";
 import { supabaseAdmin } from "./supabaseAdmin";
-import { canDo, canView, type Action, type Page, type UsuarioRow } from "./permissions";
+import { canDo, canView, isAdmin, type Action, type Page, type UsuarioRow } from "./permissions";
 import { DEVICE_COOKIE } from "./deviceCookie";
+import { logAcesso } from "./accessLog";
 
 /**
  * Descobre quem está logado (via o cookie de sessão do Supabase Auth) e
@@ -57,11 +58,29 @@ export function forbidden(msg = "Você não tem permissão para isso.") {
  *   const gate = await requirePermission("pessoas", "editar");
  *   if (gate.response) return gate.response;
  *   const { user } = gate;
+ *
+ * Log técnico de acessos (pedido do Diego, 10/2026): toda ação que passa por
+ * aqui com action !== "ver" (ou seja, criar/editar/excluir em qualquer
+ * página do sistema) grava uma linha em `log_acesso` com IP, localização
+ * aproximada e dispositivo de quem fez — concedida ou negada. "ver" não
+ * entra pra não gerar log demais sem valor de rastreio (toda tela que abre
+ * dispara uma leitura). Isso cobre as ~20 rotas de pessoas/equipes/
+ * empresas/treinamentos/patrimônio/veículos/auditorias/acesso de uma vez só,
+ * sem precisar tocar em cada uma.
  */
 export async function requirePermission(page: Page, action: Action) {
   const user = await getCurrentUser();
   if (!user) return { user: null, response: unauthorized() } as const;
-  if (!canDo(user, page, action)) return { user, response: forbidden() } as const;
+  const permitido = canDo(user, page, action);
+  if (action !== "ver") {
+    await logAcesso({
+      usuarioId: user.id,
+      usuarioNome: user.nome,
+      usuarioEmail: user.email,
+      acao: `${page}:${action}${permitido ? "" : ":negado"}`,
+    });
+  }
+  if (!permitido) return { user, response: forbidden() } as const;
   return { user, response: null } as const;
 }
 
@@ -76,5 +95,18 @@ export async function requireView(page: Page) {
 export async function requireAuth() {
   const user = await getCurrentUser();
   if (!user) return { user: null, response: unauthorized() } as const;
+  return { user, response: null } as const;
+}
+
+/**
+ * Exige estar logado e ser administrador — usado pelas rotas de gestão de
+ * usuários (que não passam por `requirePermission`, já que "usuários" não é
+ * uma página da matriz de permissões) e pela leitura do log técnico de
+ * acessos em si, que não deve ser visível a quem não for admin.
+ */
+export async function requireAdmin() {
+  const user = await getCurrentUser();
+  if (!user) return { user: null, response: unauthorized() } as const;
+  if (!isAdmin(user)) return { user, response: forbidden() } as const;
   return { user, response: null } as const;
 }

@@ -7310,11 +7310,12 @@
     return '<div class="section-tabs" style="margin-bottom:16px;">' +
       '<button type="button" class="section-tab' + (active === "usuarios" ? " active" : "") + '" data-admintab="usuarios">Usuários</button>' +
       '<button type="button" class="section-tab' + (active === "log" ? " active" : "") + '" data-admintab="log">Log de alterações</button>' +
+      '<button type="button" class="section-tab' + (active === "acessos" ? " active" : "") + '" data-admintab="acessos">Log técnico (acessos)</button>' +
       '<button type="button" class="section-tab' + (active === "listas" ? " active" : "") + '" data-admintab="listas">Listas</button>' +
       '<button type="button" class="section-tab' + (active === "config" ? " active" : "") + '" data-admintab="config">Configurações</button>' +
       "</div>";
   }
-  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", listas: "#/admin/listas", config: "#/admin/config" };
+  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", acessos: "#/admin/acessos", listas: "#/admin/listas", config: "#/admin/config" };
   function bindAdminTabs(main) {
     $all("[data-admintab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () { navigate(ADMIN_TAB_ROUTES[btn.getAttribute("data-admintab")] || "#/admin"); });
@@ -7543,6 +7544,137 @@
       '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div></div>' +
       adminTabsHtml("log") +
       '<div id="admin-log-body"></div>';
+    bindAdminTabs(main);
+    draw();
+  }
+
+  // Log técnico de acessos (pedido do Diego, 10/2026): além do "Log de
+  // alterações" acima (quem mudou qual campo), esta aba mostra IP,
+  // localização aproximada e dispositivo/navegador de cada tentativa de
+  // login, verificação de dispositivo, redefinição de senha e ação de
+  // criar/editar/excluir em qualquer página — pra permitir rastrear de onde
+  // algo veio, se um dia for preciso investigar. Só administradores veem
+  // esta aba (ver /api/log-acesso, gate requireAdmin).
+  var ACESSO_ACAO_LABELS = {
+    "login:sucesso": "Login bem-sucedido",
+    "login:falha": "Falha de login (senha incorreta)",
+    "login:bloqueado": "Login bloqueado (muitas tentativas)",
+    "login:dispositivo_pendente": "Login — aguardando verificação de dispositivo",
+    "logout": "Logout",
+    "esqueci_senha:solicitado": "Esqueci a senha — link enviado",
+    "esqueci_senha:nao_encontrado": "Esqueci a senha — e-mail não cadastrado",
+    "esqueci_senha:token_invalido": "Esqueci a senha — link inválido/expirado",
+    "esqueci_senha:concluido": "Senha redefinida via link por e-mail",
+    "dispositivo:verificado": "Dispositivo verificado com sucesso",
+    "dispositivo:codigo_invalido": "Código de dispositivo incorreto",
+    "dispositivo:codigo_expirado": "Código de dispositivo expirado",
+    "dispositivo:bloqueado": "Verificação de dispositivo bloqueada (muitas tentativas)",
+    "dispositivo:codigo_reenviado": "Código de dispositivo reenviado",
+    "senha:alterada": "Senha alterada pelo próprio usuário",
+    "usuarios:criar": "Usuário criado",
+    "usuarios:editar": "Usuário editado",
+    "usuarios:resetar_senha": "Senha de usuário redefinida por um administrador",
+  };
+  function acessoAcaoLabel(acao) {
+    if (!acao) return "—";
+    if (ACESSO_ACAO_LABELS[acao]) return ACESSO_ACAO_LABELS[acao];
+    // Formato "pagina:acao" ou "pagina:acao:negado" gravado pelo
+    // requirePermission central (ver src/lib/authGuard.ts) pra qualquer
+    // criar/editar/excluir do sistema.
+    var negado = false;
+    var raw = acao;
+    if (raw.slice(-7) === ":negado") { negado = true; raw = raw.slice(0, -7); }
+    var partes = raw.split(":");
+    if (partes.length === 2) {
+      var pg = PAGES.filter(function (p) { return p.key === partes[0]; })[0];
+      var ac = ACTIONS.filter(function (a) { return a.key === partes[1]; })[0];
+      if (pg && ac) return pg.label + " — " + ac.label + (negado ? " (NEGADO)" : "");
+    }
+    return acao;
+  }
+  function acessoLocalLabel(a) {
+    var partes = [a.cidade, a.regiao, a.pais].filter(Boolean);
+    return partes.length ? partes.join(", ") : "—";
+  }
+
+  var PAGE_SIZE_ACESSOS = 50;
+  var ACESSOS_EXPORT_CAP = 200;
+
+  function renderAdminAcessos(main) {
+    uiState.adminAcessos = uiState.adminAcessos || { q: "", acao: "", page: 1 };
+    var ui = uiState.adminAcessos;
+
+    function fetchLog(page, pageSize) {
+      var params = "?page=" + page + "&pageSize=" + pageSize;
+      if (ui.acao) params += "&acao=" + encodeURIComponent(ui.acao);
+      if (ui.q) params += "&q=" + encodeURIComponent(ui.q);
+      return apiFetch("/api/log-acesso" + params);
+    }
+
+    function draw() {
+      withFocusPreserved(function () { drawInto(); });
+    }
+
+    function drawInto() {
+      var body2 = $("#admin-acessos-body");
+      if (body2) body2.innerHTML = '<div class="hint" style="padding:20px;">Carregando…</div>';
+      fetchLog(ui.page, PAGE_SIZE_ACESSOS).then(function (data) {
+        body2 = $("#admin-acessos-body");
+        if (!body2) return;
+        var rows = data.rows || [];
+        var totalPages = Math.max(1, Math.ceil((data.total || 0) / (data.pageSize || PAGE_SIZE_ACESSOS)));
+        ui.page = Math.min(ui.page, totalPages);
+        var body = rows.map(function (a) {
+          var negado = (a.acao || "").slice(-7) === ":negado";
+          return "<tr>" +
+            '<td class="mono">' + fmtDateHoraBR(a.ts) + "</td>" +
+            "<td>" + esc(a.usuario_nome || a.usuario_email || "—") + "</td>" +
+            "<td>" + (negado ? '<span class="pill danger">' : "<span>") + esc(acessoAcaoLabel(a.acao)) + "</span>" + (a.detalhe ? '<div class="row-secondary">' + esc(a.detalhe) + "</div>" : "") + "</td>" +
+            '<td class="mono">' + esc(a.ip || "—") + "</td>" +
+            "<td>" + esc(acessoLocalLabel(a)) + "</td>" +
+            '<td class="row-secondary" style="max-width:260px;">' + esc(a.user_agent || "—") + "</td>" +
+            "</tr>";
+        }).join("");
+        var toolbar =
+          '<div class="search-wrap">' + ICONS.search + '<input type="text" id="acessos-q" placeholder="Buscar por usuário, IP, cidade…" value="' + esc(ui.q) + '"></div>' +
+          '<select class="filter" id="acessos-acao"><option value="">Todas as ações</option>' +
+          Object.keys(ACESSO_ACAO_LABELS).map(function (k) { return '<option value="' + esc(k) + '"' + (ui.acao === k ? " selected" : "") + '>' + esc(ACESSO_ACAO_LABELS[k]) + "</option>"; }).join("") + "</select>" +
+          '<button class="btn ghost sm" id="acessos-export">' + ICONS.download + "Exportar</button>";
+
+        body2.innerHTML = tableShell({
+          toolbar: toolbar,
+          headHtml: "<th>Quando</th><th>Usuário</th><th>Ação</th><th>IP</th><th>Local aproximado</th><th>Dispositivo/navegador</th>",
+          bodyHtml: body, count: data.total || 0, page: ui.page, totalPages: totalPages,
+          empty: "Nenhum acesso registrado ainda."
+        });
+        $("#acessos-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 250));
+        $("#acessos-acao").addEventListener("change", function (e) { ui.acao = e.target.value; ui.page = 1; draw(); });
+        $("#acessos-export").addEventListener("click", function () {
+          fetchLog(1, ACESSOS_EXPORT_CAP).then(function (data2) {
+            var rows2 = data2.rows || [];
+            var headers = ["Quando", "Usuário", "E-mail", "Ação", "Detalhe", "IP", "País", "Região", "Cidade", "Latitude", "Longitude", "CEP", "Dispositivo/navegador"];
+            var exportRows = rows2.map(function (a) {
+              return [fmtDateHoraBR(a.ts), a.usuario_nome || "", a.usuario_email || "", acessoAcaoLabel(a.acao), a.detalhe || "", a.ip || "", a.pais || "", a.regiao || "", a.cidade || "", a.latitude || "", a.longitude || "", a.cep || "", a.user_agent || ""];
+            });
+            if ((data2.total || 0) > ACESSOS_EXPORT_CAP) {
+              toast("Exportando os " + ACESSOS_EXPORT_CAP + " registros mais recentes que casam com o filtro (de " + data2.total + " no total).", "success");
+            }
+            downloadRowsAsXls("log_acessos", headers, exportRows);
+          }).catch(handleApiError);
+        });
+        $all("[data-page]", body2).forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            ui.page = btn.getAttribute("data-page") === "prev" ? Math.max(1, ui.page - 1) : Math.min(totalPages, ui.page + 1);
+            draw();
+          });
+        });
+      }).catch(handleApiError);
+    }
+
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Administrador</h1><div class="sub">IP, localização aproximada e dispositivo de cada acesso — para rastreio em caso de necessidade</div></div></div>' +
+      adminTabsHtml("acessos") +
+      '<div id="admin-acessos-body"></div>';
     bindAdminTabs(main);
     draw();
   }
@@ -8533,7 +8665,7 @@
 
     if (route.view === "admin") {
       if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
-      route.id === "log" ? renderAdminLog(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
+      route.id === "log" ? renderAdminLog(main) : route.id === "acessos" ? renderAdminAcessos(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
       if (!route.id) closeDrawer();
       return;
     }
