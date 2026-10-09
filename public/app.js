@@ -1689,8 +1689,20 @@
       detailItem("ID ISDP (Huawei)", p.isdpId, "isdp_id") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Equipes</h3></div><div class="panel-body pad">' +
+      // Pedido do Diego (10/2026): antes só aparecia o card da equipe —
+      // pra ver quem são os outros integrantes era preciso clicar e entrar
+      // na equipe. Agora a lista de integrantes (exceto a própria pessoa,
+      // que já está sendo exibida nesta mesma tela) vem direto aqui embaixo
+      // do card, cada um clicável pra ir pro cadastro dele.
       (eqs.length ? eqs.map(function (e) {
-        return '<div class="member-row" data-eq="' + e.id + '" style="cursor:pointer"><div class="avatar-dot">' + esc(initials(e.nome)) + '</div><div class="info"><div class="name">' + esc(e.nome) + '</div><div class="role">Líder: ' + esc(liderName(e) || "—") + "</div></div>" + statusPillGeneric(e.status) + "</div>";
+        var outros = e.membros.filter(function (m) { return m.pessoaId !== p.id; });
+        return '<div class="team-block">' +
+          '<div class="member-row" data-eq="' + e.id + '" style="cursor:pointer"><div class="avatar-dot">' + esc(initials(e.nome)) + '</div><div class="info"><div class="name">' + esc(e.nome) + '</div><div class="role">Líder: ' + esc(liderName(e) || "—") + "</div></div>" + statusPillGeneric(e.status) + "</div>" +
+          '<div class="team-members-sub">' +
+          (outros.length ? outros.map(function (m) {
+            return '<div class="member-row sub" data-pessoa="' + m.pessoaId + '" style="cursor:pointer"><div class="avatar-dot sm">' + esc(initials(m.pessoaNome)) + '</div><div class="info"><div class="name">' + esc(m.pessoaNome) + '</div><div class="role">' + esc(m.cargo || "—") + "</div></div></div>";
+          }).join("") : '<div class="hint">Nenhum outro integrante nesta equipe.</div>') +
+          "</div></div>";
       }).join("") : '<div class="hint">Esta pessoa não está em nenhuma equipe.</div>') +
       "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Treinamentos e documentos</h3>' + (canDo("documentos", "criar") ? '<button class="btn sm primary" id="btn-new-treino">' + ICONS.plus + "Adicionar</button>" : "") + '</div><div class="panel-body">' +
@@ -1712,6 +1724,7 @@
     if ($("#btn-del-pessoa")) $("#btn-del-pessoa").addEventListener("click", function () { confirmDelete("pessoa", p.id, p.nome); });
     if ($("#btn-new-treino")) $("#btn-new-treino").addEventListener("click", function () { openAddTreinamentosPicker(p); });
     $all("[data-eq]", main).forEach(function (r) { r.addEventListener("click", function () { navigate("#/equipes/" + r.getAttribute("data-eq")); }); });
+    $all("[data-pessoa]", main).forEach(function (r) { r.addEventListener("click", function () { navigate("#/pessoas/" + r.getAttribute("data-pessoa")); }); });
     $all("[data-tr]", main).forEach(function (r) { r.addEventListener("click", function (ev) { if (ev.target.closest("button")) return; navigate("#/treinamentos/" + r.getAttribute("data-tr")); }); });
     $all("[data-tr-edit]", main).forEach(function (btn) {
       btn.addEventListener("click", function (ev) {
