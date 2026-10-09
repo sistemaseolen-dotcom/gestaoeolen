@@ -7578,15 +7578,20 @@
   function acessoAcaoLabel(acao) {
     if (!acao) return "—";
     if (ACESSO_ACAO_LABELS[acao]) return ACESSO_ACAO_LABELS[acao];
-    // Formato "pagina:acao" ou "pagina:acao:negado" gravado pelo
-    // requirePermission central (ver src/lib/authGuard.ts) pra qualquer
-    // criar/editar/excluir do sistema.
     var negado = false;
     var raw = acao;
     if (raw.slice(-7) === ":negado") { negado = true; raw = raw.slice(0, -7); }
     var partes = raw.split(":");
     if (partes.length === 2) {
       var pg = PAGES.filter(function (p) { return p.key === partes[0]; })[0];
+      var pgLabel = pg ? pg.label : (partes[0] === "painel" ? "Painel" : partes[0]);
+      // "pagina:ver_tela" — gravado pelo front-end a cada troca de tela da
+      // SPA (ver logPageView), já que a maioria das telas não bate no
+      // servidor de novo pra abrir um registro específico.
+      if (partes[1] === "ver_tela") return pgLabel + " — Visualizou a tela" + (negado ? " (NEGADO)" : "");
+      // Formato "pagina:acao" ou "pagina:acao:negado" gravado pelo
+      // requirePermission/requireView centrais (ver src/lib/authGuard.ts)
+      // pra qualquer ver/criar/editar/excluir do sistema.
       var ac = ACTIONS.filter(function (a) { return a.key === partes[1]; })[0];
       if (pg && ac) return pg.label + " — " + ac.label + (negado ? " (NEGADO)" : "");
     }
@@ -8636,6 +8641,75 @@
   });
 
   /* ---------------- Main render / router ---------------- */
+
+  // Log de visualização de tela (pedido do Diego, 10/2026): a SPA inteira
+  // carrega tudo de uma vez em /api/state e troca de tela sem bater no
+  // servidor de novo — então, diferente das ações de criar/editar/excluir
+  // (já logadas no servidor via requirePermission), um "abri o perfil de
+  // fulano" só existe aqui no navegador. A cada troca de rota avisamos o
+  // servidor (POST /api/log-acesso) com a página/registro aberto; o próprio
+  // servidor preenche quem é, IP, localização e dispositivo a partir da
+  // sessão. `render()` é chamado várias vezes pra MESMA rota (toda vez que
+  // algo muda no STATE), então só loga de novo quando a rota realmente muda.
+  var ULTIMA_PAGINA_LOGADA = null;
+  function logPageView(route) {
+    var chave = route.view + "|" + (route.id || "") + "|" + (route.sub || "") + "|" + (route.extra || "");
+    if (chave === ULTIMA_PAGINA_LOGADA) return;
+    ULTIMA_PAGINA_LOGADA = chave;
+
+    var pagina = route.view === "treinamentos" ? "painel" : route.view;
+    var detalhe = paginaViewDetalhe(route);
+    apiFetch("/api/log-acesso", { method: "POST", body: { pagina: pagina, rota: location.hash || "#/", detalhe: detalhe } })
+      .catch(function () { /* nunca interrompe a navegação por causa de log */ });
+  }
+
+  function paginaViewDetalhe(route) {
+    if (route.view === "admin") {
+      var subLabels = { usuarios: "Usuários", log: "Log de alterações", acessos: "Log técnico (acessos)", listas: "Listas", config: "Configurações" };
+      return "Admin — " + (subLabels[route.id] || "Usuários");
+    }
+    if (route.view === "pessoas" && route.id) {
+      var p = byId(STATE.pessoas, route.id);
+      return "Abriu o cadastro de " + (p ? p.nome : "pessoa #" + route.id);
+    }
+    if (route.view === "equipes" && route.id) {
+      var eq = byId(STATE.equipes, route.id);
+      return "Abriu a equipe " + (eq ? eq.nome : "#" + route.id);
+    }
+    if (route.view === "empresas" && route.id) {
+      var em = byId(STATE.empresas, route.id);
+      return "Abriu a empresa " + (em ? empresaTitle(em) : "#" + route.id);
+    }
+    if (route.view === "treinamentos" && route.id) {
+      var tr = byId(STATE.treinamentos, route.id);
+      return "Abriu o documento " + (tr ? (tr.tipo + " — " + tr.pessoaNome) : "#" + route.id);
+    }
+    if (route.view === "patrimonio" && route.id) {
+      var pt = byId(STATE.patrimonios, route.id);
+      return "Abriu o patrimônio " + (pt ? pt.codigo : "#" + route.id);
+    }
+    if (route.view === "veiculos") {
+      if (route.id === "reports") return "Gestão de Frotas — Reports";
+      if (route.id === "historico") return "Gestão de Frotas — Histórico";
+      if (route.id === "km-semana") return "Gestão de Frotas — KM por semana";
+      if (route.id === "km-excedido") return "Gestão de Frotas — KM excedido";
+      if (route.id) { var v = byId(STATE.veiculos, route.id); return "Abriu o veículo " + (v ? v.placa : "#" + route.id); }
+      return "Abriu a lista de Gestão de Frotas";
+    }
+    if (route.view === "auditorias") {
+      if (route.id === "lista") return "Abriu a lista de Auditorias";
+      if (route.id && route.sub === "ficha-epi") return "Abriu a Ficha de EPI da auditoria #" + route.id;
+      if (route.id) { var a = byId(STATE.auditorias, route.id); return "Abriu a auditoria " + (a ? (a.siteId || "#" + route.id) : "#" + route.id); }
+      return "Abriu o painel de Auditorias";
+    }
+    if (route.view === "acesso" && route.id) {
+      var ae = byId(STATE.acessoEquipes, route.id);
+      return "Abriu a equipe de acesso " + (ae ? ae.nomeEquipe : "#" + route.id);
+    }
+    var listLabels = { pessoas: "Abriu a lista de Pessoas", equipes: "Abriu a lista de Equipes", empresas: "Abriu a lista de Empresas", treinamentos: "Abriu o Painel", patrimonio: "Abriu a lista de Patrimônio", acesso: "Abriu a lista de Acesso" };
+    return listLabels[route.view] || ("Abriu " + route.view);
+  }
+
   function renderShellCounts() {
     $all("[data-nav]").forEach(function (btn) {
       var key = btn.getAttribute("data-nav");
@@ -8659,6 +8733,7 @@
     if (!CURRENT_USER) { renderLoginScreen(); return; }
     if (CURRENT_USER.mustChangePassword) { renderTrocarSenhaScreen(); return; }
     hideAuthOverlay();
+    logPageView(route);
     renderShell();
     var main = $("#app-main");
     var hashEmpty = !location.hash || location.hash === "#" || location.hash === "#/";
