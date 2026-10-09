@@ -4,12 +4,19 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
 
-// Pedido do Diego (10/2026): reler TODAS as Fichas de EPI já cadastradas no
+// Pedido do Diego (10/2026): reler as Fichas de EPI já cadastradas no
 // sistema, sem precisar clicar "Reler ficha" uma por uma (existem ~630
 // fichas pendentes hoje — nunca lidas, ou lidas sem sucesso por causa do bug
 // do bmp-js/tesseract.js corrigido em next.config.js). A leitura automática
 // no upload (POST /api/treinamentos/[id]/arquivo) já cobre fichas novas daqui
 // pra frente -- esta rota é só o backlog das que já existiam antes.
+//
+// Correção do Diego (10/2026): só pessoas ATIVAS importam aqui -- não vale a
+// pena gastar tempo de OCR relendo a ficha de alguém desligado. Isso reduz o
+// backlog de ~630 pra ~225 fichas. Busca os ids de pessoas ativas antes, e
+// filtra por eles (em JS, não via join embutido do Supabase) pra não
+// depender de qual nome o Supabase dá pra relação pessoa_id -> pessoas nesta
+// tabela.
 //
 // Cada OCR (baixa o PDF, renderiza em PNG, recorta 3 colunas, reconhece
 // texto) leva alguns segundos. Processar as ~630 de uma vez numa chamada só
@@ -33,9 +40,18 @@ export async function POST() {
 
   const admin = supabaseAdmin();
 
+  const { data: pessoasAtivas, error: pessoasError } = await admin
+    .from("pessoas")
+    .select("id")
+    .eq("status", "ATIVO");
+  if (pessoasError) {
+    return NextResponse.json({ error: pessoasError.message }, { status: 500 });
+  }
+  const idsAtivos = new Set((pessoasAtivas || []).map((p) => p.id));
+
   const { data: candidatos, error: fetchError } = await admin
     .from("treinamentos")
-    .select("id, arquivo_path, epi_itens, epi_ocr_erro")
+    .select("id, pessoa_id, arquivo_path, epi_itens, epi_ocr_erro")
     .eq("tipo", "FICHA DE EPI")
     .not("arquivo_path", "is", null)
     .order("id", { ascending: true });
@@ -44,6 +60,7 @@ export async function POST() {
   }
 
   const pendentes = (candidatos || []).filter((t) => {
+    if (!idsAtivos.has(t.pessoa_id)) return false;
     const semItens = !Array.isArray(t.epi_itens) || t.epi_itens.length === 0;
     return semItens || !!t.epi_ocr_erro;
   });

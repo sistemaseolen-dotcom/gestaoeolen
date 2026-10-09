@@ -8310,7 +8310,7 @@
       '<div class="panel"><div class="panel-head"><h3>Manutenção</h3></div><div class="panel-body pad">' +
       '<div class="config-row">' +
       '<div class="config-row-text"><div class="config-row-title">Reler Fichas de EPI pendentes</div>' +
-      '<div class="hint" id="epi-reler-status">Relê por OCR todas as Fichas de EPI que ainda não foram lidas com sucesso (nunca lidas, ou lidas com erro). Processa sozinho em lotes até terminar — pode demorar alguns minutos.</div></div>' +
+      '<div class="hint" id="epi-reler-status">Relê por OCR as Fichas de EPI de pessoas ATIVAS que ainda não foram lidas com sucesso (nunca lidas, ou lidas com erro) — pessoas inativas/desligadas não entram. Processa sozinho em lotes até terminar — pode demorar alguns minutos.</div></div>' +
       '<button type="button" class="btn ghost sm" id="btn-reler-epi-todas">Reler todas</button>' +
       "</div></div></div>";
     bindAdminTabs(main);
