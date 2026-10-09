@@ -59,27 +59,27 @@ export function forbidden(msg = "Você não tem permissão para isso.") {
  *   if (gate.response) return gate.response;
  *   const { user } = gate;
  *
- * Log técnico de acessos (pedido do Diego, 10/2026): toda ação que passa por
- * aqui com action !== "ver" (ou seja, criar/editar/excluir em qualquer
- * página do sistema) grava uma linha em `log_acesso` com IP, localização
- * aproximada e dispositivo de quem fez — concedida ou negada. "ver" não
- * entra pra não gerar log demais sem valor de rastreio (toda tela que abre
- * dispara uma leitura). Isso cobre as ~20 rotas de pessoas/equipes/
- * empresas/treinamentos/patrimônio/veículos/auditorias/acesso de uma vez só,
- * sem precisar tocar em cada uma.
+ * Log técnico de acessos (pedido do Diego, 10/2026 — revisado depois a
+ * pedido dele pra cobrir TODO acesso, não só alteração): toda ação que
+ * passa por aqui — incluindo "ver" — grava uma linha em `log_acesso` com
+ * IP, localização aproximada e dispositivo de quem fez, concedida ou
+ * negada. Isso cobre as ~20 rotas de pessoas/equipes/empresas/
+ * treinamentos/patrimônio/veículos/auditorias/acesso de uma vez só, sem
+ * precisar tocar em cada uma. Visualizações de tela da SPA que não batem
+ * no servidor (a maioria — ver #/pessoas/:id etc., que só lê dados já
+ * carregados em memória) são logadas separadamente pelo front-end via
+ * POST /api/log-acesso (ver renderAdminAcessos/logPageView no app.js).
  */
 export async function requirePermission(page: Page, action: Action) {
   const user = await getCurrentUser();
   if (!user) return { user: null, response: unauthorized() } as const;
   const permitido = canDo(user, page, action);
-  if (action !== "ver") {
-    await logAcesso({
-      usuarioId: user.id,
-      usuarioNome: user.nome,
-      usuarioEmail: user.email,
-      acao: `${page}:${action}${permitido ? "" : ":negado"}`,
-    });
-  }
+  await logAcesso({
+    usuarioId: user.id,
+    usuarioNome: user.nome,
+    usuarioEmail: user.email,
+    acao: `${page}:${action}${permitido ? "" : ":negado"}`,
+  });
   if (!permitido) return { user, response: forbidden() } as const;
   return { user, response: null } as const;
 }
@@ -87,7 +87,14 @@ export async function requirePermission(page: Page, action: Action) {
 export async function requireView(page: Page) {
   const user = await getCurrentUser();
   if (!user) return { user: null, response: unauthorized() } as const;
-  if (!canView(user, page)) return { user, response: forbidden() } as const;
+  const permitido = canView(user, page);
+  await logAcesso({
+    usuarioId: user.id,
+    usuarioNome: user.nome,
+    usuarioEmail: user.email,
+    acao: `${page}:ver${permitido ? "" : ":negado"}`,
+  });
+  if (!permitido) return { user, response: forbidden() } as const;
   return { user, response: null } as const;
 }
 
