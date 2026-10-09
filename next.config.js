@@ -18,6 +18,24 @@ const nextConfig = {
   // Sem isto, a leitura da Ficha de EPI funcionaria aqui (ambiente com
   // node_modules completo) mas falharia em produção na Vercel por faltar
   // arquivo.
+  //
+  // Bug real visto em produção (reportado pelo Diego, 10/2026): "Reler
+  // ficha" ficava preso em "Lendo…" pra sempre. A causa raiz: o arquivo
+  // worker-script/index.js do tesseract.js (carregado dentro da worker
+  // thread, no Node) faz `require` de alguns pacotes auxiliares de forma
+  // incondicional — `bmp-js` (via setImage.js, chamado em TODO recognize(),
+  // mesmo pra imagens PNG), `regenerator-runtime` e `is-url` — e nenhum dos
+  // três estava nesta lista (só o pacote tesseract.js em si, não essas
+  // dependências dele, que ficam em pastas separadas dentro de
+  // node_modules). Em produção, isso derrubava a worker thread com
+  // "Cannot find module 'bmp-js'" bem no meio do OCR, sem que esse erro
+  // chegasse como rejeição da Promise no código que chama
+  // `worker.recognize()` — o pedido ficava pendurado até a Vercel matar a
+  // function por tempo máximo (erro visto nos logs: "Task timed out after
+  // 300 seconds"), e é isso que a pessoa vê como "fica lendo e não sai
+  // disso". `node-fetch` entrou aqui também por precaução (é usado só se
+  // `global.fetch` não existir — não deveria faltar no runtime atual da
+  // Vercel, mas é barato incluir e evita o mesmo tipo de susto de novo).
   outputFileTracingIncludes: {
     "/api/**/*": [
       "./tessdata/**",
@@ -25,6 +43,10 @@ const nextConfig = {
       "./node_modules/tesseract.js-core/**",
       "./node_modules/wasm-feature-detect/**",
       "./node_modules/mupdf/**",
+      "./node_modules/bmp-js/**",
+      "./node_modules/regenerator-runtime/**",
+      "./node_modules/is-url/**",
+      "./node_modules/node-fetch/**",
     ],
   },
   // O pacote `mupdf` usa, por dentro, `createRequire(import.meta.url)`
