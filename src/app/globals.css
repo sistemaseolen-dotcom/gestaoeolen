@@ -436,6 +436,10 @@ table.data td.num, table.data th.num { text-align: right; font-variant-numeric: 
   outline: 2px solid var(--accent); outline-offset: 1px;
 }
 .field textarea { resize: vertical; min-height: 60px; }
+/* Campo só-leitura (ex.: Regional em Pessoas, preenchida automaticamente a
+   partir do Estado (atuação) -- pedido do Diego, 10/2026): deixa claro que
+   não dá pra clicar e escolher, sem depender só do cinza padrão do navegador. */
+.field select:disabled { color: var(--ink-soft); cursor: not-allowed; opacity: 0.7; }
 .form-section-title { font-size: 13.5px; font-weight: 700; color: var(--accent); margin: 4px 0 -6px; }
 
 .section-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 4px; flex-wrap: wrap; }

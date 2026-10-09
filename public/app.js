@@ -1864,7 +1864,7 @@
       cargoSelectField(p) + selectField("Cargo ASO", "cargoAso", listaOptions("cargoAso"), p ? p.cargoAso : "", { allowEmpty: true }) +
       selectField("Status *", "status", listaOptions("statusPessoa"), p ? p.status : "ATIVO", { required: true }) +
       ufSelectField("Estado (atuação)", "estadoAtuacao", p ? p.estadoAtuacao : "") +
-      selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
+      selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true, emptyLabel: "— Automático —", disabled: true, hint: "Preenchida automaticamente a partir do Estado (atuação)." }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
       field("Operadora", "operadora", "text", p) + field("Cadastro (origem)", "cadastro", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
@@ -1904,15 +1904,25 @@
     setupTabs();
     bindCepLookup($("#pessoa-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
     // Ao escolher o Estado (atuação), a Regional é preenchida sozinha a
-    // partir do UF_PARA_REGIONAL (pedido do Diego, 10/2026). Só sobrescreve
-    // a Regional se houver um mapeamento pra aquele UF — o usuário ainda
-    // pode trocar a Regional manualmente depois, se precisar.
+    // partir do UF_PARA_REGIONAL (pedido do Diego, 10/2026). O campo Regional
+    // agora é só-leitura (selectField com disabled:true, ver acima) -- por
+    // pedido do Diego (10/2026): se é preenchimento automático, não pode dar
+    // pra escolher outra coisa na mão. Por isso há dois elementos "regional"
+    // no formulário: o <select disabled id="regional-auto-select"> que o
+    // usuário vê (só exibição, nunca vai no FormData por ser disabled) e o
+    // <input type="hidden" name="regional" id="regional-auto-hidden"> que
+    // carrega o valor de verdade no submit -- os dois são atualizados juntos
+    // aqui.
     var estadoAtuacaoEl = $("#pessoa-form [name=estadoAtuacao]");
-    var regionalEl = $("#pessoa-form [name=regional]");
-    if (estadoAtuacaoEl && regionalEl) {
+    var regionalHiddenEl = $("#pessoa-form #regional-auto-hidden");
+    var regionalSelectEl = $("#pessoa-form #regional-auto-select");
+    if (estadoAtuacaoEl && regionalHiddenEl) {
       estadoAtuacaoEl.addEventListener("change", function () {
         var reg = UF_PARA_REGIONAL[estadoAtuacaoEl.value];
-        if (reg) regionalEl.value = reg;
+        if (reg) {
+          regionalHiddenEl.value = reg;
+          if (regionalSelectEl) regionalSelectEl.value = reg;
+        }
       });
     }
     $("#pessoa-form").addEventListener("submit", function (e) {
@@ -8292,8 +8302,19 @@
     var opts = options.slice();
     if (current && opts.indexOf(current) === -1) opts.push(current);
     var emptyOpt = opts2.allowEmpty ? '<option value="">' + esc(opts2.emptyLabel || "— Selecione —") + "</option>" : "";
-    return '<div class="field"><label>' + esc(label) + '</label><select name="' + name + '"' + (opts2.required ? " required" : "") + ">" + emptyOpt +
-      opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === current ? " selected" : "") + '>' + esc(o) + "</option>"; }).join("") + "</select></div>";
+    // opts2.disabled: campo só de exibição, preenchido via JS (ex.: Regional
+    // calculada a partir do Estado (atuação) — pedido do Diego, 10/2026: se
+    // é automático, não pode dar pra clicar e escolher outra coisa). Um
+    // <select disabled> nunca entra no FormData do submit (regra do próprio
+    // HTML), então sem o name nele e com um <input type="hidden"> paralelo
+    // levando o valor de verdade — o JS que atualiza o automático
+    // (ver openPessoaForm) escreve nos dois elementos ao mesmo tempo.
+    var selectNameAttr = opts2.disabled ? "" : ' name="' + name + '"';
+    var selectIdAttr = opts2.disabled ? ' id="' + name + '-auto-select"' : "";
+    var hiddenInput = opts2.disabled ? '<input type="hidden" name="' + name + '" id="' + name + '-auto-hidden" value="' + esc(current || "") + '">' : "";
+    var hint = opts2.hint ? '<div class="hint" style="margin-top:4px;">' + esc(opts2.hint) + "</div>" : "";
+    return '<div class="field"><label>' + esc(label) + '</label><select' + selectNameAttr + selectIdAttr + (opts2.required ? " required" : "") + (opts2.disabled ? " disabled" : "") + ">" + emptyOpt +
+      opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === current ? " selected" : "") + '>' + esc(o) + "</option>"; }).join("") + "</select>" + hiddenInput + hint + "</div>";
   }
   // Grupo de checkboxes pra multi-seleção (Projeto/Regional da aba Acesso).
   // `current` é um array; lido de volta no submit via `fd.getAll(name)`.
