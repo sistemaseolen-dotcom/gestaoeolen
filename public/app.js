@@ -8299,9 +8299,60 @@
       '<div class="panel"><div class="panel-body pad">' +
       '<p class="hint" style="margin-bottom:14px;">Regras e exceções que valem para todos os usuários do sistema.</p>' +
       '<div id="config-body"></div>' +
-      "</div></div>";
+      "</div></div>" +
+      // Pedido do Diego (10/2026): reler em massa as Fichas de EPI já
+      // cadastradas que nunca foram lidas por OCR com sucesso (muitas de
+      // antes da correção do bug do bmp-js/tesseract.js). Fichas novas já
+      // são lidas sozinhas no upload -- isto aqui é só o backlog das
+      // antigas, processado em lotes (ver /api/treinamentos/
+      // reprocessar-epi-pendentes) até não sobrar nenhuma, sem precisar
+      // clicar de novo a cada lote.
+      '<div class="panel"><div class="panel-head"><h3>Manutenção</h3></div><div class="panel-body pad">' +
+      '<div class="config-row">' +
+      '<div class="config-row-text"><div class="config-row-title">Reler Fichas de EPI pendentes</div>' +
+      '<div class="hint" id="epi-reler-status">Relê por OCR todas as Fichas de EPI que ainda não foram lidas com sucesso (nunca lidas, ou lidas com erro). Processa sozinho em lotes até terminar — pode demorar alguns minutos.</div></div>' +
+      '<button type="button" class="btn ghost sm" id="btn-reler-epi-todas">Reler todas</button>' +
+      "</div></div></div>";
     bindAdminTabs(main);
     draw();
+
+    var btnRelerTodas = $("#btn-reler-epi-todas", main);
+    if (btnRelerTodas) {
+      btnRelerTodas.addEventListener("click", function () {
+        if (!canDo("documentos", "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+        btnRelerTodas.disabled = true;
+        btnRelerTodas.textContent = "Processando…";
+        var statusEl = $("#epi-reler-status", main);
+        var totalLidas = 0, totalErro = 0;
+        function passo() {
+          apiFetch("/api/treinamentos/reprocessar-epi-pendentes", { method: "POST" })
+            .then(function (r) {
+              totalLidas += r.lidas || 0;
+              totalErro += r.comErro || 0;
+              if (r.processadas > 0 && r.restantes > 0) {
+                if (statusEl) statusEl.textContent = "Processando… " + totalLidas + " lidas, " + totalErro + " com erro, " + r.restantes + " restantes.";
+                passo();
+              } else {
+                btnRelerTodas.disabled = false;
+                btnRelerTodas.textContent = "Reler todas";
+                if (statusEl) {
+                  statusEl.textContent = totalLidas || totalErro
+                    ? "Concluído: " + totalLidas + " fichas lidas com sucesso" + (totalErro ? ", " + totalErro + " com erro (confira cada uma pela tela da pessoa)." : ".")
+                    : "Nenhuma ficha pendente — todas já foram lidas.";
+                }
+                toast("Releitura das Fichas de EPI concluída.", "success");
+              }
+            })
+            .catch(function (err) {
+              btnRelerTodas.disabled = false;
+              btnRelerTodas.textContent = "Reler todas";
+              if (statusEl) statusEl.textContent = "Parou no meio por um erro — " + totalLidas + " lidas até aqui. Clique em \"Reler todas\" de novo pra continuar.";
+              handleApiError(err);
+            });
+        }
+        passo();
+      });
+    }
   }
 
   /* ---------------- Form field helpers ---------------- */
