@@ -14,12 +14,12 @@ import { canView } from "@/lib/permissions";
 // sem erro. `treinamentos` já passou de 8000 linhas, então buscamos todas as
 // tabelas em páginas de 1000 e concatenamos, em vez de confiar num único
 // `select("*")`.
-async function fetchAllRows(admin: ReturnType<typeof supabaseAdmin>, table: string) {
+async function fetchAllRows(admin: ReturnType<typeof supabaseAdmin>, table: string, columns = "*") {
   const pageSize = 1000;
   let from = 0;
   const all: any[] = [];
   for (;;) {
-    const { data, error } = await admin.from(table).select("*").order("id").range(from, from + pageSize - 1);
+    const { data, error } = await admin.from(table).select(columns).order("id").range(from, from + pageSize - 1);
     if (error) return { data: null as any[] | null, error };
     all.push(...(data || []));
     if (!data || data.length < pageSize) break;
@@ -75,8 +75,23 @@ export async function GET() {
 
   const vazio = () => Promise.resolve({ data: [] as any[], error: null as any });
 
+  // Bug relatado pelo Diego (10/2026, usuário Hebert Gonçalves de Souza):
+  // quem só tem permissão em "auditorias" (sem "pessoas") ficava com a
+  // lista de líder/colaborador da auditoria sempre vazia ("Nenhuma pessoa
+  // encontrada.") -- efeito colateral do endurecimento de segurança acima.
+  // A tela de Auditoria usa STATE.pessoas por dois motivos que não
+  // precisam do cadastro completo (sem CPF): o combo de líder/colaborador
+  // (pessoaComboHtml/colabInputsHtml, por nome+cargo+status) e a
+  // divergência de Ficha de EPI (buscarFichaEpiPessoa, só por nome/id). Por
+  // isso quem tem só "auditorias" recebe um subconjunto seguro (id, nome,
+  // cargo, status) em vez do registro completo -- e quem não tem nenhuma
+  // das duas permissões continua recebendo vazio, como antes.
   const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
-    podePessoas ? fetchAllRows(admin, "pessoas") : vazio(),
+    podePessoas
+      ? fetchAllRows(admin, "pessoas")
+      : podeAuditorias
+      ? fetchAllRows(admin, "pessoas", "id, nome, cargo, status")
+      : vazio(),
     podeEmpresas ? fetchAllRows(admin, "empresas") : vazio(),
     podeTreinamentos ? fetchAllRows(admin, "treinamentos") : vazio(),
     podeEquipes ? fetchAllRows(admin, "equipes") : vazio(),
