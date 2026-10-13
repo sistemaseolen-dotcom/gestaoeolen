@@ -1,1 +1,8 @@
-{}
+{
+  "crons": [
+    {
+      "path": "/api/cron/sincronizar-km-relatorios",
+      "schedule": "0 20 * * *"
+    }
+  ]
+}

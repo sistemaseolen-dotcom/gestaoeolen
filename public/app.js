@@ -2731,10 +2731,68 @@
       return { semana: wk, km: Math.round(porSemana[wk]) };
     });
   }
+  // KM reportado por MÊS de um contrato (pedido do Diego, 10/2026): mesma
+  // lógica de deltas/outliers do km por semana acima, só que o delta é
+  // creditado ao mês do report mais ANTIGO do par (mesmo critério já usado
+  // pra semana). Além do km rodado, calcula a franquia do próprio mês
+  // (quantos dias desse mês caem dentro do período do contrato × 167km/dia)
+  // pra já mostrar o excedido mês a mês, sem precisar abrir o km por semana
+  // e somar à mão. Excedido aqui pode ficar negativo (mês dentro da
+  // franquia) de propósito -- somando os 12 meses o resultado bate com o
+  // "KM excedido" total do contrato (que soma tudo antes de zerar negativos).
+  function diasNoMesDentroDoContratoFrota(mesIni, mesFim, contratoIni, contratoFim) {
+    var ini = mesIni.getTime() > contratoIni.getTime() ? mesIni : contratoIni;
+    var fim = mesFim.getTime() < contratoFim.getTime() ? mesFim : contratoFim;
+    if (fim.getTime() < ini.getTime()) return 0;
+    return Math.round((fim.getTime() - ini.getTime()) / 86400000) + 1;
+  }
+  function computeKmPorMesContratoFrota(reports, dataInicioIso, dataFimIso) {
+    var byPlaca = {};
+    reports.forEach(function (r) {
+      if (!r.placa || !r.data || !r.km) return;
+      (byPlaca[r.placa] = byPlaca[r.placa] || []).push(r);
+    });
+    var porMes = {};
+    Object.keys(byPlaca).forEach(function (placa) {
+      var list = byPlaca[placa].slice().sort(function (a, b) { return (a.data || "").localeCompare(b.data || ""); });
+      for (var i = 1; i < list.length; i++) {
+        var prev = list[i - 1], cur = list[i];
+        var delta = (Number(cur.km) || 0) - (Number(prev.km) || 0);
+        if (delta <= 0) continue;
+        var dias = Math.max(1, (new Date(cur.data) - new Date(prev.data)) / 86400000);
+        if (delta / dias > KM_DIA_OUTLIER || dias > 10) continue;
+        var mesKey = (prev.data || "").slice(0, 7); // "AAAA-MM"
+        porMes[mesKey] = (porMes[mesKey] || 0) + delta;
+      }
+    });
+    var iniParts = (dataInicioIso || "").split("-").map(Number);
+    var contratoIni = iniParts.length === 3 ? new Date(iniParts[0], iniParts[1] - 1, iniParts[2]) : null;
+    var contratoFim;
+    if (dataFimIso) {
+      var fimParts = dataFimIso.split("-").map(Number);
+      contratoFim = new Date(fimParts[0], fimParts[1] - 1, fimParts[2]);
+    } else {
+      var hoje = new Date();
+      contratoFim = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+    }
+    return Object.keys(porMes).sort().reverse().map(function (mesKey) {
+      var parts = mesKey.split("-").map(Number);
+      var mesIni = new Date(parts[0], parts[1] - 1, 1);
+      var mesFim = new Date(parts[0], parts[1], 0); // último dia do mês
+      var dias = contratoIni ? diasNoMesDentroDoContratoFrota(mesIni, mesFim, contratoIni, contratoFim) : 0;
+      var franquia = Math.round(dias * KM_POR_DIA_FROTA);
+      var km = Math.round(porMes[mesKey]);
+      return { mes: mesKey, km: km, dias: dias, franquia: franquia, excedido: km - franquia };
+    });
+  }
+  function mesLabelFrota(mesKey) {
+    var parts = mesKey.split("-").map(Number);
+    return (MESES_PT_FROTA[parts[1] - 1] || "") + "/" + parts[0];
+  }
   // Conteúdo (KPIs + tabelas) do detalhe de um contrato de Gestão de Frotas
   // — compartilhado entre o modal (tela) e o relatório em PDF (impressão),
   // pedido do Diego (10/2026), pra não duplicar a lógica dos dois.
-  function frotaContratoDetalheBodyHtml(grupo, porSemana) {
+  function frotaContratoDetalheBodyHtml(grupo, porSemana, porMes) {
     return '<div class="kpi-row" style="margin:16px 0;">' +
       '<div class="kpi ' + (grupo.ativo ? "ok" : "danger") + '"><span class="label">Status</span><span class="value">' + (grupo.ativo ? "Em uso" : "Devolvido") + "</span></div>" +
       '<div class="kpi danger"><span class="label">KM excedido</span><span class="value tabular">' + grupo.kmExcedido.toLocaleString("pt-BR") + " km</span></div>" +
@@ -2750,6 +2808,16 @@
           "<td>" + statusPillVeiculo(vv.status) + "</td>" +
           '<td class="mono">' + vv.kmPercorrido.toLocaleString("pt-BR") + " km</td></tr>";
       }).join("") + "</tbody></table></div>" +
+      '<h3 style="margin:20px 0 8px;">KM reportado por mês</h3>' +
+      (porMes.length
+        ? '<div class="table-scroll"><table class="data"><thead><tr><th>Mês</th><th>KM rodado</th><th>Franquia do mês</th><th>Excedido</th></tr></thead><tbody>' +
+          porMes.map(function (m) {
+            var excedidoHtml = m.excedido > 0
+              ? '<span class="pill danger">+' + m.excedido.toLocaleString("pt-BR") + " km</span>"
+              : '<span class="pill ok">Dentro da franquia</span>';
+            return "<tr><td>" + esc(mesLabelFrota(m.mes)) + '</td><td class="mono">' + m.km.toLocaleString("pt-BR") + ' km</td><td class="mono" style="color:var(--ink-faint);">' + m.franquia.toLocaleString("pt-BR") + " km</td><td>" + excedidoHtml + "</td></tr>";
+          }).join("") + "</tbody></table></div>"
+        : '<div class="empty-state" style="padding:16px;">' + ICONS.inbox + "<div>Sem reports suficientes pra calcular km por mês desse contrato.</div></div>") +
       '<h3 style="margin:20px 0 8px;">KM reportado por semana</h3>' +
       (porSemana.length
         ? '<div class="table-scroll"><table class="data"><thead><tr><th>Semana</th><th>KM</th></tr></thead><tbody>' +
@@ -2767,18 +2835,19 @@
   // body, ligada só nesse momento — ver botão "Exportar PDF" abaixo), igual
   // ao "Baixar PDF" do Painel de Auditorias, só que imprimindo um relatório
   // à parte em vez da tela toda.
-  function frotaContratoRelatorioHtml(grupo, porSemana) {
+  function frotaContratoRelatorioHtml(grupo, porSemana, porMes) {
     return '<div class="frota-print-report">' +
       '<div class="frota-relatorio-head"><h1>Relatório de contrato — Gestão de Frotas</h1>' +
       '<div class="sub">Gerado em ' + esc(new Date().toLocaleString("pt-BR")) + "</div></div>" +
       '<div style="margin:16px 0 4px;"><h2 style="margin:0 0 4px;">Contrato ' + esc(grupo.contrato || "—") + "</h2>" +
       '<div class="sub">' + esc(grupo.condutor || "—") + " · " + esc(grupo.locadora || "—") + (grupo.regional ? " · " + esc(grupo.regional) : "") + "</div></div>" +
-      frotaContratoDetalheBodyHtml(grupo, porSemana) +
+      frotaContratoDetalheBodyHtml(grupo, porSemana, porMes) +
       "</div>";
   }
   function openKmExcedidoDetalheModal(grupo, allReports) {
     var reportsContrato = allReports.filter(function (r) { return (r.contrato || "").trim() === (grupo.contrato || "").trim(); });
     var porSemana = computeKmPorSemanaContratoFrota(reportsContrato);
+    var porMes = computeKmPorMesContratoFrota(reportsContrato, grupo.dataContrato, grupo.dataFim);
     openModal(
       '<div class="panel" style="width:min(720px, 100%);max-height:85vh;overflow-y:auto;padding:20px;box-sizing:border-box;">' +
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
@@ -2788,7 +2857,7 @@
       '<button type="button" class="btn ghost sm" id="frota-kmexc-detalhe-pdf">' + ICONS.download + "Exportar PDF</button>" +
       '<button type="button" class="btn ghost sm" id="frota-kmexc-detalhe-close">' + ICONS.close + "</button>" +
       "</div></div>" +
-      frotaContratoDetalheBodyHtml(grupo, porSemana) +
+      frotaContratoDetalheBodyHtml(grupo, porSemana, porMes) +
       "</div>"
     );
     var btn = $("#frota-kmexc-detalhe-close");
@@ -2799,7 +2868,7 @@
         var tituloOriginal = document.title;
         document.title = slugFilename("Contrato_" + (grupo.contrato || "") + "_" + (grupo.condutor || ""));
         var printArea = document.createElement("div");
-        printArea.innerHTML = frotaContratoRelatorioHtml(grupo, porSemana);
+        printArea.innerHTML = frotaContratoRelatorioHtml(grupo, porSemana, porMes);
         document.body.appendChild(printArea);
         document.body.classList.add("printing-frota-contrato");
         var limpar = function () {
@@ -2860,11 +2929,34 @@
     if (btn) btn.addEventListener("click", closeModal);
   }
 
+  // Texto de status da sincronização automática de KM (pedido do Diego,
+  // 10/2026 — reports sem alerta sobem sozinhos pro Histórico de
+  // Kilometragem do Contrato, 1x por dia às 17h + sob demanda pelo botão
+  // "Sincronizar KM" abaixo). Lido de STATE.config.km_relatorios_sync_status
+  // (gravado pelo backend a cada execução, ver sincronizarKmRelatorios em
+  // src/lib/frotasReportsSync.ts) — sem precisar rodar de novo só pra saber
+  // quando rodou da última vez.
+  function kmSyncStatusHtml() {
+    var st = STATE.config && STATE.config.km_relatorios_sync_status;
+    if (!st) return '<div class="hint" id="frota-km-sync-status">Sincronização automática de KM: ainda não rodou.</div>';
+    var quando = st.executadoEm ? new Date(st.executadoEm).toLocaleString("pt-BR") : "—";
+    var semVeiculo = (st.semVeiculoCorrespondente || []).length;
+    return '<div class="hint" id="frota-km-sync-status">Sincronização automática de KM: última execução em ' + esc(quando) +
+      " — " + (st.sincronizados || 0).toLocaleString("pt-BR") + " no Histórico, " +
+      (st.comAlerta || 0).toLocaleString("pt-BR") + " com alerta (não sobem), " +
+      (st.removidos || 0).toLocaleString("pt-BR") + " removidos" +
+      (semVeiculo ? ", " + semVeiculo.toLocaleString("pt-BR") + " sem veículo correspondente" : "") +
+      ".</div>";
+  }
+
   function renderFrotasReports(main) {
     var ui = uiState.frotasReports;
     main.innerHTML =
-      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas, com alertas de hodômetro e fotos</div></div>' +
-      '<button type="button" class="btn sm" id="frota-reports-refresh">' + ICONS.sync + "Atualizar</button></div>" +
+      '<div class="topbar"><div><h1>Gestão de Frotas</h1><div class="sub">Reports semanais de KM enviados pelos motoristas, com alertas de hodômetro e fotos</div>' +
+      kmSyncStatusHtml() + "</div>" +
+      '<div style="display:flex;gap:8px;">' +
+      (canDo("veiculos", "editar") ? '<button type="button" class="btn sm primary" id="frota-reports-sincronizar-km">' + ICONS.sync + "Sincronizar KM</button>" : "") +
+      '<button type="button" class="btn sm" id="frota-reports-refresh">' + ICONS.sync + "Atualizar</button></div></div>" +
       frotasTabsHtml("reports") +
       '<div id="frota-reports-dash"></div>' +
       '<div id="frota-reports-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
@@ -3023,6 +3115,37 @@
     }
     var refreshBtn = $("#frota-reports-refresh");
     if (refreshBtn) refreshBtn.addEventListener("click", function () { carregarDadosReports(true); });
+
+    // Botão "Sincronizar KM" (pedido do Diego, 10/2026) — roda na hora a
+    // mesma sincronização da tarefa agendada diária (ver
+    // POST /api/veiculos/sincronizar-km-relatorios -> sincronizarKmRelatorios
+    // em src/lib/frotasReportsSync.ts). Reports com alerta de hodômetro
+    // nunca sobem; só depois de corrigidos.
+    var syncBtn = $("#frota-reports-sincronizar-km");
+    if (syncBtn) {
+      syncBtn.addEventListener("click", function () {
+        syncBtn.disabled = true;
+        syncBtn.innerHTML = ICONS.sync + "Sincronizando…";
+        apiFetch("/api/veiculos/sincronizar-km-relatorios", { method: "POST" })
+          .then(function (res) {
+            STATE.config = STATE.config || {};
+            STATE.config.km_relatorios_sync_status = res;
+            var statusEl = $("#frota-km-sync-status");
+            if (statusEl) statusEl.outerHTML = kmSyncStatusHtml();
+            var semVeiculo = (res.semVeiculoCorrespondente || []).length;
+            toast(
+              res.sincronizados + " lançamento(s) no Histórico (" + res.comAlerta + " com alerta ficaram de fora" +
+                (semVeiculo ? ", " + semVeiculo + " sem veículo correspondente" : "") + ").",
+              "success"
+            );
+          })
+          .catch(handleApiError)
+          .finally(function () {
+            syncBtn.disabled = false;
+            syncBtn.innerHTML = ICONS.sync + "Sincronizar KM";
+          });
+      });
+    }
 
     carregarDadosReports(false);
   }
