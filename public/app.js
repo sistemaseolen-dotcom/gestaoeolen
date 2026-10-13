@@ -3437,8 +3437,10 @@
         lancamentosContrato.push({ veiculoId: vv.id, placa: vv.placa, data: l.data, km: l.km, responsavelNome: l.responsavelNome, lancId: l.id });
       });
     });
+    // Mais recente primeiro (Diego pediu pra não precisar rolar até o fim
+    // da lista pra ver a última leitura lançada).
     lancamentosContrato.sort(function (a, b) {
-      return (a.data || "").localeCompare(b.data || "") || ((numOrNull(a.km) || 0) - (numOrNull(b.km) || 0));
+      return (b.data || "").localeCompare(a.data || "") || ((numOrNull(b.km) || 0) - (numOrNull(a.km) || 0));
     });
 
     var kmExportHeaders = multiPlaca ? ["Data", "Placa", "KM", "Responsável"] : ["Data", "KM", "Responsável"];
