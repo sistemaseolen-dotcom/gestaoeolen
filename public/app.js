@@ -2731,16 +2731,11 @@
       return { semana: wk, km: Math.round(porSemana[wk]) };
     });
   }
-  function openKmExcedidoDetalheModal(grupo, allReports) {
-    var reportsContrato = allReports.filter(function (r) { return (r.contrato || "").trim() === (grupo.contrato || "").trim(); });
-    var porSemana = computeKmPorSemanaContratoFrota(reportsContrato);
-    openModal(
-      '<div class="panel" style="width:min(720px, 100%);max-height:85vh;overflow-y:auto;padding:20px;box-sizing:border-box;">' +
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
-      '<div><h2 style="margin:0 0 4px;">Contrato ' + esc(grupo.contrato || "—") + "</h2>" +
-      '<div class="sub">' + esc(grupo.condutor || "—") + " · " + esc(grupo.locadora || "—") + (grupo.regional ? " · " + esc(grupo.regional) : "") + "</div></div>" +
-      '<button type="button" class="btn ghost sm" id="frota-kmexc-detalhe-close">' + ICONS.close + "</button></div>" +
-      '<div class="kpi-row" style="margin:16px 0;">' +
+  // Conteúdo (KPIs + tabelas) do detalhe de um contrato de Gestão de Frotas
+  // — compartilhado entre o modal (tela) e o relatório em PDF (impressão),
+  // pedido do Diego (10/2026), pra não duplicar a lógica dos dois.
+  function frotaContratoDetalheBodyHtml(grupo, porSemana) {
+    return '<div class="kpi-row" style="margin:16px 0;">' +
       '<div class="kpi ' + (grupo.ativo ? "ok" : "danger") + '"><span class="label">Status</span><span class="value">' + (grupo.ativo ? "Em uso" : "Devolvido") + "</span></div>" +
       '<div class="kpi danger"><span class="label">KM excedido</span><span class="value tabular">' + grupo.kmExcedido.toLocaleString("pt-BR") + " km</span></div>" +
       '<div class="kpi danger"><span class="label">Custo estimado</span><span class="value tabular">' + grupo.custo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) + "</span></div>" +
@@ -2761,11 +2756,62 @@
           porSemana.map(function (s) {
             return "<tr><td>S" + getWeekNumberOfYearFrota(s.semana) + " · " + weekLabelFrota(s.semana) + '</td><td class="mono">' + s.km.toLocaleString("pt-BR") + " km</td></tr>";
           }).join("") + "</tbody></table></div>"
-        : '<div class="empty-state" style="padding:16px;">' + ICONS.inbox + "<div>Sem reports suficientes pra calcular km por semana desse contrato.</div></div>") +
+        : '<div class="empty-state" style="padding:16px;">' + ICONS.inbox + "<div>Sem reports suficientes pra calcular km por semana desse contrato.</div></div>");
+  }
+  // Relatório em PDF do contrato (pedido do Diego, 10/2026): mesmo conteúdo
+  // do modal, só que fora dele -- o modal (#modal-overlay) é escondido na
+  // impressão (ver @media print em globals.css, regra que vale pra TODOS os
+  // modais do sistema), então não dá pra imprimir o conteúdo de dentro dele
+  // diretamente. Em vez disso, este elemento fica escondido na tela normal e
+  // só aparece durante a impressão (classe "printing-frota-contrato" no
+  // body, ligada só nesse momento — ver botão "Exportar PDF" abaixo), igual
+  // ao "Baixar PDF" do Painel de Auditorias, só que imprimindo um relatório
+  // à parte em vez da tela toda.
+  function frotaContratoRelatorioHtml(grupo, porSemana) {
+    return '<div class="frota-print-report">' +
+      '<div class="frota-relatorio-head"><h1>Relatório de contrato — Gestão de Frotas</h1>' +
+      '<div class="sub">Gerado em ' + esc(new Date().toLocaleString("pt-BR")) + "</div></div>" +
+      '<div style="margin:16px 0 4px;"><h2 style="margin:0 0 4px;">Contrato ' + esc(grupo.contrato || "—") + "</h2>" +
+      '<div class="sub">' + esc(grupo.condutor || "—") + " · " + esc(grupo.locadora || "—") + (grupo.regional ? " · " + esc(grupo.regional) : "") + "</div></div>" +
+      frotaContratoDetalheBodyHtml(grupo, porSemana) +
+      "</div>";
+  }
+  function openKmExcedidoDetalheModal(grupo, allReports) {
+    var reportsContrato = allReports.filter(function (r) { return (r.contrato || "").trim() === (grupo.contrato || "").trim(); });
+    var porSemana = computeKmPorSemanaContratoFrota(reportsContrato);
+    openModal(
+      '<div class="panel" style="width:min(720px, 100%);max-height:85vh;overflow-y:auto;padding:20px;box-sizing:border-box;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">' +
+      '<div><h2 style="margin:0 0 4px;">Contrato ' + esc(grupo.contrato || "—") + "</h2>" +
+      '<div class="sub">' + esc(grupo.condutor || "—") + " · " + esc(grupo.locadora || "—") + (grupo.regional ? " · " + esc(grupo.regional) : "") + "</div></div>" +
+      '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+      '<button type="button" class="btn ghost sm" id="frota-kmexc-detalhe-pdf">' + ICONS.download + "Exportar PDF</button>" +
+      '<button type="button" class="btn ghost sm" id="frota-kmexc-detalhe-close">' + ICONS.close + "</button>" +
+      "</div></div>" +
+      frotaContratoDetalheBodyHtml(grupo, porSemana) +
       "</div>"
     );
     var btn = $("#frota-kmexc-detalhe-close");
     if (btn) btn.addEventListener("click", closeModal);
+    var btnPdf = $("#frota-kmexc-detalhe-pdf");
+    if (btnPdf) {
+      btnPdf.addEventListener("click", function () {
+        var tituloOriginal = document.title;
+        document.title = slugFilename("Contrato_" + (grupo.contrato || "") + "_" + (grupo.condutor || ""));
+        var printArea = document.createElement("div");
+        printArea.innerHTML = frotaContratoRelatorioHtml(grupo, porSemana);
+        document.body.appendChild(printArea);
+        document.body.classList.add("printing-frota-contrato");
+        var limpar = function () {
+          document.title = tituloOriginal;
+          document.body.classList.remove("printing-frota-contrato");
+          printArea.remove();
+          window.removeEventListener("afterprint", limpar);
+        };
+        window.addEventListener("afterprint", limpar);
+        window.print();
+      });
+    }
   }
 
   // Contratos "ativos" pro dashboard de Reports = veículos EM USO em

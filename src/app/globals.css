@@ -907,10 +907,23 @@ tbody tr.row-alerta-km-salto:hover { animation-play-state: paused; }
 .lightbox-zoom-pct { font-size: 12px; font-weight: 700; min-width: 42px; text-align: center; }
 .lightbox-counter { font-size: 12px; font-weight: 700; padding-left: 4px; border-left: 1px solid rgba(255,255,255,0.3); margin-left: 2px; }
 
+/* Relatório em PDF do contrato de Gestão de Frotas (pedido do Diego,
+   10/2026): o detalhe do contrato é mostrado num modal, e todo modal é
+   escondido na impressão (regra .printing-frota-contrato mais abaixo, e
+   #modal-overlay no bloco @media print logo depois) -- por isso o botão
+   "Exportar PDF" monta esse relatório à parte, fora do modal, escondido na
+   tela normal e só visível durante a própria impressão. */
+.frota-print-report { display: none; }
+
 @media print {
   .sidebar, .brand-banner, .no-print, #drawer-overlay, #modal-overlay, .toast-stack, .foto-slot-actions, .foto-slot-remove, #btn-limpar-assinatura, .field-note, .header-field-notes { display: none !important; }
   .panel { break-inside: avoid; box-shadow: none; border-color: #ccc; }
   body { background: #fff; }
+
+  body.printing-frota-contrato #shell { display: none !important; }
+  body.printing-frota-contrato .frota-print-report { display: block !important; }
+  .frota-relatorio-head { margin-bottom: 12px; border-bottom: 2px solid #ccc; padding-bottom: 10px; }
+  .frota-relatorio-head h1 { font-size: 18px; margin: 0 0 4px; }
 
   /* Cada item do checklist (pergunta+resposta OU pergunta+fotos) não pode
      ser partido entre páginas — senão a resposta ou a foto ficam separadas
