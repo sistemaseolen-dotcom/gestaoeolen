@@ -40,7 +40,11 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
   if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
 
   const veiculoLabel = veiculo?.placa || veiculo?.contrato || `Veículo ${veiculoId}`;
-  await supabaseAdmin().from("audit_log").insert({
+  // O registro já foi removido com sucesso acima -- uma falha no log de
+  // auditoria não deve impedir a resposta de sucesso (mesmo raciocínio do
+  // POST acima). Mantemos o log de erro no console para não perder o aviso
+  // silenciosamente.
+  const { error: auditError } = await supabaseAdmin().from("audit_log").insert({
     entidade: "veiculo",
     entidade_id: veiculoId,
     entidade_label: veiculoLabel,
@@ -52,6 +56,9 @@ export async function DELETE(_req: Request, context: { params: Promise<{ id: str
     usuario_id: gate.user?.id ?? null,
     usuario_nome: gate.user?.nome ?? "—",
   });
+  if (auditError) {
+    console.error(`Falha ao registrar auditoria da remoção de lançamento de KM (veículo ${veiculoId}):`, auditError);
+  }
 
   return NextResponse.json({ ok: true });
 }

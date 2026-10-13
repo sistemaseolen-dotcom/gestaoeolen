@@ -88,13 +88,22 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
   }
 
   const veiculoLabel = veiculo.placa || veiculo.contrato || `Veículo ${veiculoId}`;
-  await auditKmLancamento({
-    veiculoId,
-    veiculoLabel,
-    de: null,
-    para: `${fmtDateSimple(data)} — ${km} km`,
-    usuario: gate.user,
-  });
+  // O lançamento de KM já foi salvo com sucesso acima -- uma falha aqui no
+  // registro de auditoria (ex.: uma restrição do banco que não prevíamos)
+  // não pode fazer o usuário ver um erro genérico para uma ação que, na
+  // verdade, já funcionou. Por isso só logamos no console em caso de falha,
+  // sem interromper a resposta de sucesso.
+  try {
+    await auditKmLancamento({
+      veiculoId,
+      veiculoLabel,
+      de: null,
+      para: `${fmtDateSimple(data)} — ${km} km`,
+      usuario: gate.user,
+    });
+  } catch (err) {
+    console.error(`Falha ao registrar auditoria do lançamento de KM (veículo ${veiculoId}):`, err);
+  }
 
   return NextResponse.json(lancamento, { status: 201 });
 }
