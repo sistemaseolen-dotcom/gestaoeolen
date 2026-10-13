@@ -1052,6 +1052,13 @@
       // fichaEpiBotaoHtml) e junta esse colaborador na mesma tela dos que
       // têm CA divergente.
       temPendenciaAssinatura: !!row.tem_pendencia_assinatura,
+      // Pedido do Diego (13/10/2026): marcação manual, na listagem, de que a
+      // pendência de CA divergente desta auditoria já foi tratada pela
+      // equipe (ver caDivergenteCelulaHtml) — distinta de temCaDivergente,
+      // que é recalculado sozinho e não muda com esta marcação.
+      caDivergenteRegularizado: !!row.ca_divergente_regularizado,
+      caDivergenteRegularizadoEm: row.ca_divergente_regularizado_em,
+      caDivergenteRegularizadoPorNome: row.ca_divergente_regularizado_por_nome,
       colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null,
       observacaoFinal: row.observacao_final,
       criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
@@ -4693,7 +4700,8 @@
           "<td>" + esc(modalidadeLabel) + "</td>" +
           "<td>" + esc(a.criadoPorNome || "—") + "</td>" +
           "<td>" + statusPillAuditoria(a.status) + "</td>" +
-          "<td>" + fichaEpiBotaoHtml(a) + "</td></tr>";
+          "<td>" + fichaEpiBotaoHtml(a) + "</td>" +
+          "<td>" + caDivergenteCelulaHtml(a) + "</td></tr>";
       }).join("");
       var toolbar =
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="auditoria-q" placeholder="Buscar por site, empresa ou inspetor…" value="' + esc(ui.q) + '"></div>' +
@@ -4704,10 +4712,11 @@
         '<option value="RASCUNHO"' + (ui.status === "RASCUNHO" ? " selected" : "") + '>Rascunho</option>' +
         '<option value="CONCLUIDO"' + (ui.status === "CONCLUIDO" ? " selected" : "") + ">Concluído</option></select>";
 
-      var exportHeaders = ["Site ID", "Regional", "Empresa", "Cliente", "Data (realização)", "Criado em (sistema)", "Inspetor", "Modalidade", "Criado por", "Status"];
+      var exportHeaders = ["Site ID", "Regional", "Empresa", "Cliente", "Data (realização)", "Criado em (sistema)", "Inspetor", "Modalidade", "Criado por", "Status", "Pendência de CA"];
       var exportRows = filtered.map(function (a) {
         var modalidadeLabel = a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "—";
-        return [a.siteId || "", regionalAuditoria(a) || "", a.empresa || "", clienteAuditoria(a), fmtDateBR(a.data), fmtDateHoraBR(a.criadoEm) || "", a.inspetorNome || "", modalidadeLabel, a.criadoPorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"];
+        var pendenciaCaLabel = !a.temCaDivergente ? "—" : (a.caDivergenteRegularizado ? "Resolvida" : "Pendente");
+        return [a.siteId || "", regionalAuditoria(a) || "", a.empresa || "", clienteAuditoria(a), fmtDateBR(a.data), fmtDateHoraBR(a.criadoEm) || "", a.inspetorNome || "", modalidadeLabel, a.criadoPorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", pendenciaCaLabel];
       });
 
       main.innerHTML =
@@ -4716,7 +4725,7 @@
         auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th><th>Ficha de EPI</th>",
+          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th><th>Ficha de EPI</th><th>Pendência de CA</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada.",
           exportHeaders: exportHeaders,
@@ -4733,6 +4742,23 @@
         btn.addEventListener("click", function (e) {
           e.stopPropagation();
           navigate("#/auditorias/" + btn.getAttribute("data-ficha-epi") + "/ficha-epi");
+        });
+      });
+      $all("[data-ca-pendencia]", main).forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          var id = btn.getAttribute("data-ca-pendencia");
+          var novoValor = btn.getAttribute("data-ca-pendencia-valor") === "true";
+          btn.disabled = true;
+          apiFetch("/api/auditorias/" + id + "/ca-divergente-regularizado", { method: "PATCH", body: { regularizado: novoValor } })
+            .then(function (data) {
+              var atualizada = mapAuditoriaFromApi(data);
+              var idx = STATE.auditorias.findIndex(function (x) { return x.id === atualizada.id; });
+              if (idx !== -1) STATE.auditorias[idx] = atualizada;
+              toast(novoValor ? "Pendência de CA marcada como resolvida." : "Pendência de CA marcada como pendente novamente.", "success");
+              draw();
+            })
+            .catch(function (err) { btn.disabled = false; handleApiError(err); });
         });
       });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
@@ -4754,6 +4780,27 @@
       return '<span class="pill warn">' + (a.temCaDivergente ? "Divergência na Ficha de EPI" : "Assinatura pendente") + "</span>";
     }
     return '<button type="button" class="btn sm" data-ficha-epi="' + a.id + '">' + ICONS.alert + "Gerar ficha de EPI</button>";
+  }
+
+  // Pedido do Diego (13/10/2026): marcação manual, na listagem, de que a
+  // pendência de CA divergente desta auditoria já foi tratada pela equipe —
+  // diferente de "Gerar ficha de EPI" acima (que corrige o CA de verdade no
+  // sistema): esta é só um controle operacional ("já resolvemos isso"), por
+  // isso continua disponível mesmo numa auditoria em rascunho, e pode ser
+  // desfeita se marcada errado. `temCaDivergente` nunca muda por causa desta
+  // marcação — o Painel usa as duas coisas juntas pra mostrar quantos
+  // desvios regularizados existem sem perder o total (ver caDivergenteInfo).
+  function caDivergenteCelulaHtml(a) {
+    if (!a.temCaDivergente) return "—";
+    var podeEditar = canDo("auditorias", "editar");
+    if (a.caDivergenteRegularizado) {
+      var quando = a.caDivergenteRegularizadoEm ? fmtDateHoraBR(a.caDivergenteRegularizadoEm) : "";
+      var titulo = "Resolvida" + (quando ? " em " + quando : "") + (a.caDivergenteRegularizadoPorNome ? " por " + a.caDivergenteRegularizadoPorNome : "");
+      return '<span class="pill ok" title="' + esc(titulo) + '">Resolvida</span>' +
+        (podeEditar ? ' <button type="button" class="link-btn" data-ca-pendencia="' + a.id + '" data-ca-pendencia-valor="false" style="font-size:11px;">Desfazer</button>' : "");
+    }
+    if (!podeEditar) return '<span class="pill warn">Pendente</span>';
+    return '<button type="button" class="btn sm" data-ca-pendencia="' + a.id + '" data-ca-pendencia-valor="true">Marcar como resolvida</button>';
   }
 
   /* ================================================================
@@ -5153,6 +5200,14 @@
   // aqui) em vez de a cada chamada de verificarCaItem — sem isso, com muitas
   // auditorias no período, seria uma busca em `pessoas`/`treinamentos` (que
   // já passam de 800/8000 linhas) repetida centenas de vezes.
+  //
+  // Pedido do Diego (13/10/2026): cada ocorrência também carrega se a
+  // auditoria de origem já foi marcada como "resolvida" na listagem
+  // (ca.caDivergenteRegularizado — ver caDivergenteCelulaHtml). A marcação é
+  // por auditoria, não por item/colaborador — então uma auditoria com 2
+  // itens divergentes resolve os 2 juntos. O TOTAL continua contando todas
+  // as ocorrências, resolvidas ou não (não "some" nada, só soma quantas já
+  // foram tratadas) — é isso que mantém a quantidade que já tínhamos.
   var CA_CHECK_ITEMS = AUDITORIA_ITEMS_NOKIA.filter(function (it) { return !!it.caCheck; });
   function caDivergenteInfo(lista) {
     var fichaPorNome = {};
@@ -5161,11 +5216,14 @@
       return fichaPorNome[nome];
     }
     var porItem = {};
+    var porItemRegularizado = {};
     var ocorrencias = [];
-    CA_CHECK_ITEMS.forEach(function (item) { porItem[item.caCheck.caCheckLabel] = 0; });
+    var totalRegularizado = 0;
+    CA_CHECK_ITEMS.forEach(function (item) { porItem[item.caCheck.caCheckLabel] = 0; porItemRegularizado[item.caCheck.caCheckLabel] = 0; });
     lista.forEach(function (a) {
       var respostas = a.respostas || {};
       var qtd = a.numColaboradores || 1;
+      var regularizada = !!a.caDivergenteRegularizado;
       CA_CHECK_ITEMS.forEach(function (item) {
         for (var i = 1; i <= qtd; i++) {
           var nomeColaborador = (a.colaboradores || [])[i - 1] || "";
@@ -5174,22 +5232,28 @@
           var resultado = verificarCaItem(item.caCheck, nomeColaborador, caDigitado, fichaCached(nomeColaborador));
           if (resultado.status === "nao-conforme") {
             porItem[item.caCheck.caCheckLabel]++;
+            if (regularizada) { porItemRegularizado[item.caCheck.caCheckLabel]++; totalRegularizado++; }
             ocorrencias.push({
               auditoriaId: a.id, siteId: a.siteId, empresa: a.empresa, data: a.data,
               colaborador: nomeColaborador, item: item.caCheck.caCheckLabel,
-              caDigitado: soDigitos(caDigitado), caFicha: resultado.caFicha
+              caDigitado: soDigitos(caDigitado), caFicha: resultado.caFicha, regularizado: regularizada
             });
           }
         }
       });
     });
     var total = ocorrencias.length;
-    return { total: total, porItem: porItem, ocorrencias: ocorrencias };
+    return { total: total, porItem: porItem, porItemRegularizado: porItemRegularizado, totalRegularizado: totalRegularizado, ocorrencias: ocorrencias };
   }
-  function openCaDivergenteDrawer(ocorrencias, periodoTxt, itemFiltro) {
-    var list = (itemFiltro ? ocorrencias.filter(function (o) { return o.item === itemFiltro; }) : ocorrencias)
-      .slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.auditoriaId - a.auditoriaId; });
+  function openCaDivergenteDrawer(ocorrencias, periodoTxt, itemFiltro, regularizadoFiltro) {
+    var list = ocorrencias.filter(function (o) {
+      if (itemFiltro && o.item !== itemFiltro) return false;
+      if (regularizadoFiltro === true && !o.regularizado) return false;
+      if (regularizadoFiltro === false && o.regularizado) return false;
+      return true;
+    }).slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.auditoriaId - a.auditoriaId; });
     var rowsHtml = list.map(function (o) {
+      var statusPill = o.regularizado ? '<span class="pill ok">Resolvido</span>' : '<span class="pill warn">Pendente</span>';
       return '<tr data-id="' + o.auditoriaId + '">' +
         "<td>" + fmtDateBR(o.data) + "</td>" +
         '<td class="mono">' + esc(o.siteId || "—") + "</td>" +
@@ -5198,15 +5262,17 @@
         "<td>" + esc(o.item) + "</td>" +
         "<td>" + esc(o.caDigitado || "—") + "</td>" +
         "<td>" + esc(o.caFicha || "—") + "</td>" +
+        "<td>" + statusPill + "</td>" +
         "</tr>";
     }).join("");
+    var tituloSufixo = (itemFiltro ? " — " + itemFiltro : "") + (regularizadoFiltro === true ? " — resolvidos" : regularizadoFiltro === false ? " — pendentes" : "");
     openGenericTableDrawer({
-      title: "Desvios de CA divergente" + (itemFiltro ? " — " + itemFiltro : ""),
+      title: "Desvios de CA divergente" + tituloSufixo,
       subtitle: list.length + " desvio" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt + " — clique numa linha pra abrir a auditoria",
-      theadHtml: "<th>Data</th><th>Site ID</th><th>Empresa</th><th>Colaborador</th><th>Item</th><th>CA digitado</th><th>CA da ficha</th>",
+      theadHtml: "<th>Data</th><th>Site ID</th><th>Empresa</th><th>Colaborador</th><th>Item</th><th>CA digitado</th><th>CA da ficha</th><th>Status</th>",
       rowsHtml: rowsHtml,
-      exportHeaders: ["Data", "Site ID", "Empresa", "Colaborador", "Item", "CA digitado", "CA da ficha"],
-      exportRows: list.map(function (o) { return [fmtDateBR(o.data), o.siteId || "", o.empresa || "", o.colaborador || "", o.item, o.caDigitado || "", o.caFicha || ""]; }),
+      exportHeaders: ["Data", "Site ID", "Empresa", "Colaborador", "Item", "CA digitado", "CA da ficha", "Status"],
+      exportRows: list.map(function (o) { return [fmtDateBR(o.data), o.siteId || "", o.empresa || "", o.colaborador || "", o.item, o.caDigitado || "", o.caFicha || "", o.regularizado ? "Resolvido" : "Pendente"]; }),
       onRowBind: function (root) {
         $all("[data-id]", root).forEach(function (row) {
           row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
@@ -5421,7 +5487,14 @@
         ["Pessoas auditadas", pessoasInfo.auditadas.length + " de " + pessoasInfo.totalElegiveis, "ok", "auditadas"],
         ["Pessoas não auditadas", pessoasInfo.naoAuditadas.length, pessoasInfo.naoAuditadas.length > 0 ? "danger" : "ok", "naoAuditadas"],
         ["Não conformidade", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null],
-        ["Desvios de CA divergente", caDivergente.total, caDivergente.total > 0 ? "danger" : "ok", "caDivergente"]
+        ["Desvios de CA divergente", caDivergente.total, caDivergente.total > 0 ? "danger" : "ok", "caDivergente"],
+        // Pedido do Diego (13/10/2026): ao lado do total (que nunca muda só
+        // por causa da marcação manual — ver caDivergenteInfo), quantos
+        // desses desvios já foram tratados pela equipe. Mesmo formato de
+        // "Pessoas auditadas" acima ("X de Y").
+        ["Desvios de CA regularizados", caDivergente.totalRegularizado + " de " + caDivergente.total,
+          caDivergente.total > 0 && caDivergente.totalRegularizado === caDivergente.total ? "ok" : (caDivergente.total > 0 ? "warn" : ""),
+          "caDivergenteRegularizados"]
       ];
       var kpiHtml = kpis.map(function (k) {
         var clickAttrs = k[3] ? ' tabindex="0" data-painel-kpi="' + k[3] + '" style="cursor:pointer;"' : "";
@@ -5496,7 +5569,7 @@
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
 
       var regionalHtml = simpleBarsHtml(regionalCounts, "auditoria-regional", { showZero: true });
-      var caDivergenteHtml = simpleBarsHtml(caDivergente.porItem, "ca-divergente-item", { showZero: false });
+      var caDivergenteHtml = caDivergenteBarsHtml(caDivergente.porItem, caDivergente.porItemRegularizado, "ca-divergente-item");
 
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + esc(periodoLabelLongo(periodo)) + '</div></div>' +
@@ -5542,6 +5615,7 @@
           if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, periodoTxt, true, null, null, lista);
           else if (kind === "naoAuditadas") openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, periodoTxt, false);
           else if (kind === "caDivergente") openCaDivergenteDrawer(caDivergente.ocorrencias, periodoTxt);
+          else if (kind === "caDivergenteRegularizados") openCaDivergenteDrawer(caDivergente.ocorrencias, periodoTxt, null, true);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -6860,6 +6934,42 @@
         "</div>";
     }).join("");
     return '<div class="rankbar-list">' + body + "</div>";
+  }
+  // Mesma barra de simpleBarsHtml acima, mas com dois segmentos empilhados
+  // (pendente/resolvido) — pedido do Diego (13/10/2026) pra "Desvios de CA
+  // divergente por item" mostrar, dentro do total por item, quantos já
+  // foram marcados como resolvidos na listagem de Auditorias (ver
+  // caDivergenteCelulaHtml). Mesmo padrão visual de statusBarsHtml (usado em
+  // "Pendências por item" do Painel de Treinamentos).
+  function caDivergenteBarsHtml(porItem, porItemRegularizado, barKind) {
+    var rows = Object.keys(porItem).map(function (k) {
+      var total = porItem[k];
+      var regularizado = porItemRegularizado[k] || 0;
+      return { label: k, total: total, regularizado: regularizado, pendente: total - regularizado };
+    }).filter(function (r) { return r.total > 0; });
+    rows.sort(function (a, b) { return b.total - a.total; });
+    if (!rows.length) return '<div class="empty-state" style="padding:20px;">Nenhum dado encontrado.</div>';
+    var max = rows[0].total || 1;
+    var body = rows.map(function (r) {
+      var pct = Math.max(6, Math.round((r.total / max) * 100));
+      var visibleCount = (r.pendente ? 1 : 0) + (r.regularizado ? 1 : 0);
+      var minPx = visibleCount * 26;
+      function seg(cls, n, label) {
+        if (!n) return "";
+        return '<div class="rankbar-seg ' + cls + '" style="flex-grow:' + n + ';" data-tip-title="' + esc(r.label) + " — " + label + '" data-tip-sub="' + n + " desvio" + (n !== 1 ? "s" : "") + '"><span>' + n + "</span></div>";
+      }
+      return '<div class="rankbar-row" tabindex="0" data-simple-bar="' + barKind + '" data-simple-bar-value="' + esc(r.label) + '" data-tip-title="' + esc(r.label) + '" data-tip-sub="' + r.total + " desvio" + (r.total !== 1 ? "s" : "") + " (" + r.regularizado + " resolvido" + (r.regularizado !== 1 ? "s" : "") + ')">' +
+        '<div class="rankbar-label">' + esc(r.label) + '</div>' +
+        '<div class="rankbar-track"><div class="rankbar-fill" style="width:max(' + pct + '%, ' + minPx + 'px);">' +
+        seg("danger", r.pendente, "Pendente") +
+        seg("ok", r.regularizado, "Resolvido") +
+        "</div></div>" +
+        '<div class="rankbar-total">' + r.total + "</div>" +
+        "</div>";
+    }).join("");
+    return '<div class="rankbar-list">' + body + "</div>" +
+      '<div class="legend-row"><span class="legend-item" style="cursor:default;"><span class="legend-swatch danger"></span>Pendente</span>' +
+      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ok"></span>Resolvido</span></div>';
   }
   function openGenericTableDrawer(opts) {
     var html =

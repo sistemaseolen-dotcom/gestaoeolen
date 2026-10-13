@@ -104,7 +104,7 @@ export async function GET() {
     podeAuditorias
       ? admin
           .from("auditorias")
-          .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, tem_ca_divergente, tem_pendencia_assinatura, colaboradores, respostas, modalidade, criado_por_nome, criado_em, atualizado_em, finalizado_em")
+          .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, tem_ca_divergente, tem_pendencia_assinatura, ca_divergente_regularizado, ca_divergente_regularizado_em, ca_divergente_regularizado_por_nome, colaboradores, respostas, modalidade, criado_por_nome, criado_em, atualizado_em, finalizado_em")
           .order("data", { ascending: false })
       : vazio(),
     admin.from("configuracoes").select("chave, valor"),

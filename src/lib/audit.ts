@@ -58,6 +58,7 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     site_id: "Site ID", empresa: "Empresa", regional: "Regional", data: "Data", standard: "Padrão", status: "Status",
     inspetor_nome: "Inspetor", num_colaboradores: "Quantos colaboradores", colaboradores: "Colaboradores",
     observacao_final: "Observações finais", modalidade: "Modalidade",
+    ca_divergente_regularizado: "Pendência de CA divergente — marcada como resolvida",
   },
   acesso_equipe: {
     nome_equipe: "Nome da equipe", operadora: "Operadora", projetos: "Projeto(s)", regionais: "Regional(is)",
