@@ -1958,6 +1958,19 @@
         }
       });
     }
+    // Pedido do Diego (14/10/2026): PJ não tem matrícula no eSocial (isso é
+    // coisa de CLT) — ao escolher "PJ" em Tipo de pessoa, o campo Matrícula
+    // eSocial já se preenche sozinho com "N/A", sem precisar digitar isso à
+    // mão em cada cadastro. Só dispara na troca feita pelo usuário (evento
+    // "change"), nunca ao abrir o formulário de edição — então não
+    // sobrescreve sozinho o que já estava salvo antes desta mudança.
+    var tipoPessoaEl = $("#pessoa-form [name=tipoPessoa]");
+    var matriculaEsocialEl = $("#pessoa-form [name=matriculaESocial]");
+    if (tipoPessoaEl && matriculaEsocialEl) {
+      tipoPessoaEl.addEventListener("change", function () {
+        if (tipoPessoaEl.value === "PJ") matriculaEsocialEl.value = "N/A";
+      });
+    }
     $("#pessoa-form").addEventListener("submit", function (e) {
       e.preventDefault();
       if (!canDo("pessoas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
