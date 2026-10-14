@@ -442,6 +442,16 @@
     if (status === "IRREGULAR") return "Irregular";
     return "Pendente";
   }
+  // Pedido do Diego (14/10/2026): avisa, na Ficha de EPI da própria pessoa,
+  // que existe uma auditoria com CA divergente pendente pra ela — ANTES de
+  // subir um arquivo novo, pra já saber que precisa conferir aquele CA.
+  // STATE.caDivergentePessoas vem de /api/state (nomes de quem tem pelo
+  // menos uma auditoria com tem_ca_divergente=true agora). Isso é só um
+  // AVISO: quem resolve a pendência é a releitura automática da Ficha de
+  // EPI (recomputarCaDivergentePorPessoa, no servidor), não um clique aqui.
+  function pessoaTemCaDivergentePendente(nome) {
+    return !!(STATE.caDivergentePessoas && nome && STATE.caDivergentePessoas.has(nome));
+  }
   // Calibração de equipamentos: pedido do Diego (01/10/2026) é que todo esse
   // bloco do Painel considere só as equipes ATIVAS. Corrigido em 01/10/2026
   // (os números não batiam com o resto do Painel: o campo status da própria
@@ -1086,6 +1096,12 @@
         veiculos: (data.veiculos || []).map(mapVeiculoFromApi),
         auditorias: (data.auditorias || []).map(mapAuditoriaFromApi),
         acessoEquipes: (data.acessoEquipes || []).map(mapAcessoEquipeFromApi),
+        // Pedido do Diego (14/10/2026): nomes de quem tem pelo menos uma
+        // auditoria com CA divergente pendente AGORA — usado pra avisar na
+        // Ficha de EPI da pessoa, antes de subir um arquivo novo (ver
+        // pessoaTemCaDivergentePendente). Set pra consulta O(1), já que isso
+        // é checado uma vez por linha em listas com centenas de pessoas.
+        caDivergentePessoas: new Set(data.caDivergentePessoas || []),
         listas: data.listas || {},
         config: data.configuracoes || {}
       };
@@ -1105,6 +1121,7 @@
       STATE.veiculos = data.veiculos;
       STATE.auditorias = data.auditorias;
       STATE.acessoEquipes = data.acessoEquipes;
+      STATE.caDivergentePessoas = data.caDivergentePessoas;
       STATE.listas = data.listas;
       STATE.config = data.config;
       ensureListasSeed();
@@ -1709,7 +1726,10 @@
       (trs.length ? '<div class="table-scroll"><table class="data"><thead><tr><th>Item</th><th>Categoria</th><th>Vencimento</th><th>Status</th><th>Anexo</th><th>Ações</th></tr></thead><tbody>' +
         trs.map(function (t) {
           var st = trainingStatus(t);
-          return '<tr data-tr="' + t.id + '"><td class="row-primary">' + esc(t.tipo) + '</td><td><span class="tag">' + esc(t.categoria) + '</span></td><td class="mono">' + fmtDateBR(t.vencimento) + '</td><td>' + pill(st) + '</td><td>' + (t.arquivoPath ? '<a href="#" data-tr-download="' + t.id + '">' + esc(t.arquivoNome || "Baixar") + "</a>" : "—") + '</td><td class="row-actions">' +
+          var avisoCa = t.tipo === "FICHA DE EPI" && pessoaTemCaDivergentePendente(p.nome)
+            ? ' <span class="pill warn" title="Alguma auditoria desta pessoa ainda tem um CA divergente pendente.">CA divergente pendente</span>'
+            : "";
+          return '<tr data-tr="' + t.id + '"><td class="row-primary">' + esc(t.tipo) + avisoCa + '</td><td><span class="tag">' + esc(t.categoria) + '</span></td><td class="mono">' + fmtDateBR(t.vencimento) + '</td><td>' + pill(st) + '</td><td>' + (t.arquivoPath ? '<a href="#" data-tr-download="' + t.id + '">' + esc(t.arquivoNome || "Baixar") + "</a>" : "—") + '</td><td class="row-actions">' +
             (canDo("documentos", "editar") ? '<button class="btn ghost sm" title="Editar" data-tr-edit="' + t.id + '">' + ICONS.edit + '</button><button class="btn ghost sm" title="Anexar arquivo" data-tr-attach="' + t.id + '">' + ICONS.paperclip + "</button>" : "") +
             (canDo("documentos", "excluir") ? '<button class="btn ghost sm" title="Excluir" data-tr-del="' + t.id + '">' + ICONS.trash + "</button>" : "") +
             "</td></tr>";
@@ -7277,6 +7297,9 @@
       (t.arquivoPath
         ? '<button type="button" class="file-chip" id="btn-ver-anexo">' + ICONS.file + esc(t.arquivoNome || "Baixar anexo") + "</button>"
         : '<div class="hint">Nenhum arquivo anexado a este registro.</div>') +
+      (t.tipo === "FICHA DE EPI" && pessoaTemCaDivergentePendente(t.pessoaNome)
+        ? '<div style="margin-top:10px;"><span class="pill warn" title="Alguma auditoria desta pessoa ainda tem um CA divergente pendente.">CA divergente pendente</span></div>'
+        : "") +
       (t.tipo === "FICHA DE EPI" && t.arquivoPath
         ? '<div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
           '<button type="button" class="btn sm" id="btn-reler-epi">' + ICONS.sync + "Reler ficha (CA/equipamento)</button>" +
@@ -9112,7 +9135,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
+          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], caDivergentePessoas: new Set(), listas: {}, config: {} };
           render();
           return;
         }
@@ -9124,7 +9147,7 @@
       })
       .catch(function () {
         CURRENT_USER = null;
-        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], listas: {}, config: {} };
+        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], caDivergentePessoas: new Set(), listas: {}, config: {} };
         render();
       });
   }

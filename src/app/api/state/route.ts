@@ -86,7 +86,7 @@ export async function GET() {
   // isso quem tem só "auditorias" recebe um subconjunto seguro (id, nome,
   // cargo, status) em vez do registro completo -- e quem não tem nenhuma
   // das duas permissões continua recebendo vazio, como antes.
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
     podePessoas
       ? fetchAllRows(admin, "pessoas")
       : podeAuditorias
@@ -107,12 +107,23 @@ export async function GET() {
           .select("id, standard, site_id, empresa, regional, data, status, inspetor_nome, num_colaboradores, tem_ca_divergente, tem_pendencia_assinatura, colaboradores, respostas, modalidade, criado_por_nome, criado_em, atualizado_em, finalizado_em")
           .order("data", { ascending: false })
       : vazio(),
+    // Pedido do Diego (14/10/2026): mesmo quem só tem permissão em
+    // "documentos" (sem "auditorias") precisa ver, na ficha da pessoa, um
+    // aviso de que ela tem uma auditoria com CA divergente pendente — é o
+    // que avisa, ANTES de subir uma Ficha de EPI nova, que aquele
+    // documento tem algo pra conferir. Por isso esta busca é separada da
+    // de `auditorias` acima (gateada só por "auditorias") e gateada por
+    // "documentos" (podeTreinamentos) em vez disso -- só os nomes dos
+    // colaboradores, nunca os dados da auditoria em si.
+    podeTreinamentos
+      ? admin.from("auditorias").select("colaboradores").eq("tem_ca_divergente", true)
+      : vazio(),
     admin.from("configuracoes").select("chave, valor"),
     podeAcesso ? fetchAllRows(admin, "acesso_equipes") : vazio(),
     podeAcesso ? fetchAllRows(admin, "acesso_membros") : vazio(),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, configuracoes, acessoEquipes, acessoMembros })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -173,6 +184,12 @@ export async function GET() {
     membros: membrosPorAcessoEquipe.get(e.id) || [],
   }));
 
+  // Nomes únicos de quem tem pelo menos uma auditoria com CA divergente
+  // pendente agora — ver comentário na busca acima.
+  const caDivergentePessoas = Array.from(
+    new Set((caDivergentesAuditorias.data || []).flatMap((a: any) => (a.colaboradores || []) as string[]))
+  );
+
   return NextResponse.json({
     pessoas: pessoas.data,
     empresas: empresas.data,
@@ -181,6 +198,7 @@ export async function GET() {
     patrimonios: patrimonios.data,
     veiculos: veiculosComKmLancamentos,
     auditorias: auditorias.data,
+    caDivergentePessoas,
     listas,
     configuracoes: config,
     acessoEquipes: acessoEquipesComMembros,
