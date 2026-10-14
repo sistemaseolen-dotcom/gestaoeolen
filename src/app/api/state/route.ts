@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { canView } from "@/lib/permissions";
+import { calcularDivergenciasAuditoria, carregarFichasPorNome } from "@/lib/epiChecklist";
 
 // Hidratação inicial da SPA — equivalente ao antigo `#seed-data` embutido na
 // página. NÃO inclui usuarios nem audit_log (essa última é paginada à parte
@@ -113,10 +114,12 @@ export async function GET() {
     // que avisa, ANTES de subir uma Ficha de EPI nova, que aquele
     // documento tem algo pra conferir. Por isso esta busca é separada da
     // de `auditorias` acima (gateada só por "auditorias") e gateada por
-    // "documentos" (podeTreinamentos) em vez disso -- só os nomes dos
-    // colaboradores, nunca os dados da auditoria em si.
+    // "documentos" (podeTreinamentos) em vez disso -- inclui `respostas`
+    // pra poder recalcular item a item logo abaixo (ver comentário perto
+    // de `caDivergentePessoas`), nunca expõe os outros dados da auditoria
+    // em si na resposta.
     podeTreinamentos
-      ? admin.from("auditorias").select("colaboradores").eq("tem_ca_divergente", true)
+      ? admin.from("auditorias").select("respostas, colaboradores").eq("tem_ca_divergente", true)
       : vazio(),
     admin.from("configuracoes").select("chave, valor"),
     podeAcesso ? fetchAllRows(admin, "acesso_equipes") : vazio(),
@@ -184,11 +187,38 @@ export async function GET() {
     membros: membrosPorAcessoEquipe.get(e.id) || [],
   }));
 
-  // Nomes únicos de quem tem pelo menos uma auditoria com CA divergente
-  // pendente agora — ver comentário na busca acima.
-  const caDivergentePessoas = Array.from(
+  // Nomes únicos de quem AINDA tem, pessoalmente, algum item de CA/
+  // fabricação divergente agora — ver comentário na busca acima.
+  //
+  // Bug relatado pelo Diego (14/10/2026): a versão anterior marcava TODO
+  // colaborador de uma auditoria com tem_ca_divergente=true, mesmo quem já
+  // tinha corrigido a própria Ficha de EPI -- caso real: auditoria com
+  // Janderson e Bruno, Janderson corrigiu a ficha dele (bateu 100% com o
+  // que o auditor digitou), mas a auditoria continuou tem_ca_divergente=
+  // true porque o Bruno ainda tinha itens não conferindo -- e o aviso
+  // "CA divergente pendente" continuava aparecendo pro Janderson também,
+  // mesmo a pendência sendo só do Bruno. `tem_ca_divergente` é um boolean
+  // por AUDITORIA (existe pra decidir cor do item no gráfico de desvio do
+  // Painel, que já é recalculado ao vivo por pessoa/item -- isso nunca
+  // teve esse bug), não por colaborador -- não dá pra confiar nele sozinho
+  // pra decidir quem, individualmente, ainda precisa de atenção.
+  //
+  // Por isso, pras poucas auditorias que ainda estão com tem_ca_divergente
+  // =true (normalmente um punhado), recalcula aqui mesmo, item a item,
+  // com a mesma função usada pelo botão "Gerar ficha de EPI"
+  // (calcularDivergenciasAuditoria) -- só entra no aviso quem realmente
+  // ainda tem pelo menos um item não conferindo, não todo mundo que
+  // participou da auditoria.
+  const nomesEmAuditoriasComDivergencia = Array.from(
     new Set((caDivergentesAuditorias.data || []).flatMap((a: any) => (a.colaboradores || []) as string[]))
   );
+  const fichaPorNomeCaCheck = await carregarFichasPorNome(admin, nomesEmAuditoriasComDivergencia);
+  const caDivergentePessoasSet = new Set<string>();
+  for (const a of caDivergentesAuditorias.data || []) {
+    const divergencias = calcularDivergenciasAuditoria((a as any).respostas, (a as any).colaboradores, fichaPorNomeCaCheck);
+    for (const d of divergencias) caDivergentePessoasSet.add(d.nomeColaborador);
+  }
+  const caDivergentePessoas = Array.from(caDivergentePessoasSet);
 
   return NextResponse.json({
     pessoas: pessoas.data,
