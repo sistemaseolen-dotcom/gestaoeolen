@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
+import { recomputarCaDivergentePorPessoa } from "@/lib/epiChecklist";
 
 // Pedido do Diego (10/2026): reler as Fichas de EPI já cadastradas no
 // sistema, sem precisar clicar "Reler ficha" uma por uma (existem ~630
@@ -51,7 +52,7 @@ export async function POST() {
 
   const { data: candidatos, error: fetchError } = await admin
     .from("treinamentos")
-    .select("id, pessoa_id, arquivo_path, epi_itens, epi_ocr_erro")
+    .select("id, pessoa_id, pessoa_nome, arquivo_path, epi_itens, epi_ocr_erro")
     .eq("tipo", "FICHA DE EPI")
     .not("arquivo_path", "is", null)
     .order("id", { ascending: true });
@@ -92,6 +93,16 @@ export async function POST() {
         epi_ocr_atualizado_em: new Date().toISOString(),
       })
       .eq("id", t.id);
+
+    // Pedido do Diego (14/10/2026): cada ficha relida neste lote também
+    // reavalia na hora a divergência de CA de qualquer auditoria da mesma
+    // pessoa (ver recomputarCaDivergentePorPessoa) — best-effort, não pode
+    // travar o backlog por causa de uma pessoa só.
+    try {
+      await recomputarCaDivergentePorPessoa(admin, (t as any).pessoa_nome);
+    } catch (err: any) {
+      console.error(`Falha ao reavaliar divergência de CA das auditorias de ${(t as any).pessoa_nome}:`, err?.message || err);
+    }
 
     if (resultado.ok) lidas++;
     else {

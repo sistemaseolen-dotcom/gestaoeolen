@@ -268,3 +268,52 @@ export async function carregarFichasPorNome(
 
   return mapa;
 }
+
+// Pedido do Diego (14/10/2026): sempre que a Ficha de EPI de uma pessoa é
+// lida (ou relida) pelo OCR — upload normal na tela de Treinamentos, "Reler
+// ficha" manual, ou o backlog em lote — a pendência de CA divergente de
+// QUALQUER auditoria que inclua essa pessoa precisa ser reavaliada na hora,
+// sem precisar abrir ou editar a auditoria pra isso acontecer. Antes disso
+// só existiam dois lugares que recalculavam `tem_ca_divergente`: o PATCH
+// /api/auditorias/[id] (quando a PRÓPRIA auditoria tem respostas/
+// colaboradores editados) e finalizarFichaEpiAssinada (fluxo "Gerar ficha
+// de EPI", que já sabe qual auditoria disparou a regeneração). Um upload
+// comum de ficha nova fora desses dois fluxos nunca recalculava nada — o
+// indicador "Divergência na Ficha de EPI" na listagem ficava travado mesmo
+// depois do problema já corrigido no documento.
+//
+// Existiu, por um curto período, um botão manual pra marcar isso como
+// resolvido — o Diego pediu pra tirar: ele quer que a verificação seja
+// automática, disparada pela leitura da ficha, não por um clique.
+//
+// `auditorias.colaboradores` guarda nomes, sem FK pra `pessoas` (ver
+// carregarFichasPorNome acima) — por isso a busca aqui também é por nome,
+// usando o operador de array do Postgres (`colaboradores @> ARRAY[nome]`,
+// exposto pelo supabase-js como `.contains`).
+export async function recomputarCaDivergentePorPessoa(
+  admin: any,
+  pessoaNome: string | null | undefined
+): Promise<{ id: number; antes: boolean; depois: boolean }[]> {
+  const nome = (pessoaNome || "").toString().trim();
+  if (!nome) return [];
+
+  const { data: auditorias, error } = await admin
+    .from("auditorias")
+    .select("id, respostas, colaboradores, tem_ca_divergente")
+    .contains("colaboradores", [nome]);
+  if (error) throw error;
+  if (!auditorias || !auditorias.length) return [];
+
+  const resultados: { id: number; antes: boolean; depois: boolean }[] = [];
+  for (const a of auditorias) {
+    const colaboradores: string[] = a.colaboradores || [];
+    const fichaPorNome = await carregarFichasPorNome(admin, colaboradores);
+    const divergente = temAlgumaDivergencia(a.respostas, colaboradores, fichaPorNome);
+    if (divergente !== !!a.tem_ca_divergente) {
+      const { error: updateError } = await admin.from("auditorias").update({ tem_ca_divergente: divergente }).eq("id", a.id);
+      if (updateError) throw updateError;
+    }
+    resultados.push({ id: a.id, antes: !!a.tem_ca_divergente, depois: divergente });
+  }
+  return resultados;
+}

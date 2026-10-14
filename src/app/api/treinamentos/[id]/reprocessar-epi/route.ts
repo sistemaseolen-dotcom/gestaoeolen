@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
+import { recomputarCaDivergentePorPessoa } from "@/lib/epiChecklist";
 
 // Refaz a leitura por OCR do PDF que JÁ está anexado neste registro de
 // "FICHA DE EPI" — sem precisar reenviar o arquivo.
@@ -72,6 +73,15 @@ export async function POST(_req: Request, context: { params: Promise<{ id: strin
     .single();
   if (updateError) {
     return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+
+  // Pedido do Diego (14/10/2026): releitura concluída — reavalia na hora a
+  // divergência de CA de qualquer auditoria dessa pessoa (ver
+  // recomputarCaDivergentePorPessoa).
+  try {
+    await recomputarCaDivergentePorPessoa(admin, after.pessoa_nome);
+  } catch (err: any) {
+    console.error(`Falha ao reavaliar divergência de CA das auditorias de ${after.pessoa_nome}:`, err?.message || err);
   }
 
   return NextResponse.json({

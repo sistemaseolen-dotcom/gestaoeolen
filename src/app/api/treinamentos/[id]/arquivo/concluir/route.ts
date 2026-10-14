@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 import { auditDiffFields } from "@/lib/audit";
 import { extrairItensFichaEpi } from "@/lib/fichaEpiOcr";
+import { recomputarCaDivergentePorPessoa } from "@/lib/epiChecklist";
 
 // Passo 2/2 do upload de Documentos/Treinamentos — ver o comentário grande
 // em ../route.ts. Chamado pelo navegador DEPOIS de já ter mandado o arquivo
@@ -114,6 +115,17 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
       }
     } catch (err: any) {
       console.error(`Falha ao processar OCR da Ficha de EPI (treinamento ${id}):`, err?.message || err);
+    }
+
+    // Pedido do Diego (14/10/2026): ficha lida (com sucesso ou não) —
+    // reavalia na hora se alguma auditoria dessa pessoa ainda tem CA
+    // divergente, sem precisar editar a auditoria pra isso acontecer. Best-
+    // effort, igual ao OCR acima: não pode derrubar o upload do anexo, que
+    // já terminou com sucesso.
+    try {
+      await recomputarCaDivergentePorPessoa(admin, after.pessoa_nome);
+    } catch (err: any) {
+      console.error(`Falha ao reavaliar divergência de CA das auditorias de ${after.pessoa_nome}:`, err?.message || err);
     }
   }
 

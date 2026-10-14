@@ -158,7 +158,6 @@
     veiculos: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm14 0a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM3 17V9.5a1 1 0 0 1 .3-.7l2.5-2.5A2 2 0 0 1 7.2 5.6h9.6a2 2 0 0 1 1.4.6l2.5 2.5a1 1 0 0 1 .3.7V17"/><path d="M5 11h14"/></svg>',
     auditorias: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V3"/><path d="m9 12 2 2 4-4"/><path d="M8 17h8"/></svg>',
     camera: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
-    vo: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>',
     sync: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.36"/><path d="M3 12a9 9 0 0 1 15.5-6.36"/><polyline points="21 3 21 9 15 9"/><polyline points="3 21 3 15 9 15"/></svg>'
   };
 
@@ -180,8 +179,7 @@
     frotasKmSemana: { mes: "", motorista: "" },
     frotasKmExcedido: { q: "", status: "", page: 1 },
     auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
-    acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 },
-    vo: { q: "", projeto: "", regiao: "", status: "ANDAMENTO", page: 1 }
+    acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -195,8 +193,7 @@
     { key: "patrimonio", label: "Patrimônio" },
     { key: "veiculos", label: "Gestão de Frotas" },
     { key: "auditorias", label: "Auditorias" },
-    { key: "acesso", label: "Acesso" },
-    { key: "vo", label: "Controle de VO" }
+    { key: "acesso", label: "Acesso" }
   ];
   var ACTIONS = [
     { key: "ver", label: "Ver" },
@@ -232,7 +229,6 @@
     if (canView("veiculos")) return "veiculos";
     if (canView("auditorias")) return "auditorias";
     if (canView("acesso")) return "acesso";
-    if (canView("vo")) return "vo";
     return null;
   }
 
@@ -1056,13 +1052,6 @@
       // fichaEpiBotaoHtml) e junta esse colaborador na mesma tela dos que
       // têm CA divergente.
       temPendenciaAssinatura: !!row.tem_pendencia_assinatura,
-      // Pedido do Diego (13/10/2026): marcação manual, na listagem, de que a
-      // pendência de CA divergente desta auditoria já foi tratada pela
-      // equipe (ver caDivergenteCelulaHtml) — distinta de temCaDivergente,
-      // que é recalculado sozinho e não muda com esta marcação.
-      caDivergenteRegularizado: !!row.ca_divergente_regularizado,
-      caDivergenteRegularizadoEm: row.ca_divergente_regularizado_em,
-      caDivergenteRegularizadoPorNome: row.ca_divergente_regularizado_por_nome,
       colaboradores: row.colaboradores || [], respostas: row.respostas || {}, modalidade: row.modalidade || null,
       observacaoFinal: row.observacao_final,
       criadoPorId: row.criado_por_id, criadoPorNome: row.criado_por_nome,
@@ -1159,9 +1148,6 @@
     // O número no menu é a contagem de PESSOAS (não de equipes) — a lista
     // principal da aba passou a listar pessoas (pedido do Diego, 29/09/2026).
     if (canView("acesso")) navItems.push(["acesso", "Acesso", ICONS.lock, totalAcessoMembros()]);
-    // Controle de VO (pedido do Diego, 14/10/2026) — o número é a quantidade
-    // de VOs em andamento (em aprovação + falha na PR), quando já carregadas.
-    if (canView("vo")) navItems.push(["vo", "Controle de VO", ICONS.vo, VO_CACHE ? voEmAndamento(VO_CACHE.vos).length : null]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
@@ -4707,8 +4693,7 @@
           "<td>" + esc(modalidadeLabel) + "</td>" +
           "<td>" + esc(a.criadoPorNome || "—") + "</td>" +
           "<td>" + statusPillAuditoria(a.status) + "</td>" +
-          "<td>" + fichaEpiBotaoHtml(a) + "</td>" +
-          "<td>" + caDivergenteCelulaHtml(a) + "</td></tr>";
+          "<td>" + fichaEpiBotaoHtml(a) + "</td></tr>";
       }).join("");
       var toolbar =
         '<div class="search-wrap">' + ICONS.search + '<input type="text" id="auditoria-q" placeholder="Buscar por site, empresa ou inspetor…" value="' + esc(ui.q) + '"></div>' +
@@ -4719,11 +4704,10 @@
         '<option value="RASCUNHO"' + (ui.status === "RASCUNHO" ? " selected" : "") + '>Rascunho</option>' +
         '<option value="CONCLUIDO"' + (ui.status === "CONCLUIDO" ? " selected" : "") + ">Concluído</option></select>";
 
-      var exportHeaders = ["Site ID", "Regional", "Empresa", "Cliente", "Data (realização)", "Criado em (sistema)", "Inspetor", "Modalidade", "Criado por", "Status", "Pendência de CA"];
+      var exportHeaders = ["Site ID", "Regional", "Empresa", "Cliente", "Data (realização)", "Criado em (sistema)", "Inspetor", "Modalidade", "Criado por", "Status"];
       var exportRows = filtered.map(function (a) {
         var modalidadeLabel = a.modalidade === "PRESENCIAL" ? "Presencial" : a.modalidade === "REMOTA" ? "Remota" : "—";
-        var pendenciaCaLabel = !a.temCaDivergente ? "—" : (a.caDivergenteRegularizado ? "Resolvida" : "Pendente");
-        return [a.siteId || "", regionalAuditoria(a) || "", a.empresa || "", clienteAuditoria(a), fmtDateBR(a.data), fmtDateHoraBR(a.criadoEm) || "", a.inspetorNome || "", modalidadeLabel, a.criadoPorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho", pendenciaCaLabel];
+        return [a.siteId || "", regionalAuditoria(a) || "", a.empresa || "", clienteAuditoria(a), fmtDateBR(a.data), fmtDateHoraBR(a.criadoEm) || "", a.inspetorNome || "", modalidadeLabel, a.criadoPorNome || "", a.status === "CONCLUIDO" ? "Concluído" : "Rascunho"];
       });
 
       main.innerHTML =
@@ -4732,7 +4716,7 @@
         auditoriasTabsHtml("lista") +
         tableShell({
           toolbar: toolbar,
-          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th><th>Ficha de EPI</th><th>Pendência de CA</th>",
+          headHtml: "<th>Site ID</th><th>Regional</th><th>Empresa</th><th>Cliente</th><th>Data (realização)</th><th>Criado em (sistema)</th><th>Inspetor</th><th>Modalidade</th><th>Criado por</th><th>Status</th><th>Ficha de EPI</th>",
           bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
           empty: "Nenhuma auditoria encontrada.",
           exportHeaders: exportHeaders,
@@ -4751,23 +4735,6 @@
           navigate("#/auditorias/" + btn.getAttribute("data-ficha-epi") + "/ficha-epi");
         });
       });
-      $all("[data-ca-pendencia]", main).forEach(function (btn) {
-        btn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          var id = btn.getAttribute("data-ca-pendencia");
-          var novoValor = btn.getAttribute("data-ca-pendencia-valor") === "true";
-          btn.disabled = true;
-          apiFetch("/api/auditorias/" + id + "/ca-divergente-regularizado", { method: "PATCH", body: { regularizado: novoValor } })
-            .then(function (data) {
-              var atualizada = mapAuditoriaFromApi(data);
-              var idx = STATE.auditorias.findIndex(function (x) { return x.id === atualizada.id; });
-              if (idx !== -1) STATE.auditorias[idx] = atualizada;
-              toast(novoValor ? "Pendência de CA marcada como resolvida." : "Pendência de CA marcada como pendente novamente.", "success");
-              draw();
-            })
-            .catch(function (err) { btn.disabled = false; handleApiError(err); });
-        });
-      });
       bindPagination(main, ui, PAGE_SIZE, filtered, draw);
       wireExportButton(main, "Auditorias", exportHeaders, exportRows);
     }
@@ -4781,33 +4748,22 @@
   // `temCaDivergente` (nome mantido por compatibilidade com a coluna do
   // banco) na verdade cobre as duas verificações — CA e fabricação — desde
   // a checagem dupla (24/09/2026).
+  //
+  // Pedido do Diego (14/10/2026): some sozinho (vira "—") assim que a nova
+  // Ficha de EPI da pessoa é lida pelo OCR e o CA/fabricação batem com o
+  // que o auditor digitou — nada de botão manual pra "marcar como
+  // resolvido" (um botão assim existiu brevemente e foi removido a pedido
+  // dele: a leitura automática é que precisa decidir isso). Isso acontece
+  // porque `tem_ca_divergente` agora é recalculado também logo depois de
+  // CADA leitura de OCR da Ficha de EPI, não só quando a própria auditoria
+  // é editada — ver recomputarCaDivergentePorPessoa em epiChecklist.ts,
+  // chamada pelas rotas de upload/releitura de Ficha de EPI.
   function fichaEpiBotaoHtml(a) {
     if ((!a.temCaDivergente && !a.temPendenciaAssinatura) || a.status !== "CONCLUIDO") return "—";
     if (!canDo("auditorias", "editar")) {
       return '<span class="pill warn">' + (a.temCaDivergente ? "Divergência na Ficha de EPI" : "Assinatura pendente") + "</span>";
     }
     return '<button type="button" class="btn sm" data-ficha-epi="' + a.id + '">' + ICONS.alert + "Gerar ficha de EPI</button>";
-  }
-
-  // Pedido do Diego (13/10/2026): marcação manual, na listagem, de que a
-  // pendência de CA divergente desta auditoria já foi tratada pela equipe —
-  // diferente de "Gerar ficha de EPI" acima (que corrige o CA de verdade no
-  // sistema): esta é só um controle operacional ("já resolvemos isso"), por
-  // isso continua disponível mesmo numa auditoria em rascunho, e pode ser
-  // desfeita se marcada errado. `temCaDivergente` nunca muda por causa desta
-  // marcação — o Painel usa as duas coisas juntas pra mostrar quantos
-  // desvios regularizados existem sem perder o total (ver caDivergenteInfo).
-  function caDivergenteCelulaHtml(a) {
-    if (!a.temCaDivergente) return "—";
-    var podeEditar = canDo("auditorias", "editar");
-    if (a.caDivergenteRegularizado) {
-      var quando = a.caDivergenteRegularizadoEm ? fmtDateHoraBR(a.caDivergenteRegularizadoEm) : "";
-      var titulo = "Resolvida" + (quando ? " em " + quando : "") + (a.caDivergenteRegularizadoPorNome ? " por " + a.caDivergenteRegularizadoPorNome : "");
-      return '<span class="pill ok" title="' + esc(titulo) + '">Resolvida</span>' +
-        (podeEditar ? ' <button type="button" class="link-btn" data-ca-pendencia="' + a.id + '" data-ca-pendencia-valor="false" style="font-size:11px;">Desfazer</button>' : "");
-    }
-    if (!podeEditar) return '<span class="pill warn">Pendente</span>';
-    return '<button type="button" class="btn sm" data-ca-pendencia="' + a.id + '" data-ca-pendencia-valor="true">Marcar como resolvida</button>';
   }
 
   /* ================================================================
@@ -5208,13 +5164,6 @@
   // auditorias no período, seria uma busca em `pessoas`/`treinamentos` (que
   // já passam de 800/8000 linhas) repetida centenas de vezes.
   //
-  // Pedido do Diego (13/10/2026): cada ocorrência também carrega se a
-  // auditoria de origem já foi marcada como "resolvida" na listagem
-  // (ca.caDivergenteRegularizado — ver caDivergenteCelulaHtml). A marcação é
-  // por auditoria, não por item/colaborador — então uma auditoria com 2
-  // itens divergentes resolve os 2 juntos. O TOTAL continua contando todas
-  // as ocorrências, resolvidas ou não (não "some" nada, só soma quantas já
-  // foram tratadas) — é isso que mantém a quantidade que já tínhamos.
   var CA_CHECK_ITEMS = AUDITORIA_ITEMS_NOKIA.filter(function (it) { return !!it.caCheck; });
   function caDivergenteInfo(lista) {
     var fichaPorNome = {};
@@ -5223,14 +5172,11 @@
       return fichaPorNome[nome];
     }
     var porItem = {};
-    var porItemRegularizado = {};
     var ocorrencias = [];
-    var totalRegularizado = 0;
-    CA_CHECK_ITEMS.forEach(function (item) { porItem[item.caCheck.caCheckLabel] = 0; porItemRegularizado[item.caCheck.caCheckLabel] = 0; });
+    CA_CHECK_ITEMS.forEach(function (item) { porItem[item.caCheck.caCheckLabel] = 0; });
     lista.forEach(function (a) {
       var respostas = a.respostas || {};
       var qtd = a.numColaboradores || 1;
-      var regularizada = !!a.caDivergenteRegularizado;
       CA_CHECK_ITEMS.forEach(function (item) {
         for (var i = 1; i <= qtd; i++) {
           var nomeColaborador = (a.colaboradores || [])[i - 1] || "";
@@ -5239,28 +5185,22 @@
           var resultado = verificarCaItem(item.caCheck, nomeColaborador, caDigitado, fichaCached(nomeColaborador));
           if (resultado.status === "nao-conforme") {
             porItem[item.caCheck.caCheckLabel]++;
-            if (regularizada) { porItemRegularizado[item.caCheck.caCheckLabel]++; totalRegularizado++; }
             ocorrencias.push({
               auditoriaId: a.id, siteId: a.siteId, empresa: a.empresa, data: a.data,
               colaborador: nomeColaborador, item: item.caCheck.caCheckLabel,
-              caDigitado: soDigitos(caDigitado), caFicha: resultado.caFicha, regularizado: regularizada
+              caDigitado: soDigitos(caDigitado), caFicha: resultado.caFicha
             });
           }
         }
       });
     });
     var total = ocorrencias.length;
-    return { total: total, porItem: porItem, porItemRegularizado: porItemRegularizado, totalRegularizado: totalRegularizado, ocorrencias: ocorrencias };
+    return { total: total, porItem: porItem, ocorrencias: ocorrencias };
   }
-  function openCaDivergenteDrawer(ocorrencias, periodoTxt, itemFiltro, regularizadoFiltro) {
-    var list = ocorrencias.filter(function (o) {
-      if (itemFiltro && o.item !== itemFiltro) return false;
-      if (regularizadoFiltro === true && !o.regularizado) return false;
-      if (regularizadoFiltro === false && o.regularizado) return false;
-      return true;
-    }).slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.auditoriaId - a.auditoriaId; });
+  function openCaDivergenteDrawer(ocorrencias, periodoTxt, itemFiltro) {
+    var list = (itemFiltro ? ocorrencias.filter(function (o) { return o.item === itemFiltro; }) : ocorrencias)
+      .slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.auditoriaId - a.auditoriaId; });
     var rowsHtml = list.map(function (o) {
-      var statusPill = o.regularizado ? '<span class="pill ok">Resolvido</span>' : '<span class="pill warn">Pendente</span>';
       return '<tr data-id="' + o.auditoriaId + '">' +
         "<td>" + fmtDateBR(o.data) + "</td>" +
         '<td class="mono">' + esc(o.siteId || "—") + "</td>" +
@@ -5269,17 +5209,15 @@
         "<td>" + esc(o.item) + "</td>" +
         "<td>" + esc(o.caDigitado || "—") + "</td>" +
         "<td>" + esc(o.caFicha || "—") + "</td>" +
-        "<td>" + statusPill + "</td>" +
         "</tr>";
     }).join("");
-    var tituloSufixo = (itemFiltro ? " — " + itemFiltro : "") + (regularizadoFiltro === true ? " — resolvidos" : regularizadoFiltro === false ? " — pendentes" : "");
     openGenericTableDrawer({
-      title: "Desvios de CA divergente" + tituloSufixo,
+      title: "Desvios de CA divergente" + (itemFiltro ? " — " + itemFiltro : ""),
       subtitle: list.length + " desvio" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt + " — clique numa linha pra abrir a auditoria",
-      theadHtml: "<th>Data</th><th>Site ID</th><th>Empresa</th><th>Colaborador</th><th>Item</th><th>CA digitado</th><th>CA da ficha</th><th>Status</th>",
+      theadHtml: "<th>Data</th><th>Site ID</th><th>Empresa</th><th>Colaborador</th><th>Item</th><th>CA digitado</th><th>CA da ficha</th>",
       rowsHtml: rowsHtml,
-      exportHeaders: ["Data", "Site ID", "Empresa", "Colaborador", "Item", "CA digitado", "CA da ficha", "Status"],
-      exportRows: list.map(function (o) { return [fmtDateBR(o.data), o.siteId || "", o.empresa || "", o.colaborador || "", o.item, o.caDigitado || "", o.caFicha || "", o.regularizado ? "Resolvido" : "Pendente"]; }),
+      exportHeaders: ["Data", "Site ID", "Empresa", "Colaborador", "Item", "CA digitado", "CA da ficha"],
+      exportRows: list.map(function (o) { return [fmtDateBR(o.data), o.siteId || "", o.empresa || "", o.colaborador || "", o.item, o.caDigitado || "", o.caFicha || ""]; }),
       onRowBind: function (root) {
         $all("[data-id]", root).forEach(function (row) {
           row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
@@ -5494,14 +5432,7 @@
         ["Pessoas auditadas", pessoasInfo.auditadas.length + " de " + pessoasInfo.totalElegiveis, "ok", "auditadas"],
         ["Pessoas não auditadas", pessoasInfo.naoAuditadas.length, pessoasInfo.naoAuditadas.length > 0 ? "danger" : "ok", "naoAuditadas"],
         ["Não conformidade", naoConf.pct + "%", naoConf.pct >= 20 ? "danger" : naoConf.pct > 0 ? "warn" : "ok", null],
-        ["Desvios de CA divergente", caDivergente.total, caDivergente.total > 0 ? "danger" : "ok", "caDivergente"],
-        // Pedido do Diego (13/10/2026): ao lado do total (que nunca muda só
-        // por causa da marcação manual — ver caDivergenteInfo), quantos
-        // desses desvios já foram tratados pela equipe. Mesmo formato de
-        // "Pessoas auditadas" acima ("X de Y").
-        ["Desvios de CA regularizados", caDivergente.totalRegularizado + " de " + caDivergente.total,
-          caDivergente.total > 0 && caDivergente.totalRegularizado === caDivergente.total ? "ok" : (caDivergente.total > 0 ? "warn" : ""),
-          "caDivergenteRegularizados"]
+        ["Desvios de CA divergente", caDivergente.total, caDivergente.total > 0 ? "danger" : "ok", "caDivergente"]
       ];
       var kpiHtml = kpis.map(function (k) {
         var clickAttrs = k[3] ? ' tabindex="0" data-painel-kpi="' + k[3] + '" style="cursor:pointer;"' : "";
@@ -5576,7 +5507,7 @@
         : '<div class="empty-state" style="padding:20px;">Nenhuma auditoria no período.</div>';
 
       var regionalHtml = simpleBarsHtml(regionalCounts, "auditoria-regional", { showZero: true });
-      var caDivergenteHtml = caDivergenteBarsHtml(caDivergente.porItem, caDivergente.porItemRegularizado, "ca-divergente-item");
+      var caDivergenteHtml = simpleBarsHtml(caDivergente.porItem, "ca-divergente-item", { showZero: false });
 
       main.innerHTML =
         '<div class="topbar"><div><h1>Auditorias</h1><div class="sub">Painel — quem foi auditado, quantas auditorias e como foram realizadas' + esc(periodoLabelLongo(periodo)) + '</div></div>' +
@@ -5622,7 +5553,6 @@
           if (kind === "auditadas") openPessoasAuditadasDrawer(pessoasInfo.auditadas, periodoTxt, true, null, null, lista);
           else if (kind === "naoAuditadas") openPessoasAuditadasDrawer(pessoasInfo.naoAuditadas, periodoTxt, false);
           else if (kind === "caDivergente") openCaDivergenteDrawer(caDivergente.ocorrencias, periodoTxt);
-          else if (kind === "caDivergenteRegularizados") openCaDivergenteDrawer(caDivergente.ocorrencias, periodoTxt, null, true);
         });
         el.addEventListener("keydown", function (ev) { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); } });
       });
@@ -6941,42 +6871,6 @@
         "</div>";
     }).join("");
     return '<div class="rankbar-list">' + body + "</div>";
-  }
-  // Mesma barra de simpleBarsHtml acima, mas com dois segmentos empilhados
-  // (pendente/resolvido) — pedido do Diego (13/10/2026) pra "Desvios de CA
-  // divergente por item" mostrar, dentro do total por item, quantos já
-  // foram marcados como resolvidos na listagem de Auditorias (ver
-  // caDivergenteCelulaHtml). Mesmo padrão visual de statusBarsHtml (usado em
-  // "Pendências por item" do Painel de Treinamentos).
-  function caDivergenteBarsHtml(porItem, porItemRegularizado, barKind) {
-    var rows = Object.keys(porItem).map(function (k) {
-      var total = porItem[k];
-      var regularizado = porItemRegularizado[k] || 0;
-      return { label: k, total: total, regularizado: regularizado, pendente: total - regularizado };
-    }).filter(function (r) { return r.total > 0; });
-    rows.sort(function (a, b) { return b.total - a.total; });
-    if (!rows.length) return '<div class="empty-state" style="padding:20px;">Nenhum dado encontrado.</div>';
-    var max = rows[0].total || 1;
-    var body = rows.map(function (r) {
-      var pct = Math.max(6, Math.round((r.total / max) * 100));
-      var visibleCount = (r.pendente ? 1 : 0) + (r.regularizado ? 1 : 0);
-      var minPx = visibleCount * 26;
-      function seg(cls, n, label) {
-        if (!n) return "";
-        return '<div class="rankbar-seg ' + cls + '" style="flex-grow:' + n + ';" data-tip-title="' + esc(r.label) + " — " + label + '" data-tip-sub="' + n + " desvio" + (n !== 1 ? "s" : "") + '"><span>' + n + "</span></div>";
-      }
-      return '<div class="rankbar-row" tabindex="0" data-simple-bar="' + barKind + '" data-simple-bar-value="' + esc(r.label) + '" data-tip-title="' + esc(r.label) + '" data-tip-sub="' + r.total + " desvio" + (r.total !== 1 ? "s" : "") + " (" + r.regularizado + " resolvido" + (r.regularizado !== 1 ? "s" : "") + ')">' +
-        '<div class="rankbar-label">' + esc(r.label) + '</div>' +
-        '<div class="rankbar-track"><div class="rankbar-fill" style="width:max(' + pct + '%, ' + minPx + 'px);">' +
-        seg("danger", r.pendente, "Pendente") +
-        seg("ok", r.regularizado, "Resolvido") +
-        "</div></div>" +
-        '<div class="rankbar-total">' + r.total + "</div>" +
-        "</div>";
-    }).join("");
-    return '<div class="rankbar-list">' + body + "</div>" +
-      '<div class="legend-row"><span class="legend-item" style="cursor:default;"><span class="legend-swatch danger"></span>Pendente</span>' +
-      '<span class="legend-item" style="cursor:default;"><span class="legend-swatch ok"></span>Resolvido</span></div>';
   }
   function openGenericTableDrawer(opts) {
     var html =
@@ -9132,7 +9026,6 @@
       var ae = byId(STATE.acessoEquipes, route.id);
       return "Abriu a equipe de acesso " + (ae ? ae.nomeEquipe : "#" + route.id);
     }
-    if (route.view === "vo") return route.id ? "Abriu a VO " + route.id : "Abriu o Controle de VO";
     var listLabels = { pessoas: "Abriu a lista de Pessoas", equipes: "Abriu a lista de Equipes", empresas: "Abriu a lista de Empresas", treinamentos: "Abriu o Painel", patrimonio: "Abriu a lista de Patrimônio", acesso: "Abriu a lista de Acesso" };
     return listLabels[route.view] || ("Abriu " + route.view);
   }
@@ -9172,7 +9065,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso", vo: "vo" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -9205,453 +9098,8 @@
       else renderAuditoriasPainel(main);
     }
     else if (route.view === "acesso") route.id ? renderAcessoEquipeDetail(main, route.id) : renderAcessoMembrosList(main);
-    else if (route.view === "vo") route.id ? renderVoDetail(main, route.id) : renderVoPainel(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id || route.id === "lista") closeDrawer();
-  }
-
-  /* ---------------- Controle de VO ----------------
-     Pedido do Diego (14/10/2026): acompanhar as VOs (VO Change = PO
-     adicional que a Huawei abre quando a atividade não está no escopo já
-     recebido) e em que etapa da aprovação cada uma está. Os dados vêm do
-     BigQuery (esupplier.vw_vo_change), somente leitura, pelas rotas
-     GET /api/vo (lista leve + log da última carga) e GET /api/vo/:no
-     (detalhe com histórico de aprovação). Não entram em STATE/loadState —
-     são carregados só quando alguém abre a aba, e ficam 5 min em memória. */
-  var VO_CACHE = null;          // { vos, log, lidoEm, at }
-  var VO_LOADING = null;        // Promise em andamento (evita buscar 2x)
-  var VO_DETAIL_CACHE = {};     // no -> { data, at }
-  var VO_CACHE_MS = 5 * 60 * 1000;
-  var VO_STATUS = {
-    WAITING_VO_APPROVE: { label: "Em aprovação", cls: "warn", desc: "Aguardando aprovação da Huawei" },
-    PR_AUTO_ISSUE_FAILED: { label: "Falha na emissão da PR", cls: "vo-falha", desc: "Aprovada, PR não gerada" },
-    COMPLETED: { label: "Concluída", cls: "ok", desc: "PR/PO nova emitida" },
-    REJECTED: { label: "Rejeitada", cls: "danger", desc: "Devolvida ao submissor" },
-    CANCELLED: { label: "Cancelada", cls: "neutral", desc: "" }
-  };
-  var VO_STATUS_ORDER = ["WAITING_VO_APPROVE", "PR_AUTO_ISSUE_FAILED", "COMPLETED", "REJECTED", "CANCELLED"];
-  var VO_ANDAMENTO = { WAITING_VO_APPROVE: true, PR_AUTO_ISSUE_FAILED: true };
-  var VO_REGIAO_ALIAS = { "SAO PAULO": "SP", "SÃO PAULO": "SP", "RIO DE JANEIRO": "RJ", "MINAS GERAIS": "MG" };
-  var VO_PAPEL_LABEL = { PCM: "PCM", TODOHANDLER: "Todo handler", PM: "PM", DOCMANAGER: "Doc manager", PRSPECIALIST: "PR specialist", TD: "TD", TL: "TL", PD: "PD", DPD: "DPD" };
-  var VO_ETAPA_LABEL = { "Submit": "Submetida pela Eolen", "Level-1Approval": "Aprovação nível 1", "Level-2Approval": "Aprovação nível 2", "Level-3Approval": "Aprovação nível 3", "Level-4Approval": "Aprovação nível 4" };
-
-  function voStatusInfo(s) { return VO_STATUS[s] || { label: s || "—", cls: "neutral", desc: "" }; }
-  function voPapelLabel(p) {
-    if (!p) return "—";
-    var parts = String(p).split(",").map(function (x) { return x.trim(); }).filter(Boolean).sort();
-    return parts.map(function (x) { return VO_PAPEL_LABEL[x] || x; }).join(" / ");
-  }
-  function voPill(vo) {
-    var i = voStatusInfo(vo.status);
-    var txt = i.label + (VO_ANDAMENTO[vo.status] && vo.papel ? " · " + voPapelLabel(vo.papel) : "");
-    return '<span class="pill ' + i.cls + '">' + esc(txt) + "</span>";
-  }
-  function voRegiao(r) {
-    var k = String(r || "").trim().toUpperCase();
-    return VO_REGIAO_ALIAS[k] || k || "—";
-  }
-  function voEmAndamento(vos) { return (vos || []).filter(function (v) { return VO_ANDAMENTO[v.status]; }); }
-  // "18-09-2026 06:44:20" (formato do log de cargas) -> Date local
-  function voParseLogDate(s) {
-    var m = /^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(s || "").trim());
-    if (!m) return null;
-    return new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], +(m[6] || 0));
-  }
-  function voPad(n) { return n < 10 ? "0" + n : "" + n; }
-  function voFmtDataHora(d) {
-    if (!d) return "—";
-    return voPad(d.getDate()) + "/" + voPad(d.getMonth() + 1) + "/" + d.getFullYear() + " às " + voPad(d.getHours()) + ":" + voPad(d.getMinutes());
-  }
-  // "2026-09-10 19:54:10" (hora registrada pelo eSupplier) -> "10/09/2026 19:54"
-  function voFmtOperacao(s) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/.exec(String(s || ""));
-    if (!m) return s ? String(s) : "—";
-    return m[3] + "/" + m[2] + "/" + m[1] + (m[4] ? " " + m[4] + ":" + m[5] : "");
-  }
-  // Dias corridos entre uma data "YYYY-MM-DD..." e hoje (fuso de SP).
-  function voDiasDesde(s) {
-    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(s || ""));
-    var t = /^(\d{4})-(\d{2})-(\d{2})/.exec(todayISO());
-    if (!m || !t) return null;
-    return Math.max(0, Math.round((Date.UTC(+t[1], +t[2] - 1, +t[3]) - Date.UTC(+m[1], +m[2] - 1, +m[3])) / 86400000));
-  }
-  function voDiasEtapa(vo) { return voDiasDesde(vo.ultimaOperacao || vo.submetida); }
-  function voFmtNum(n) { return Number(n || 0).toLocaleString("pt-BR"); }
-  function voPct(n, total) { return total ? (n / total * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + "%" : "—"; }
-
-  // Última carga da base (log.vw_log_esuplier_vochange) e o quanto está velha.
-  function voUltimaCarga(log) {
-    var best = null;
-    (log || []).forEach(function (l) {
-      var d = voParseLogDate(l.data_atualizacao) || voParseLogDate(l.data_execucao_job_log);
-      if (d && (!best || d > best.data)) best = { data: d, row: l };
-    });
-    return best;
-  }
-  function voFreshnessHtml(log) {
-    var c = voUltimaCarga(log);
-    if (!c) {
-      return '<div class="vo-freshness danger" role="status">' + ICONS.alert +
-        "<div><strong>Sem registro de carga da base eSupplier</strong><span>O log de atualização da VO Change não retornou nenhuma execução.</span></div></div>";
-    }
-    var dias = Math.floor((Date.now() - c.data.getTime()) / 86400000);
-    var ok = String(c.row.status || "").toUpperCase() === "SUCESSO";
-    var cls = !ok ? "danger" : dias >= 2 ? "warn" : "ok";
-    var titulo = !ok ? "A última carga da base eSupplier falhou"
-      : dias >= 2 ? "Base eSupplier sem atualização há " + dias + " dias"
-      : "Base eSupplier atualizada";
-    var sub = cls === "ok" ? "Os status abaixo refletem a última carga." : "Os status abaixo refletem a última carga, não o momento atual.";
-    return '<div class="vo-freshness ' + cls + '" role="status">' +
-      '<div class="vo-freshness-main">' + (cls === "ok" ? ICONS.check : ICONS.history) +
-      "<div><strong>" + esc(titulo) + "</strong><span>" + esc(sub) + "</span></div></div>" +
-      '<dl class="vo-freshness-meta">' +
-      "<div><dt>Última carga</dt><dd>" + esc(voFmtDataHora(c.data)) + "</dd></div>" +
-      (c.row.horario_extracao ? "<div><dt>Extração agendada</dt><dd>" + esc(c.row.horario_extracao) + "</dd></div>" : "") +
-      (c.row.dados ? "<div><dt>Arquivo</dt><dd>" + esc(c.row.dados) + "</dd></div>" : "") +
-      "<div><dt>Resultado do job</dt><dd>" + esc(c.row.status || "—") + "</dd></div>" +
-      "</dl></div>";
-  }
-
-  function loadVo(force) {
-    if (!force && VO_CACHE && Date.now() - VO_CACHE.at < VO_CACHE_MS) return Promise.resolve(VO_CACHE);
-    if (VO_LOADING && !force) return VO_LOADING;
-    VO_LOADING = apiFetch("/api/vo" + (force ? "?refresh=1" : ""))
-      .then(function (data) {
-        VO_CACHE = { vos: data.vos || [], log: data.log || [], lidoEm: data.lidoEm, at: Date.now() };
-        VO_CACHE.vos.forEach(function (v) { v.regiaoNorm = voRegiao(v.regiao); });
-        VO_DETAIL_CACHE = {};
-        VO_LOADING = null;
-        return VO_CACHE;
-      }, function (err) { VO_LOADING = null; throw err; });
-    return VO_LOADING;
-  }
-
-  function voLoadingHtml(titulo) {
-    return '<div class="topbar"><div><h1>' + esc(titulo) + '</h1><div class="sub">Lendo dados do eSupplier no BigQuery…</div></div></div>' +
-      '<div class="panel"><div class="empty-state">' + ICONS.history + "<div>Carregando…</div></div></div>";
-  }
-  function voErroHtml(titulo, err) {
-    return '<div class="topbar"><div><h1>' + esc(titulo) + "</h1></div></div>" +
-      '<div class="panel"><div class="empty-state">' + ICONS.alert +
-      "<div>Não foi possível ler os dados das VOs.<br><span class=\"hint\">" + esc((err && err.message) || "") + "</span></div>" +
-      '<button class="btn" id="vo-retry">Tentar de novo</button></div></div>';
-  }
-
-  function renderVoPainel(main) {
-    var ui = uiState.vo;
-    if (!VO_CACHE || Date.now() - VO_CACHE.at >= VO_CACHE_MS) {
-      if (!VO_CACHE) main.innerHTML = voLoadingHtml("Controle de VO");
-      loadVo(false).then(function () {
-        var r = currentRoute();
-        if (r.view === "vo" && !r.id) { renderShell(); draw(); }
-      }).catch(function (err) {
-        if (err && err.status === 401) return;
-        var r = currentRoute();
-        if (r.view !== "vo" || r.id) return;
-        if (VO_CACHE) { handleApiError(err); return; }
-        main.innerHTML = voErroHtml("Controle de VO", err);
-        $("#vo-retry").addEventListener("click", function () { renderVoPainel(main); });
-      });
-      if (!VO_CACHE) return;
-    }
-    draw();
-
-    function baseFiltrada() {
-      var q = normalize(ui.q);
-      return VO_CACHE.vos.filter(function (v) {
-        if (ui.projeto && v.projeto !== ui.projeto) return false;
-        if (ui.regiao && v.regiaoNorm !== ui.regiao) return false;
-        if (!q) return true;
-        var hay = normalize([v.no, v.nome, v.site, v.du, v.item, v.submetidoPor, v.projeto].join(" "));
-        return hay.indexOf(q) !== -1;
-      });
-    }
-
-    function draw() {
-      withFocusPreserved(drawInto);
-    }
-
-    function drawInto() {
-      var base = baseFiltrada();
-      var porStatus = {};
-      base.forEach(function (v) { porStatus[v.status] = (porStatus[v.status] || 0) + 1; });
-      var total = base.length;
-
-      var lista = base.filter(function (v) {
-        if (!ui.status) return true;
-        if (ui.status === "ANDAMENTO") return !!VO_ANDAMENTO[v.status];
-        return v.status === ui.status;
-      });
-      var andamentoView = ui.status === "ANDAMENTO" || !!VO_ANDAMENTO[ui.status];
-      lista.forEach(function (v) { v._dias = voDiasEtapa(v); });
-      lista.sort(function (a, b) {
-        if (andamentoView) return (b._dias || 0) - (a._dias || 0);
-        return String(b.submetida || "").localeCompare(String(a.submetida || "")) || (b.no - a.no);
-      });
-
-      // ----- filtros -----
-      var projetos = {};
-      var regioes = {};
-      VO_CACHE.vos.forEach(function (v) { if (v.projeto) projetos[v.projeto] = 1; if (v.regiaoNorm && v.regiaoNorm !== "—") regioes[v.regiaoNorm] = 1; });
-      var statusOpts = [["ANDAMENTO", "Em andamento"], ["", "Todos os status"]].concat(VO_STATUS_ORDER.map(function (s) { return [s, voStatusInfo(s).label]; }));
-      var filtros =
-        '<div class="vo-filtros">' +
-        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="vo-q" placeholder="Buscar por nº da VO, site, DU, item ou submissor…" value="' + esc(ui.q) + '"></div>' +
-        '<select class="filter" id="vo-projeto" aria-label="Projeto"><option value="">Todos os projetos</option>' +
-        Object.keys(projetos).sort().map(function (p) { return '<option value="' + esc(p) + '"' + (ui.projeto === p ? " selected" : "") + ">" + esc(p) + "</option>"; }).join("") + "</select>" +
-        '<select class="filter" id="vo-regiao" aria-label="Região"><option value="">Todas as regiões</option>' +
-        Object.keys(regioes).sort().map(function (r) { return '<option value="' + esc(r) + '"' + (ui.regiao === r ? " selected" : "") + ">" + esc(r) + "</option>"; }).join("") + "</select>" +
-        '<select class="filter" id="vo-status" aria-label="Status">' +
-        statusOpts.map(function (o) { return '<option value="' + o[0] + '"' + (ui.status === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>" +
-        "</div>";
-
-      // ----- situação (barra + cartões clicáveis) -----
-      var barra = '<div class="vo-statusbar" role="img" aria-label="Distribuição das VOs por status">' +
-        ["COMPLETED", "CANCELLED", "REJECTED", "WAITING_VO_APPROVE", "PR_AUTO_ISSUE_FAILED"].map(function (s) {
-          var n = porStatus[s] || 0;
-          return n ? '<span class="seg-' + voStatusInfo(s).cls + '" style="flex:' + n + ' 0 4px" title="' + esc(voStatusInfo(s).label + ": " + voFmtNum(n)) + '"></span>' : "";
-        }).join("") + "</div>";
-      var cards = '<div class="vo-kpis">' + VO_STATUS_ORDER.map(function (s) {
-        var i = voStatusInfo(s);
-        var n = porStatus[s] || 0;
-        var destaque = VO_ANDAMENTO[s] ? " vo-kpi-destaque" : "";
-        return '<button type="button" class="kpi ' + i.cls + destaque + (ui.status === s ? " vo-kpi-ativo" : "") + '" data-vo-status="' + s + '" aria-pressed="' + (ui.status === s) + '">' +
-          '<span class="label">' + esc(i.label) + '</span><span class="value tabular">' + voFmtNum(n) + "</span>" +
-          '<span class="vo-kpi-sub">' + (VO_ANDAMENTO[s] ? esc(i.desc) : voPct(n, total) + (i.desc ? " · " + esc(i.desc) : "")) + "</span></button>";
-      }).join("") + "</div>";
-      var minSub = base.reduce(function (m, v) { return v.submetida && (!m || v.submetida < m) ? v.submetida : m; }, null);
-      var situacao = '<div class="panel vo-situacao"><div class="panel-head"><h3>Situação das VOs</h3>' +
-        '<span class="hint"><strong class="vo-total">' + voFmtNum(total) + "</strong> VOs" + (minSub ? " submetidas desde " + esc(fmtDateBR(minSub)) : "") + "</span></div>" +
-        '<div class="panel-body pad">' + barra + cards + "</div></div>";
-
-      // ----- com quem estão as VOs em aprovação -----
-      var emAprov = base.filter(function (v) { return v.status === "WAITING_VO_APPROVE"; });
-      var porPapel = {};
-      emAprov.forEach(function (v) { var k = voPapelLabel(v.papel); porPapel[k] = (porPapel[k] || 0) + 1; });
-      var papeis = Object.keys(porPapel).sort(function (a, b) { return porPapel[b] - porPapel[a]; });
-      var maxPapel = papeis.length ? porPapel[papeis[0]] : 1;
-      var papelHtml = '<div class="panel"><div class="panel-head"><h3>Com quem estão as ' + voFmtNum(emAprov.length) + " VOs em aprovação</h3></div>" +
-        '<div class="panel-body pad">' + (papeis.length
-          ? '<div class="vo-bars">' + papeis.map(function (p) {
-              return "<span>" + esc(p) + '</span><div class="vo-bar"><span style="width:' + (porPapel[p] / maxPapel * 100).toFixed(1) + '%"></span></div><strong class="tabular">' + porPapel[p] + "</strong>";
-            }).join("") + "</div>"
-          : '<div class="hint">Nenhuma VO aguardando aprovação com os filtros atuais.</div>') +
-        '<div class="hint" style="margin-top:12px;">Papel aprovador atual na Huawei.</div></div></div>';
-
-      // ----- tempo na etapa atual (VOs em andamento) -----
-      var faixas = [0, 0, 0];
-      voEmAndamento(base).forEach(function (v) {
-        var d = voDiasEtapa(v);
-        if (d === null) return;
-        faixas[d <= 7 ? 0 : d <= 15 ? 1 : 2]++;
-      });
-      var agingHtml = '<div class="panel"><div class="panel-head"><h3>Tempo na etapa atual</h3></div><div class="panel-body pad">' +
-        '<div class="vo-aging">' +
-        '<div class="vo-aging-row"><span>Até 7 dias</span><strong class="tabular">' + faixas[0] + "</strong></div>" +
-        '<div class="vo-aging-row warn"><span>8 a 15 dias</span><strong class="tabular">' + faixas[1] + "</strong></div>" +
-        '<div class="vo-aging-row danger"><span>Mais de 15 dias</span><strong class="tabular">' + faixas[2] + "</strong></div>" +
-        '</div><div class="hint" style="margin-top:12px;">VOs em andamento, contadas desde a última operação registrada no fluxo de aprovação.</div></div></div>';
-
-      // ----- tabela -----
-      var pg = paginate(lista, ui.page, PAGE_SIZE);
-      ui.page = pg.page;
-      var body = pg.items.map(function (v) {
-        var d = v._dias;
-        var diasCls = VO_ANDAMENTO[v.status] ? (d > 15 ? "vo-dias danger" : d > 7 ? "vo-dias warn" : "vo-dias") : "vo-dias muted";
-        return '<tr data-vo="' + esc(v.no) + '" tabindex="0">' +
-          '<td class="mono"><strong>' + esc(v.no) + "</strong></td>" +
-          "<td>" + esc(v.projeto || "—") + "</td>" +
-          "<td>" + esc(v.regiaoNorm) + " · " + esc(v.site || "—") + "</td>" +
-          '<td class="vo-item">' + esc(v.item || "—") + "</td>" +
-          '<td class="num">' + (v.qtd != null ? esc(voFmtNum(v.qtd)) + " " + esc(v.unidade || "") : "—") + "</td>" +
-          "<td>" + voPill(v) + "</td>" +
-          "<td>" + esc(fmtDateBR(v.submetida)) + "</td>" +
-          '<td class="num"><span class="' + diasCls + '">' + (d === null ? "—" : d + (d === 1 ? " dia" : " dias")) + "</span></td>" +
-          "<td>" + esc(v.submetidoPor || "—") + "</td></tr>";
-      }).join("");
-      var exportHeaders = ["VO", "Nome", "Projeto", "Região", "Site", "DU", "Item", "Qtd", "Unidade", "Status", "Papel aprovador", "Submetida", "Dias na etapa", "Submetido por", "PR nova", "PO nova"];
-      var exportRows = lista.map(function (v) {
-        return [v.no, v.nome || "", v.projeto || "", v.regiaoNorm, v.site || "", v.du || "", v.item || "", v.qtd != null ? v.qtd : "", v.unidade || "",
-          voStatusInfo(v.status).label, v.papel ? voPapelLabel(v.papel) : "", fmtDateBR(v.submetida), v._dias != null ? v._dias : "", v.submetidoPor || "", v.prNova || "", v.poNova || ""];
-      });
-      var tituloLista = ui.status === "ANDAMENTO" ? "VOs em andamento" : ui.status ? "VOs — " + voStatusInfo(ui.status).label : "Todas as VOs";
-
-      main.innerHTML =
-        '<div class="topbar"><div><h1>Controle de VO</h1><div class="sub">POs adicionais (VO Change) da Huawei, lidas do eSupplier — somente leitura</div></div>' +
-        '<button class="btn" id="vo-atualizar">' + ICONS.sync + "Atualizar</button></div>" +
-        voFreshnessHtml(VO_CACHE.log) +
-        filtros +
-        situacao +
-        '<div class="vo-grid">' + papelHtml + agingHtml + "</div>" +
-        '<h3 class="vo-lista-titulo">' + esc(tituloLista) + "</h3>" +
-        tableShell({
-          toolbar: "",
-          headHtml: '<th>VO</th><th>Projeto</th><th>Região · Site</th><th>Item</th><th class="num">Qtd</th><th>Status · etapa</th><th>Submetida</th><th class="num">Na etapa há</th><th>Submetido por</th>',
-          bodyHtml: body, count: lista.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma VO encontrada com esses filtros.",
-          exportHeaders: exportHeaders,
-          exportRows: exportRows
-        });
-
-      $("#vo-atualizar").addEventListener("click", function () {
-        var btn = $("#vo-atualizar");
-        btn.disabled = true;
-        loadVo(true).then(function () { renderShell(); draw(); toast("Dados das VOs atualizados.", "success"); })
-          .catch(function (err) { btn.disabled = false; handleApiError(err); });
-      });
-      $("#vo-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 150));
-      $("#vo-projeto").addEventListener("change", function (e) { ui.projeto = e.target.value; ui.page = 1; draw(); });
-      $("#vo-regiao").addEventListener("change", function (e) { ui.regiao = e.target.value; ui.page = 1; draw(); });
-      $("#vo-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
-      $all("[data-vo-status]", main).forEach(function (btn) {
-        btn.addEventListener("click", function () {
-          var s = btn.getAttribute("data-vo-status");
-          ui.status = ui.status === s ? "ANDAMENTO" : s;
-          ui.page = 1;
-          draw();
-        });
-      });
-      $all("tbody tr[data-vo]", main).forEach(function (row) {
-        function abrir() { navigate("#/vo/" + row.getAttribute("data-vo")); }
-        row.addEventListener("click", abrir);
-        row.addEventListener("keydown", function (e) { if (e.key === "Enter") abrir(); });
-      });
-      bindPagination(main, ui, PAGE_SIZE, lista, draw);
-      wireExportButton(main, "Controle de VO", exportHeaders, exportRows);
-    }
-  }
-
-  function voResultadoLabel(r) {
-    var s = String(r || "").trim();
-    var k = s.toLowerCase();
-    if (!s || k === "submit") return "";
-    if (k === "agree" || k === "agreed" || k === "approve" || k === "approved") return "Aprovado";
-    if (k.indexOf("reject") === 0) return "Rejeitado" + (k.indexOf("submitter") !== -1 ? " — devolvido ao submissor" : "");
-    if (k.indexOf("cancel") === 0) return "Cancelado";
-    return s;
-  }
-
-  function renderVoDetail(main, id) {
-    var titulo = "VO " + id;
-    var cached = VO_DETAIL_CACHE[id];
-    if (cached && Date.now() - cached.at < VO_CACHE_MS) { draw(cached.data); return; }
-    main.innerHTML = voLoadingHtml(titulo);
-    apiFetch("/api/vo/" + encodeURIComponent(id))
-      .then(function (data) {
-        VO_DETAIL_CACHE[id] = { data: data, at: Date.now() };
-        var r = currentRoute();
-        if (r.view === "vo" && String(r.id) === String(id)) draw(data);
-      })
-      .catch(function (err) {
-        if (err && err.status === 401) return;
-        var r = currentRoute();
-        if (r.view !== "vo" || String(r.id) !== String(id)) return;
-        main.innerHTML = '<div class="topbar"><div><button class="link-btn" id="back-btn">← Controle de VO</button><h1 style="margin-top:6px;">' + esc(titulo) + "</h1></div></div>" +
-          '<div class="panel"><div class="empty-state">' + ICONS.alert +
-          "<div>Não foi possível ler esta VO.<br><span class=\"hint\">" + esc((err && err.message) || "") + "</span></div>" +
-          '<button class="btn" id="vo-retry">Tentar de novo</button></div></div>';
-        $("#back-btn").addEventListener("click", function () { navigate("#/vo"); });
-        $("#vo-retry").addEventListener("click", function () { renderVoDetail(main, id); });
-      });
-
-    function campo(label, valor, opts) {
-      if (valor === null || valor === undefined || valor === "" || valor === "***") {
-        if (!(opts && opts.sempre)) return "";
-        valor = opts.vazio || "—";
-        return '<div><dt>' + esc(label) + '</dt><dd class="muted">' + esc(valor) + "</dd></div>";
-      }
-      return "<div><dt>" + esc(label) + "</dt><dd" + (opts && opts.quebra ? ' class="vo-quebra"' : "") + ">" + esc(valor) + "</dd></div>";
-    }
-
-    function draw(data) {
-      var v = data.vo || {};
-      var status = v.CurrentStatus;
-      var info = voStatusInfo(status);
-      var hist = (data.historico || []).slice().reverse(); // mais antigo primeiro
-      var ultimaOp = (data.historico || [])[0];
-      var dias = voDiasDesde((ultimaOp && ultimaOp.quando) || v.SubmittedOn);
-      var andamento = !!VO_ANDAMENTO[status];
-
-      var resumo = '<div class="panel"><div class="panel-body pad vo-resumo">' +
-        '<div class="vo-resumo-main"><div class="vo-resumo-nome">' + esc(v.VOChangeName || "") + "</div>" +
-        "<div>" + esc(v.ProjectName || "—") + " · Região " + esc(voRegiao(v.DeliveryRegionName)) + " · Site " + esc(v.SiteID || "—") + "</div></div>" +
-        '<dl class="vo-resumo-meta">' +
-        "<div><dt>Submetida em</dt><dd>" + esc(fmtDateBR(v.SubmittedOn)) + "</dd></div>" +
-        (andamento && dias !== null ? '<div><dt>Na etapa atual há</dt><dd class="' + (dias > 15 ? "vo-dias danger" : dias > 7 ? "vo-dias warn" : "") + '">' + dias + (dias === 1 ? " dia" : " dias") + "</dd></div>" : "") +
-        (v.TaskEndDate ? "<div><dt>Prazo da tarefa</dt><dd>" + esc(fmtDateBR(v.TaskEndDate)) + "</dd></div>" : "") +
-        "<div><dt>Submetido por</dt><dd>" + esc(v.SubmittedBy || "—") + "</dd></div>" +
-        "</dl></div></div>";
-
-      // ----- fluxo de aprovação -----
-      var passos = hist.map(function (h) {
-        var res = voResultadoLabel(h.resultado);
-        var rejeitado = /^Rejeitado|^Cancelado/.test(res);
-        return '<li class="vo-passo ' + (rejeitado ? "rejeitado" : "feito") + '">' +
-          '<span class="vo-marca" aria-hidden="true">' + (rejeitado ? ICONS.close : ICONS.check) + "</span>" +
-          "<div><strong>" + esc(VO_ETAPA_LABEL[h.etapa] || h.etapa || "—") + (res ? " · " + esc(res) : "") + "</strong>" +
-          '<span class="vo-passo-sub">' + esc(h.operador || "—") + " · " + esc(voFmtOperacao(h.quando)) + "</span>" +
-          (h.comentario && h.comentario.toLowerCase() !== "ok" ? '<span class="vo-passo-com">“' + esc(h.comentario) + "”</span>" : "") +
-          "</div></li>";
-      }).join("");
-      if (andamento) {
-        var aprov = data.aprovadores || [];
-        passos += '<li class="vo-passo atual"><span class="vo-marca" aria-hidden="true"></span><div>' +
-          "<strong>" + esc(status === "PR_AUTO_ISSUE_FAILED" ? "Falha na emissão automática da PR" : "Aguardando aprovação") + " · " + esc(voPapelLabel(v.CurrentApprovalRole)) + "</strong>" +
-          (dias !== null ? '<span class="vo-passo-sub">Há ' + dias + (dias === 1 ? " dia" : " dias") + " sem movimentação</span>" : "") +
-          (aprov.length ? '<span class="vo-passo-sub" style="margin-top:8px;color:var(--ink);">Responsáveis possíveis:</span><ul class="vo-aprovadores">' +
-            aprov.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("") + "</ul>" : "") +
-          "</div></li>" +
-          '<li class="vo-passo futuro"><span class="vo-marca" aria-hidden="true"></span><div><strong>Próximos níveis e emissão da PR/PO nova</strong>' +
-          '<span class="vo-passo-sub">Aparecem aqui conforme o eSupplier registrar</span></div></li>';
-      } else if (status === "COMPLETED") {
-        passos += '<li class="vo-passo feito"><span class="vo-marca" aria-hidden="true">' + ICONS.check + "</span><div><strong>Concluída</strong>" +
-          '<span class="vo-passo-sub">' + (v.PRNoNew ? "PR nova " + esc(v.PRNoNew) : "PR nova não informada") + (v.PONoNew ? " · PO nova " + esc(v.PONoNew) : "") + "</span></div></li>";
-      } else if (status === "CANCELLED") {
-        passos += '<li class="vo-passo rejeitado"><span class="vo-marca" aria-hidden="true">' + ICONS.close + "</span><div><strong>Cancelada</strong></div></li>";
-      }
-      var fluxo = '<div class="panel"><div class="panel-head"><h3>Fluxo de aprovação</h3></div><div class="panel-body pad">' +
-        (passos ? '<ol class="vo-timeline">' + passos + "</ol>" : '<div class="hint">Sem histórico de operações registrado.</div>') + "</div></div>";
-
-      // ----- escopo -----
-      var qtd = v.QtyAfterChange != null ? voFmtNum(v.QtyAfterChange) + " " + (v.Unit || "") : null;
-      if (qtd && v.OriginalQty != null) qtd += " (antes: " + voFmtNum(v.OriginalQty) + ")";
-      var orc = v.TotalBudgetExcludingVAT && v.TotalBudgetExcludingVAT !== "***" ? v.TotalBudgetExcludingVAT + (v.Currency ? " " + v.Currency : "") : null;
-      var anexosE = data.anexosEolen || [];
-      var anexosH = data.anexosHuawei || [];
-      function anexosHtml(lista) {
-        return '<div class="vo-anexos">' + lista.map(function (n) { return '<span class="vo-anexo">' + ICONS.file + esc(n) + "</span>"; }).join("") + "</div>";
-      }
-      var escopo = '<div class="panel"><div class="panel-head"><h3>Escopo da VO</h3></div><div class="panel-body pad">' +
-        (v.ChangeDescription ? '<div class="vo-descricao"><span>Descrição da mudança</span><p>' + esc(v.ChangeDescription) + "</p></div>" : "") +
-        '<dl class="vo-dl">' +
-        campo("Item", v.ItemName) +
-        campo("Código do item", v.ItemCode) +
-        campo("Quantidade", qtd) +
-        campo("Tipo", [v.ExtendedField4, v.CategoryLV3].filter(Boolean).join(" · ")) +
-        campo("Motivo", v.ChangeReason) +
-        campo("Cenário", v.ChangeScenario) +
-        campo("PO original", v.OriginalPONo ? v.OriginalPONo + (v.OriginalPOLineNo ? " / linha " + v.OriginalPOLineNo : "") : null) +
-        campo("PR original", v.OriginalPRNo ? v.OriginalPRNo + (v.OriginalPRLineNo ? " / linha " + v.OriginalPRLineNo : "") : null) +
-        campo("PR / PO nova", [v.PRNoNew, v.PONoNew].filter(Boolean).join(" / "), { sempre: true, vazio: "Ainda não emitida" }) +
-        campo("Orçamento (sem impostos)", orc) +
-        campo("Pessoa-dia", v.Personday) +
-        campo("Work order", v.WorkOrderName) +
-        campo("DU", v.DUName, { quebra: true }) +
-        campo("Observações", [v.Remark1, v.Remark2, v.Remark3].filter(Boolean).join(" · ")) +
-        "</dl>" +
-        (anexosE.length ? '<div class="vo-anexos-bloco"><span>Evidências anexadas pela Eolen</span>' + anexosHtml(anexosE) + "</div>" : "") +
-        (anexosH.length ? '<div class="vo-anexos-bloco"><span>Evidências da Huawei</span>' + anexosHtml(anexosH) + "</div>" : "") +
-        "</div></div>";
-
-      var carga = VO_CACHE ? voUltimaCarga(VO_CACHE.log) : null;
-      main.innerHTML =
-        '<div class="topbar"><div><button class="link-btn" id="back-btn">← Controle de VO</button>' +
-        '<h1 style="margin-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:12px;">VO ' + esc(v.VOChangeNo) + ' <span class="pill ' + info.cls + '">' + esc(info.label + (andamento && v.CurrentApprovalRole ? " · " + voPapelLabel(v.CurrentApprovalRole) : "")) + "</span></h1></div></div>" +
-        resumo +
-        '<div class="vo-detalhe-grid">' + fluxo + escopo + "</div>" +
-        '<div class="hint" style="margin-top:12px;">Fonte: eSupplier (esupplier.vw_vo_change)' + (carga ? " · carga de " + esc(voFmtDataHora(carga.data)) : "") + "</div>";
-      $("#back-btn").addEventListener("click", function () { navigate("#/vo"); });
-    }
   }
 
   /* ---------------- Init ----------------
