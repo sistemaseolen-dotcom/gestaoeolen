@@ -5247,8 +5247,8 @@
   function openCaDivergenteDrawer(ocorrencias, periodoTxt, itemFiltro) {
     var list = (itemFiltro ? ocorrencias.filter(function (o) { return o.item === itemFiltro; }) : ocorrencias)
       .slice().sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.auditoriaId - a.auditoriaId; });
-    var rowsHtml = list.map(function (o) {
-      return '<tr data-id="' + o.auditoriaId + '">' +
+    var rowsHtml = list.map(function (o, idx) {
+      return '<tr data-idx="' + idx + '">' +
         "<td>" + fmtDateBR(o.data) + "</td>" +
         '<td class="mono">' + esc(o.siteId || "—") + "</td>" +
         "<td>" + esc(o.empresa || "—") + "</td>" +
@@ -5260,14 +5260,31 @@
     }).join("");
     openGenericTableDrawer({
       title: "Desvios de CA divergente" + (itemFiltro ? " — " + itemFiltro : ""),
-      subtitle: list.length + " desvio" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt + " — clique numa linha pra abrir a auditoria",
+      subtitle: list.length + " desvio" + (list.length !== 1 ? "s" : "") + " — " + periodoTxt + " — clique numa linha pra abrir a Ficha de EPI da pessoa",
       theadHtml: "<th>Data</th><th>Site ID</th><th>Empresa</th><th>Colaborador</th><th>Item</th><th>CA digitado</th><th>CA da ficha</th>",
       rowsHtml: rowsHtml,
       exportHeaders: ["Data", "Site ID", "Empresa", "Colaborador", "Item", "CA digitado", "CA da ficha"],
       exportRows: list.map(function (o) { return [fmtDateBR(o.data), o.siteId || "", o.empresa || "", o.colaborador || "", o.item, o.caDigitado || "", o.caFicha || ""]; }),
+      // Pedido do Diego (14/10/2026): clicar numa ocorrência costumava levar
+      // pra auditoria -- agora leva direto pra Ficha de EPI da pessoa
+      // (tela de Treinamentos/Documentos), que já mostra embaixo a
+      // conferência de TODOS os equipamentos (ok e não ok, não só o item
+      // clicado aqui -- ver fichaEpiConferenciaCaHtml), facilitando corrigir
+      // e já atualizar a ficha ali mesmo. Quando a pessoa não tem Ficha de
+      // EPI cadastrada ainda, cai de volta pra auditoria (não tem pra onde
+      // ir na tela de documentos).
       onRowBind: function (root) {
-        $all("[data-id]", root).forEach(function (row) {
-          row.addEventListener("click", function () { closeDrawer(); navigate("#/auditorias/" + row.getAttribute("data-id")); });
+        $all("[data-idx]", root).forEach(function (row) {
+          row.addEventListener("click", function () {
+            var o = list[Number(row.getAttribute("data-idx"))];
+            var ficha = buscarFichaEpiPessoa(o.colaborador);
+            closeDrawer();
+            if (ficha) navigate("#/treinamentos/" + ficha.id);
+            else {
+              toast(o.colaborador + " ainda não tem Ficha de EPI cadastrada.", "error");
+              navigate("#/auditorias/" + o.auditoriaId);
+            }
+          });
         });
       }
     });
@@ -7334,12 +7351,16 @@
           "</div>"
         : "") +
       "</div></div></div>" +
+      (t.tipo === "FICHA DE EPI" ? fichaEpiConferenciaCaHtml(t) : "") +
       historyPanelHtml("treinamento", t.id);
     loadHistoryPanel("treinamento", t.id);
     $("#back-btn").addEventListener("click", function () { navigate(pessoa ? "#/pessoas/" + pessoa.id : "#/treinamentos"); });
     if ($("#btn-edit-tr")) $("#btn-edit-tr").addEventListener("click", function () { openTreinamentoForm(t, null); });
     if ($("#btn-del-tr")) $("#btn-del-tr").addEventListener("click", function () { confirmDelete("treinamento", t.id, t.tipo + " — " + t.pessoaNome); });
     if ($("#btn-ver-anexo")) $("#btn-ver-anexo").addEventListener("click", function () { baixarAnexo(t.id); });
+    $all("[data-auditoria]", main).forEach(function (row) {
+      row.addEventListener("click", function () { navigate("#/auditorias/" + row.getAttribute("data-auditoria")); });
+    });
     if ($("#btn-reler-epi")) {
       $("#btn-reler-epi").addEventListener("click", function () {
         var btn = $("#btn-reler-epi");
@@ -7363,6 +7384,66 @@
           });
       });
     }
+  }
+
+  // Pedido do Diego (14/10/2026): embaixo do anexo da Ficha de EPI, mostra
+  // TODOS os equipamentos com conferência automática de CA (Capacete,
+  // Óculos, Luva, Cinto, Trava-quedas, Talabarte simples, Talabarte Y,
+  // Botas) lado a lado — ok e não ok, não só os que deram divergência —
+  // comparando o CA desta ficha com o que o auditor digitou na auditoria
+  // MAIS RECENTE que conferiu aquele item pra esta pessoa. Facilita achar
+  // rápido o que ainda precisa corrigir antes de subir uma ficha atualizada.
+  // É também pra cá que o gráfico "Desvios de CA divergente" do Painel
+  // agora leva ao clicar numa ocorrência (ver openCaDivergenteDrawer).
+  function fichaEpiConferenciaCaHtml(t) {
+    var nome = t.pessoaNome;
+    var auditoriasDaPessoa = (STATE.auditorias || [])
+      .filter(function (a) { return (a.colaboradores || []).indexOf(nome) !== -1; })
+      .slice()
+      .sort(function (a, b) { return (b.data || "").localeCompare(a.data || "") || b.id - a.id; });
+
+    var linhas = CA_CHECK_ITEMS.map(function (item) {
+      var auditoriaAchada = null, caDigitado = "";
+      for (var i = 0; i < auditoriasDaPessoa.length && !auditoriaAchada; i++) {
+        var a = auditoriasDaPessoa[i];
+        var colabIdx = (a.colaboradores || []).indexOf(nome) + 1;
+        var v = ((a.respostas || {})[item.caCheck.keyBase + "_" + colabIdx] || "").toString();
+        if (soDigitos(v)) { auditoriaAchada = a; caDigitado = v; }
+      }
+      var achadoFicha = achaItemNaFicha(item.caCheck, t);
+      if (!auditoriaAchada) {
+        return {
+          label: item.caCheck.caCheckLabel, caFicha: achadoFicha ? achadoFicha.ca : null, caAuditado: null,
+          statusCls: "neutral", statusTxt: "Ainda não auditado", auditoriaId: null, auditoriaData: null
+        };
+      }
+      var resultado = verificarCaItem(item.caCheck, nome, caDigitado, t);
+      return {
+        label: item.caCheck.caCheckLabel,
+        caFicha: achadoFicha ? achadoFicha.ca : (resultado.caFicha || null),
+        caAuditado: soDigitos(caDigitado),
+        statusCls: resultado.status === "nao-conforme" ? "danger" : (resultado.status === "conforme" ? "ok" : "neutral"),
+        statusTxt: resultado.status === "nao-conforme" ? "Não confere" : (resultado.status === "conforme" ? "Conforme" : "Item não encontrado na ficha"),
+        auditoriaId: auditoriaAchada.id,
+        auditoriaData: auditoriaAchada.data
+      };
+    });
+
+    var rowsHtml = linhas.map(function (l) {
+      return '<tr' + (l.auditoriaId ? ' data-auditoria="' + l.auditoriaId + '" style="cursor:pointer"' : "") + '>' +
+        '<td class="row-primary">' + esc(l.label) + "</td>" +
+        '<td class="mono">' + esc(l.caFicha || "—") + "</td>" +
+        '<td class="mono">' + esc(l.caAuditado || "—") + "</td>" +
+        '<td><span class="pill ' + l.statusCls + '">' + esc(l.statusTxt) + "</span></td>" +
+        "<td>" + (l.auditoriaId ? fmtDateBR(l.auditoriaData) : "—") + "</td>" +
+        "</tr>";
+    }).join("");
+
+    return '<div class="panel" style="margin-top:16px;"><div class="panel-head"><h3>Conferência de CA por equipamento</h3></div>' +
+      '<div class="table-scroll"><table class="data"><thead><tr><th>Equipamento</th><th>CA nesta ficha</th><th>CA auditado</th><th>Situação</th><th>Auditoria</th></tr></thead><tbody>' +
+      rowsHtml + "</tbody></table></div>" +
+      '<div class="hint" style="padding:10px 16px;">Comparado com a auditoria mais recente que conferiu cada equipamento para esta pessoa. Clique numa linha pra abrir aquela auditoria.</div>' +
+      "</div>";
   }
 
   // Resumo em texto da última leitura por OCR da Ficha de EPI — mostrado
