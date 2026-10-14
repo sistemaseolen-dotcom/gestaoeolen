@@ -10,7 +10,10 @@
 // "veiculos" adicionada a pedido do Diego (02/10/2026): a aba "Gestão de
 // Frotas" (contratos de locação de veículos, cadastro/edição/exclusão
 // manual) — mesmo padrão de "patrimonio".
-export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "veiculos", "auditorias", "acesso"] as const;
+// "vo" adicionada a pedido do Diego (14/10/2026): a aba "Controle de VO"
+// (POs adicionais da Huawei, lidas do BigQuery — somente leitura). Só "ver"
+// tem efeito; quem vê, vê todas as VOs.
+export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "veiculos", "auditorias", "acesso", "vo"] as const;
 export type Page = (typeof PAGES)[number];
 
 export const ACTIONS = ["ver", "criar", "editar", "excluir"] as const;
