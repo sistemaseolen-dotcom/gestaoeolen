@@ -1,73 +1,108 @@
 import { createSign } from "crypto";
 
 // Leitura do BigQuery (dw-eolen) direto pela API REST, sem dependência nova
-// no package.json: o token OAuth é obtido assinando um JWT com a chave da
-// service account (fluxo "JWT bearer" do Google). Usado pelo módulo
-// Controle de VO (pedido do Diego, 14/10/2026) para ler as views
-// esupplier.vw_vo_change e log.vw_log_esuplier_vochange.
+// no package.json. Usado pelo módulo Controle de VO (pedido do Diego,
+// 14/10/2026) para ler as views esupplier.vw_vo_change e
+// log.vw_log_esuplier_vochange. Somente SELECT.
 //
 // Variável de ambiente (SECRETA, só no servidor — nunca NEXT_PUBLIC_):
-//   GCP_SERVICE_ACCOUNT_JSON = conteúdo do arquivo .json da chave da service
-//   account (pode ser colado como texto puro ou em base64).
+//   GCP_CREDENTIALS_JSON — aceita dois formatos (texto puro ou base64):
+//   1) Autorização do próprio usuário (o que está em uso hoje): JSON
+//      {"type":"authorized_user","client_id","client_secret","refresh_token"}
+//      gerado quando o Diego autorizou o acesso ao BigQuery com a conta dele
+//      (14/10/2026). Usa as permissões que ELE tem no BigQuery. Se ele trocar
+//      a senha, revogar o acesso em myaccount.google.com/permissions ou a
+//      conta for desativada, a aba para de atualizar e é preciso autorizar
+//      de novo (gerar um novo refresh_token).
+//   2) Chave de service account (quando houver permissão pra criar uma):
+//      o .json da chave, {"type":"service_account","client_email",
+//      "private_key",...}, com os papéis BigQuery Data Viewer + BigQuery Job
+//      User no projeto dw-eolen-413717. Basta trocar o valor da variável.
+//   (GCP_SERVICE_ACCOUNT_JSON também é aceita, pelo mesmo formato.)
 // Opcional:
-//   BQ_PROJECT_ID = projeto onde os jobs de consulta rodam (padrão: o
-//   project_id da própria chave).
-// Papéis necessários para a service account no projeto dw-eolen-413717:
-//   BigQuery Data Viewer + BigQuery Job User.
+//   BQ_PROJECT_ID = projeto onde os jobs de consulta rodam (padrão:
+//   dw-eolen-413717, ou o project_id da chave de service account).
 
-interface ServiceAccount {
-  client_email: string;
-  private_key: string;
+interface Credenciais {
+  type?: string;
+  client_email?: string;
+  private_key?: string;
   project_id?: string;
+  client_id?: string;
+  client_secret?: string;
+  refresh_token?: string;
 }
 
-let cachedSa: ServiceAccount | null = null;
+let cachedCred: Credenciais | null = null;
 let cachedToken: { token: string; exp: number } | null = null;
 
-function serviceAccount(): ServiceAccount {
-  if (cachedSa) return cachedSa;
-  const raw = process.env.GCP_SERVICE_ACCOUNT_JSON;
-  if (!raw) throw new Error("GCP_SERVICE_ACCOUNT_JSON não configurada no servidor.");
+function credenciais(): Credenciais {
+  if (cachedCred) return cachedCred;
+  const raw = process.env.GCP_CREDENTIALS_JSON || process.env.GCP_SERVICE_ACCOUNT_JSON;
+  if (!raw) throw new Error("GCP_CREDENTIALS_JSON não configurada no servidor.");
   const text = raw.trim().startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
-  const sa = JSON.parse(text) as ServiceAccount;
-  if (!sa.client_email || !sa.private_key) throw new Error("GCP_SERVICE_ACCOUNT_JSON inválida.");
-  sa.private_key = sa.private_key.replace(/\\n/g, "\n");
-  cachedSa = sa;
-  return sa;
+  const c = JSON.parse(text) as Credenciais;
+  if (c.type === "authorized_user") {
+    if (!c.client_id || !c.client_secret || !c.refresh_token) throw new Error("GCP_CREDENTIALS_JSON (authorized_user) incompleta.");
+  } else {
+    if (!c.client_email || !c.private_key) throw new Error("GCP_CREDENTIALS_JSON inválida.");
+    c.private_key = c.private_key.replace(/\\n/g, "\n");
+  }
+  cachedCred = c;
+  return c;
 }
 
 function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
 }
 
-async function accessToken(): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  if (cachedToken && cachedToken.exp - 60 > now) return cachedToken.token;
-  const sa = serviceAccount();
-  const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
-  const claims = b64url(
-    JSON.stringify({
-      iss: sa.client_email,
-      scope: "https://www.googleapis.com/auth/bigquery",
-      aud: "https://oauth2.googleapis.com/token",
-      iat: now,
-      exp: now + 3600,
-    })
-  );
-  const signer = createSign("RSA-SHA256");
-  signer.update(`${header}.${claims}`);
-  const signature = b64url(signer.sign(sa.private_key));
+async function trocarToken(params: Record<string, string>): Promise<{ access_token: string; expires_in?: number }> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: `${header}.${claims}.${signature}`,
-    }),
+    body: new URLSearchParams(params),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.access_token) {
-    throw new Error("Falha ao autenticar no Google Cloud: " + (data.error_description || data.error || res.status));
+    const motivo = data.error_description || data.error || res.status;
+    if (data.error === "invalid_grant") {
+      throw new Error("A autorização de acesso ao BigQuery expirou ou foi revogada — é preciso autorizar de novo (" + motivo + ").");
+    }
+    throw new Error("Falha ao autenticar no Google Cloud: " + motivo);
+  }
+  return data;
+}
+
+async function accessToken(): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  if (cachedToken && cachedToken.exp - 60 > now) return cachedToken.token;
+  const c = credenciais();
+  let data: { access_token: string; expires_in?: number };
+  if (c.type === "authorized_user") {
+    data = await trocarToken({
+      grant_type: "refresh_token",
+      client_id: c.client_id!,
+      client_secret: c.client_secret!,
+      refresh_token: c.refresh_token!,
+    });
+  } else {
+    const header = b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }));
+    const claims = b64url(
+      JSON.stringify({
+        iss: c.client_email,
+        scope: "https://www.googleapis.com/auth/bigquery",
+        aud: "https://oauth2.googleapis.com/token",
+        iat: now,
+        exp: now + 3600,
+      })
+    );
+    const signer = createSign("RSA-SHA256");
+    signer.update(`${header}.${claims}`);
+    const signature = b64url(signer.sign(c.private_key!));
+    data = await trocarToken({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: `${header}.${claims}.${signature}`,
+    });
   }
   cachedToken = { token: data.access_token, exp: now + (data.expires_in || 3600) };
   return cachedToken.token;
@@ -107,9 +142,8 @@ function toRows(schema: { fields: BqField[] } | undefined, rows: { f: { v: unkno
 
 /** Roda uma consulta SELECT (Standard SQL) e devolve as linhas como objetos. */
 export async function bqQuery<T = Record<string, unknown>>(sql: string, params: BqParam[] = []): Promise<T[]> {
-  const sa = serviceAccount();
-  const project = process.env.BQ_PROJECT_ID || sa.project_id;
-  if (!project) throw new Error("Defina BQ_PROJECT_ID no servidor.");
+  const c = credenciais();
+  const project = process.env.BQ_PROJECT_ID || c.project_id || "dw-eolen-413717";
   const token = await accessToken();
   const auth = { Authorization: `Bearer ${token}` };
 

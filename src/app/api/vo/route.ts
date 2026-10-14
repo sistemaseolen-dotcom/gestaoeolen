@@ -22,7 +22,7 @@ let cache: { at: number; payload: unknown } | null = null;
 
 const SQL_VOS = `
 SELECT
-  VOChangeNo AS no,
+  VOChangeNo AS \`no\`,  -- "no" é palavra reservada no BigQuery
   VOChangeName AS nome,
   ProjectName AS projeto,
   DeliveryRegionName AS regiao,
