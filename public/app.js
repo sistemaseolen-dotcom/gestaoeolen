@@ -1959,17 +1959,31 @@
       });
     }
     // Pedido do Diego (14/10/2026): PJ não tem matrícula no eSocial (isso é
-    // coisa de CLT) — ao escolher "PJ" em Tipo de pessoa, o campo Matrícula
+    // coisa de CLT) — quando o Tipo de pessoa for PJ, o campo Matrícula
     // eSocial já se preenche sozinho com "N/A", sem precisar digitar isso à
-    // mão em cada cadastro. Só dispara na troca feita pelo usuário (evento
-    // "change"), nunca ao abrir o formulário de edição — então não
-    // sobrescreve sozinho o que já estava salvo antes desta mudança.
+    // mão em cada cadastro.
+    // Correção do próprio Diego (14/10/2026, mesmo dia): a 1ª versão só
+    // comparava com o texto exato "PJ" e só reagia ao evento "change" do
+    // select -- não pegou nos 792 cadastros reais, porque: (1) quase todos
+    // usam variações como "PJ - EXTERNO" ou "PJ - INTERNO" (só 8 usam "PJ"
+    // puro -- ver listas_opcoes/pessoas no banco), e (2) pra um cadastro que
+    // JÁ existia como PJ antes desta função existir, abrir pra editar nunca
+    // dispara "change" no Tipo (ninguém troca o valor, já que já está
+    // certo) -- o aviso só apareceria se a pessoa trocasse o Tipo na mão.
+    // Por isso agora: (a) o teste é "começa com PJ" (maiúsc./minúsc.), não
+    // texto exato; (b) roda tanto ao abrir o formulário (cobre reabrir um
+    // cadastro PJ antigo com o campo ainda vazio) quanto a cada troca do
+    // Tipo; (c) só preenche se o campo estiver vazio -- nunca sobrescreve
+    // algo que a pessoa já tinha digitado ali.
     var tipoPessoaEl = $("#pessoa-form [name=tipoPessoa]");
     var matriculaEsocialEl = $("#pessoa-form [name=matriculaESocial]");
     if (tipoPessoaEl && matriculaEsocialEl) {
-      tipoPessoaEl.addEventListener("change", function () {
-        if (tipoPessoaEl.value === "PJ") matriculaEsocialEl.value = "N/A";
-      });
+      var preencherMatriculaEsocialSePJ = function () {
+        var ehPJ = /^PJ/i.test((tipoPessoaEl.value || "").trim());
+        if (ehPJ && !matriculaEsocialEl.value.trim()) matriculaEsocialEl.value = "N/A";
+      };
+      preencherMatriculaEsocialSePJ();
+      tipoPessoaEl.addEventListener("change", preencherMatriculaEsocialSePJ);
     }
     $("#pessoa-form").addEventListener("submit", function (e) {
       e.preventDefault();
