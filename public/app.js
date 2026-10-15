@@ -1730,23 +1730,7 @@
 
       if ($("#btn-new-pessoa")) $("#btn-new-pessoa").addEventListener("click", function () { openPessoaForm(null); });
       $("#pessoas-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
-      $("#pessoas-status").addEventListener("change", function (e) {
-        ui.status = e.target.value;
-        // Bug relatado pelo Diego (15/10/2026): filtrar por "Em crescimento"
-        // mostrava só 10 pessoas, mas o painel de Crescimento (que não tem
-        // filtro de cargo) mostrava 16 -- a diferença eram as 6 pessoas em
-        // crescimento que ainda não têm cargo definido (fica em branco até
-        // alguém decidir, só vira obrigatório quando a pessoa é efetivada),
-        // escondidas pelo filtro "Cargos operacionais" que fica selecionado
-        // por padrão nesta tela. Esse padrão só faz sentido pra status
-        // Ativo -- ao trocar pra qualquer outro status, volta o filtro de
-        // cargo pra "Todos os cargos" pra não esconder gente sem querer.
-        if (ui.status && ui.status !== "ATIVO" && ui.cargoFiltro === "OPERACIONAIS") {
-          ui.cargoFiltro = "";
-        }
-        ui.page = 1;
-        draw();
-      });
+      $("#pessoas-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
       $("#pessoas-cargo-filtro").addEventListener("change", function (e) { ui.cargoFiltro = e.target.value; ui.page = 1; draw(); });
       $all("tbody tr", main).forEach(function (row) {
         row.addEventListener("click", function () { navigate("#/pessoas/" + row.getAttribute("data-id")); });
