@@ -889,6 +889,19 @@
       numeroContrato: row.numero_contrato, validadeContrato: row.validade_contrato,
       observacao: row.observacao, empresaId: row.empresa_id, empresaNome: row.empresa_nome,
       valorHora: row.valor_hora, salarioBruto: row.salario_bruto,
+      // Dados de empresa embutidos (pedido do Diego, 15/10/2026) -- fonte
+      // que a ficha de Pessoa exibe/edita agora (empresa_id/empresaNome
+      // acima seguem existindo só por compatibilidade com a aba Empresas).
+      empresaCnpj: row.empresa_cnpj, empresaRazaoSocial: row.empresa_razao_social,
+      empresaFantasia: row.empresa_fantasia, empresaPorte: row.empresa_porte,
+      empresaCidade: row.empresa_cidade, empresaUf: row.empresa_uf, empresaCep: row.empresa_cep,
+      empresaBairro: row.empresa_bairro, empresaLogradouro: row.empresa_logradouro,
+      empresaNumero: row.empresa_numero, empresaTelefone: row.empresa_telefone,
+      empresaEmail: row.empresa_email, empresaNomeResponsavel: row.empresa_nome_responsavel,
+      empresaCnaePrincipal: row.empresa_cnae_principal, empresaCnaeDescricao: row.empresa_cnae_descricao,
+      empresaSituacaoCadastral: row.empresa_situacao_cadastral, empresaPgr: row.empresa_pgr,
+      empresaPcmso: row.empresa_pcmso, empresaContratos: row.empresa_contratos,
+      empresaTipoPj: row.empresa_tipo_pj, empresaObservacao: row.empresa_observacao,
       // Credenciais de acesso ao sistema do cliente (pedido do Diego,
       // 10/2026): Ericsson usa Isignum, Huawei usa ISDP. Só o ID é
       // armazenado/exibido — a senha não fica no sistema (pedido do Diego).
@@ -1722,8 +1735,6 @@
       var da = a.vencimento || "9999", db = b.vencimento || "9999";
       return da < db ? -1 : da > db ? 1 : 0;
     });
-    var empresa = p.empresaId ? byId(STATE.empresas, p.empresaId) : null;
-
     main.innerHTML =
       '<div class="topbar">' +
       '<div><button class="link-btn" id="back-btn">← Pessoas</button><h1 style="margin-top:6px;">' + esc(p.nome) + "</h1>" +
@@ -1737,7 +1748,7 @@
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados gerais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("CPF", p.cpf, "cpf") + detailItem("RG", p.rg, "rg") + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento), "data_nascimento") +
-      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") +
+      detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") +
       detailItem("Estado (atuação)", p.estadoAtuacao ? p.estadoAtuacao + " — " + ufNome(p.estadoAtuacao) : "", "estado_atuacao") + detailItem("Regional", p.regional, "regional") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
@@ -1745,6 +1756,25 @@
       detailItem("Responsável", p.responsavel, "responsavel") + detailItem("Nome do pai", p.nomeDoPai, "nome_do_pai") + detailItem("Nome da mãe", p.nomeDaMae, "nome_da_mae") +
       '<div class="detail-item"><span class="k">Contas Ativas</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
       "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") + "</div></div>" +
+      // Dados de empresa embutidos (pedido do Diego, 15/10/2026) -- ver
+      // src/lib/empresaEmbutida.ts. Só aparece quando a pessoa tem uma
+      // empresa vinculada (CNPJ preenchido); CLT direto não tem nada aqui.
+      (p.empresaCnpj
+        ? '<div class="panel"><div class="panel-head"><h3>Empresa</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+          detailItem("Empresa", p.empresaFantasia || p.empresaRazaoSocial || p.empresaNome || "—", "empresa_fantasia") +
+          detailItem("CNPJ", p.empresaCnpj, "empresa_cnpj") +
+          detailItem("Situação cadastral", p.empresaSituacaoCadastral, "empresa_situacao_cadastral") +
+          detailItem("Porte", p.empresaPorte, "empresa_porte") +
+          detailItem("Responsável pela empresa", p.empresaNomeResponsavel, "empresa_nome_responsavel") +
+          detailItem("Telefone", p.empresaTelefone, "empresa_telefone") + detailItem("E-mail", p.empresaEmail, "empresa_email") +
+          detailItem("Endereço", [p.empresaLogradouro, p.empresaNumero].filter(Boolean).join(", "), "empresa_logradouro") +
+          detailItem("Bairro / Cidade", [p.empresaBairro, p.empresaCidade, p.empresaUf].filter(Boolean).join(" / "), "empresa_bairro") +
+          detailItem("CEP", p.empresaCep, "empresa_cep") + detailItem("CNAE principal", p.empresaCnaePrincipal, "empresa_cnae_principal") +
+          detailItem("PGR", p.empresaPgr, "empresa_pgr") + detailItem("PCMSO", p.empresaPcmso, "empresa_pcmso") +
+          detailItem("Contratos", p.empresaContratos, "empresa_contratos") + detailItem("Tipo PJ", p.empresaTipoPj, "empresa_tipo_pj") +
+          "</div>" + (p.empresaObservacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação da empresa</span><span class="v">' + esc(p.empresaObservacao) + "</span>" + fieldNoteHtml("empresa_observacao") + "</div>" : "") +
+          "</div></div>"
+        : "") +
       '<div class="panel"><div class="panel-head"><h3>Contato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("E-mail", p.email, "email") + detailItem("Telefone", p.telefone, "telefone") + detailItem("E-mail corporativo", p.emailCorporativo, "email_corporativo") + detailItem("Telefone corporativo", p.telefoneCorporativo, "telefone_corporativo") +
       detailItem("Endereço", [p.endereco, p.numero].filter(Boolean).join(", "), "endereco") + detailItem("Bairro / Cidade", [p.bairro, p.municipio, p.estado].filter(Boolean).join(" / "), "bairro") +
@@ -1924,11 +1954,20 @@
     var isNew = !p;
     opts = opts || {};
     var presetEmpresaId = opts.empresaId || null;
-    var empresasOpts = STATE.empresas.slice().sort(function (a, b) { return empresaTitle(a).localeCompare(empresaTitle(b)); })
-      .map(function (e) {
-        var selected = p ? p.empresaId === e.id : presetEmpresaId === e.id;
-        return '<option value="' + e.id + '"' + (selected ? " selected" : "") + '>' + esc(empresaTitle(e)) + "</option>";
-      }).join("");
+    // Pedido do Diego (15/10/2026): a empresa não se escolhe mais de uma
+    // lista -- digita o CNPJ e busca (mesmo padrão de Crescimento). Quando
+    // vem de "Adicionar pessoa" na tela de uma Empresa (presetEmpresaId),
+    // pré-preenche a aba Empresa a partir daquele cadastro.
+    var presetEmpresa = presetEmpresaId ? byId(STATE.empresas, presetEmpresaId) : null;
+    var pEmpresa = p || (presetEmpresa ? {
+      empresaCnpj: presetEmpresa.cnpj, empresaRazaoSocial: presetEmpresa.nome, empresaFantasia: presetEmpresa.fantasia,
+      empresaPorte: presetEmpresa.porte, empresaCidade: presetEmpresa.cidade, empresaUf: presetEmpresa.uf,
+      empresaCep: presetEmpresa.cep, empresaBairro: presetEmpresa.bairro, empresaLogradouro: presetEmpresa.logradouro,
+      empresaNumero: presetEmpresa.numero, empresaTelefone: presetEmpresa.telefone, empresaEmail: presetEmpresa.email,
+      empresaNomeResponsavel: presetEmpresa.nomeResponsavel, empresaCnaePrincipal: presetEmpresa.cnaePrincipal,
+      empresaCnaeDescricao: presetEmpresa.cnaeDescricao, empresaSituacaoCadastral: presetEmpresa.situacaoCadastral,
+      empresaPgr: presetEmpresa.pgr, empresaPcmso: presetEmpresa.pcmso
+    } : null);
 
     var html =
       '<div class="drawer-head"><div><h2>' + (isNew ? "Nova pessoa" : "Editar pessoa") + '</h2><div class="sub">Cadastro completo do colaborador</div></div>' +
@@ -1936,6 +1975,7 @@
       '<form class="drawer-body" id="pessoa-form">' +
       '<div class="section-tabs">' +
       '<button type="button" class="section-tab active" data-tab="geral">Geral</button>' +
+      '<button type="button" class="section-tab" data-tab="empresa">Empresa</button>' +
       '<button type="button" class="section-tab" data-tab="doc">Documentos</button>' +
       '<button type="button" class="section-tab" data-tab="contato">Contato</button>' +
       '<button type="button" class="section-tab" data-tab="acessos">Acessos de cliente</button>' +
@@ -1949,13 +1989,31 @@
       field("Operadora", "operadora", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
       field("Responsável", "responsavel", "text", p) +
-      '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
       '<div class="field"><label>Matrícula eSocial</label><input type="text" name="matriculaESocial" value="' + esc(p ? (p.matriculaESocial || "") : "") + '">' +
       '<div class="hint" id="matricula-esocial-hint" style="margin-top:4px;display:none;">Preenchida automaticamente com N/A para PJ (que não tem matrícula no eSocial) — não pode ser editada enquanto o Tipo de pessoa for PJ.</div></div>' +
       field("MEI", "mei", "text", p) +
       checkboxGroupField("Contas Ativas", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(p ? p.observacao : "") + "</textarea></div>" +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="empresa"><div class="field-grid">' +
+      '<div class="field"><label>CNPJ da empresa</label><div style="display:flex;gap:6px;">' +
+      '<input type="text" name="empresaCnpj" value="' + esc(pEmpresa ? (pEmpresa.empresaCnpj || "") : "") + '" placeholder="00.000.000/0000-00">' +
+      '<button type="button" class="btn ghost sm" id="btn-pessoa-cnpj-lookup" style="white-space:nowrap;">Buscar CNPJ</button>' +
+      "</div>" +
+      '<div class="hint">Em branco = sem empresa vinculada (ex.: CLT direto). Preenchido automaticamente ao buscar o CNPJ -- os dados ficam sincronizados com as outras pessoas da mesma empresa.</div>' +
+      "</div>" +
+      field("Razão social", "empresaRazaoSocial", "text", pEmpresa, { span2: true }) +
+      field("Nome fantasia", "empresaFantasia", "text", pEmpresa, { span2: true }) +
+      field("Porte", "empresaPorte", "text", pEmpresa) + field("Situação cadastral", "empresaSituacaoCadastral", "text", pEmpresa) +
+      field("Cidade", "empresaCidade", "text", pEmpresa) + field("UF", "empresaUf", "text", pEmpresa) +
+      field("CEP", "empresaCep", "text", pEmpresa) + field("Bairro", "empresaBairro", "text", pEmpresa) +
+      field("Logradouro", "empresaLogradouro", "text", pEmpresa) + field("Número", "empresaNumero", "text", pEmpresa) +
+      field("Telefone", "empresaTelefone", "text", pEmpresa) + field("E-mail", "empresaEmail", "email", pEmpresa) +
+      field("Responsável pela empresa", "empresaNomeResponsavel", "text", pEmpresa) +
+      field("CNAE principal", "empresaCnaePrincipal", "text", pEmpresa) + field("Descrição CNAE", "empresaCnaeDescricao", "text", pEmpresa) +
+      field("PGR", "empresaPgr", "text", pEmpresa) + field("PCMSO", "empresaPcmso", "text", pEmpresa) +
+      '<div class="field span2"><label>Observação da empresa</label><textarea name="empresaObservacao">' + esc(pEmpresa ? (pEmpresa.empresaObservacao || "") : "") + "</textarea></div>" +
       "</div></div>" +
       '<div class="tab-pane" data-pane="doc"><div class="field-grid">' +
       field("CPF *", "cpf", "text", p) + field("RG", "rg", "text", p) +
@@ -1984,6 +2042,7 @@
     openDrawer(html);
     setupTabs();
     bindCepLookup($("#pessoa-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
+    bindPessoaCnpjLookup($("#pessoa-form"));
     // Ao escolher o Estado (atuação), a Regional é preenchida sozinha a
     // partir do UF_PARA_REGIONAL (pedido do Diego, 10/2026). O campo Regional
     // agora é só-leitura (selectField com disabled:true, ver acima) -- por
@@ -2117,8 +2176,20 @@
       camposEditaveis.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
       camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });
       body.contas = fd.getAll("contas");
-      var empId = fd.get("empresaId");
-      body.empresaId = empId ? Number(empId) : null;
+      // Empresa agora é pelo CNPJ (pedido do Diego, 15/10/2026) -- em
+      // branco significa "sem empresa vinculada". Ver bindPessoaCnpjLookup.
+      var camposEmpresa = ["empresaCnpj", "empresaRazaoSocial", "empresaFantasia", "empresaPorte", "empresaCidade",
+        "empresaUf", "empresaCep", "empresaBairro", "empresaLogradouro", "empresaNumero", "empresaTelefone",
+        "empresaEmail", "empresaNomeResponsavel", "empresaCnaePrincipal", "empresaCnaeDescricao",
+        "empresaSituacaoCadastral", "empresaPgr", "empresaPcmso", "empresaObservacao"];
+      camposEmpresa.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      var empresaCnpjDigits = body.empresaCnpj.replace(/\D/g, "");
+      if (empresaCnpjDigits && empresaCnpjDigits.length !== 14) {
+        toast("Informe um CNPJ válido para a empresa (14 dígitos).", "error");
+        activateFormTab("empresa");
+        return;
+      }
+      body.empresaCnpj = empresaCnpjDigits;
       if (!body.nome) { toast("Informe o nome da pessoa.", "error"); activateFormTab("geral"); return; }
       if (!body.cargo) { toast("Selecione o cargo.", "error"); activateFormTab("geral"); return; }
       if (!body.status) { toast("Selecione o status.", "error"); activateFormTab("geral"); return; }
@@ -6904,6 +6975,74 @@
     if (btn) {
       btn.addEventListener("click", function () {
         lastBuscado = ""; // botão manual sempre força uma busca nova, mesmo repetindo o CNPJ
+        buscar((cnpjInput.value || "").replace(/\D/g, ""));
+      });
+    }
+    function autoTentar() {
+      var digits = (cnpjInput.value || "").replace(/\D/g, "");
+      if (digits.length === 14) buscar(digits, { silent: true });
+    }
+    cnpjInput.addEventListener("input", autoTentar);
+    cnpjInput.addEventListener("blur", autoTentar);
+  }
+
+  // Busca de CNPJ pra aba "Empresa" da ficha de Pessoa (pedido do Diego,
+  // 15/10/2026) -- chama /api/pessoas/cnpj-lookup (cache-first: reaproveita
+  // os dados de quem mais já tiver esse CNPJ, incluindo PGR/PCMSO/
+  // contratos/tipo PJ, que a Receita não devolve) e preenche TODOS os
+  // campos da aba, não só o nome -- diferente de bindCrescimentoCnpjLookup,
+  // que só mostra o nome porque aquele formulário não tem os campos
+  // manuais da empresa.
+  function bindPessoaCnpjLookup(form) {
+    var btn = $("#btn-pessoa-cnpj-lookup", form);
+    var cnpjInput = form.querySelector('[name="empresaCnpj"]');
+    if (!cnpjInput) return;
+    var lastBuscado = "";
+    function buscar(digits, opts) {
+      opts = opts || {};
+      if (digits.length !== 14) {
+        if (!opts.silent) toast("Informe um CNPJ com 14 dígitos.", "error");
+        return;
+      }
+      if (digits === lastBuscado) return;
+      lastBuscado = digits;
+      var originalLabel = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = "Buscando…"; }
+      apiFetch("/api/pessoas/cnpj-lookup", { method: "POST", body: { cnpj: digits } })
+        .then(function (data) {
+          var r = data.empresa || {};
+          setEmpresaFormField(form, "empresaRazaoSocial", r.razaoSocial);
+          setEmpresaFormField(form, "empresaFantasia", r.fantasia);
+          setEmpresaFormField(form, "empresaPorte", r.porte);
+          setEmpresaFormField(form, "empresaSituacaoCadastral", r.situacaoCadastral);
+          setEmpresaFormField(form, "empresaCidade", r.cidade);
+          setEmpresaFormField(form, "empresaUf", r.uf);
+          setEmpresaFormField(form, "empresaCep", r.cep);
+          setEmpresaFormField(form, "empresaBairro", r.bairro);
+          setEmpresaFormField(form, "empresaLogradouro", r.logradouro);
+          setEmpresaFormField(form, "empresaNumero", r.numero);
+          setEmpresaFormField(form, "empresaTelefone", r.telefone);
+          setEmpresaFormField(form, "empresaEmail", r.email);
+          setEmpresaFormField(form, "empresaNomeResponsavel", r.nomeResponsavel);
+          setEmpresaFormField(form, "empresaCnaePrincipal", r.cnaePrincipal);
+          setEmpresaFormField(form, "empresaCnaeDescricao", r.cnaeDescricao);
+          setEmpresaFormField(form, "empresaPgr", r.pgr);
+          setEmpresaFormField(form, "empresaPcmso", r.pcmso);
+          var obsEl = form.querySelector('[name="empresaObservacao"]');
+          if (obsEl && r.observacao) obsEl.value = r.observacao;
+          toast(r.cacheHit ? "Empresa já cadastrada -- dados reaproveitados." : "Dados do CNPJ preenchidos. Confira antes de salvar.", "success");
+        })
+        .catch(function (err) {
+          lastBuscado = "";
+          if (!opts.silent) handleApiError(err);
+        })
+        .then(function () {
+          if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        });
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        lastBuscado = "";
         buscar((cnpjInput.value || "").replace(/\D/g, ""));
       });
     }

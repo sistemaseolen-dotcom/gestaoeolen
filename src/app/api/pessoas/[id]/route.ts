@@ -4,6 +4,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
 import { encontrarDuplicidadePessoa, normalizarNomePessoa, soDigitosCpf } from "@/lib/pessoaDuplicidade";
+import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
+import { CAMPOS_EMPRESA_EMBUTIDA, colunasEmpresaFromBody, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 const CAMPOS_PESSOA = [
   "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
@@ -21,6 +23,9 @@ const CAMPOS_PESSOA = [
   "contas",
   // Campos usados pela aba "Crescimento" (pedido do Diego, 15/10/2026).
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
+  // Dados de empresa embutidos (pedido do Diego, 15/10/2026) -- ver
+  // src/lib/empresaEmbutida.ts.
+  ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -100,17 +105,46 @@ function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?
   return e?.fantasia || e?.nome || (e?.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
 }
 
-async function resolveEmpresaNome(empresaId: number | null): Promise<{ empresa_id: number | null; empresa_nome: string | null }> {
-  if (empresaId === null || empresaId === undefined || Number.isNaN(empresaId)) {
-    return { empresa_id: null, empresa_nome: null };
-  }
-  const { data } = await supabaseAdmin()
+// Mesma lógica de POST /api/pessoas (duplicada de propósito, ver comentário
+// lá): acha a empresa pelo CNPJ ou cria uma nova buscando na Receita.
+async function resolveOrCreateEmpresaPorCnpj(
+  admin: ReturnType<typeof supabaseAdmin>,
+  cnpjDigits: string
+): Promise<{ empresa_id: number; empresa_nome: string }> {
+  const { data: existente } = await admin
     .from("empresas")
-    .select("nome, fantasia, cnpj")
-    .eq("id", empresaId)
+    .select("id, nome, fantasia, cnpj")
+    .eq("cnpj", cnpjDigits)
     .maybeSingle();
-  if (!data) return { empresa_id: null, empresa_nome: null };
-  return { empresa_id: empresaId, empresa_nome: empresaTitle(data) };
+  if (existente) {
+    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
+  }
+
+  const dados = await buscarCnpj(cnpjDigits);
+  const { data: nova, error } = await admin
+    .from("empresas")
+    .insert({
+      nome: dados.nome || `CNPJ ${cnpjDigits}`,
+      fantasia: dados.fantasia || null,
+      cnpj: cnpjDigits,
+      porte: dados.porte || null,
+      cidade: dados.cidade || null,
+      uf: dados.uf || null,
+      cep: dados.cep || null,
+      bairro: dados.bairro || null,
+      logradouro: dados.logradouro || null,
+      numero: dados.numero || null,
+      telefone: dados.telefone || null,
+      email: dados.email || null,
+      cnae_principal: dados.cnaePrincipal || null,
+      cnae_descricao: dados.cnaeDescricao || null,
+      situacao_cadastral: dados.situacaoCadastral || null,
+      status: "ATIVO",
+    })
+    .select("id, nome, fantasia, cnpj")
+    .single();
+  if (error) throw error;
+  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
 }
 
 export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
@@ -177,14 +211,50 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
 
-  // empresaId muda tanto empresa_id quanto o cache empresa_nome — re-resolve
-  // os dois juntos, igual ao create.
-  if (Object.prototype.hasOwnProperty.call(body || {}, "empresaId")) {
-    const empresaIdRaw = body.empresaId;
-    const empresaId = empresaIdRaw === null || empresaIdRaw === undefined || empresaIdRaw === "" ? null : Number(empresaIdRaw);
-    const { empresa_id, empresa_nome } = await resolveEmpresaNome(empresaId);
-    patch.empresa_id = empresa_id;
-    patch.empresa_nome = empresa_nome;
+  // Empresa agora é sempre resolvida pelo CNPJ (pedido do Diego, 15/10/2026).
+  // `empresaCnpj` só vem no body quando o formulário de Pessoa tem esse
+  // campo (sempre tem, desde que a aba Empresas saiu do fluxo normal) --
+  // em branco significa "sem empresa vinculada". Só bate no banco/Receita
+  // de novo quando o CNPJ realmente mudou; se mudou só um campo manual
+  // (PGR, PCMSO etc.) sem trocar o CNPJ, usa o valor que o cliente mandou
+  // direto, sem re-resolver a empresa.
+  const empresaColunas = colunasEmpresaFromBody(body);
+  let empresaCnpjFinal: string | null = before.empresa_cnpj || null;
+  if (Object.prototype.hasOwnProperty.call(empresaColunas, "empresa_cnpj")) {
+    const cnpjNovo: string | null = empresaColunas.empresa_cnpj || null;
+    const cnpjAntigo: string | null = before.empresa_cnpj || null;
+    if (cnpjNovo !== cnpjAntigo) {
+      if (!cnpjNovo) {
+        // CNPJ removido -- desvincula a empresa por completo.
+        patch.empresa_id = null;
+        patch.empresa_nome = null;
+        for (const campo of CAMPOS_EMPRESA_EMBUTIDA) patch[campo] = null;
+        empresaCnpjFinal = null;
+      } else {
+        if (cnpjNovo.length !== 14) {
+          return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
+        }
+        try {
+          const { empresa_id, empresa_nome } = await resolveOrCreateEmpresaPorCnpj(admin, cnpjNovo);
+          patch.empresa_id = empresa_id;
+          patch.empresa_nome = empresa_nome;
+        } catch (err: any) {
+          if (err instanceof CnpjLookupError) {
+            return NextResponse.json({ error: err.message }, { status: err.status });
+          }
+          return NextResponse.json(
+            { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
+            { status: 500 }
+          );
+        }
+        Object.assign(patch, empresaColunas);
+        empresaCnpjFinal = cnpjNovo;
+      }
+    } else {
+      // CNPJ não mudou -- só repassa os campos manuais que vieram (PGR,
+      // PCMSO, contratos, tipo PJ, observação etc.), sem re-resolver nada.
+      Object.assign(patch, empresaColunas);
+    }
   }
 
   // atualizado_em é mantido por trigger no banco — não setamos aqui.
@@ -208,9 +278,26 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     usuario: gate.user,
   });
 
+  // Sincroniza os campos de empresa com quem mais tiver o mesmo CNPJ --
+  // decisão do Diego (15/10/2026): nunca deixar divergir. Função é
+  // idempotente (só grava/audita onde realmente mudar algo) -- só chama
+  // quando este PATCH de fato trouxe algum campo de empresa, pra não sair
+  // lendo a lista de colegas em toda edição não relacionada (ex.: trocar
+  // só o telefone de alguém numa empresa com 52 pessoas).
+  if (empresaCnpjFinal && Object.keys(empresaColunas).length > 0) {
+    await propagarCamposEmpresa(admin, empresaCnpjFinal, id, empresaColunas, gate.user);
+  }
+
   // Inativar uma pessoa cascateia: desvincula ela de qualquer equipe e, se
   // tiver empresa vinculada, inativa a empresa também (que por sua vez
   // inativa as outras pessoas dessa empresa). Ver src/lib/statusCascade.ts.
+  // ATENÇÃO (achado nesta mesma mudança, 15/10/2026): essa regra foi
+  // pensada pro caso 1-pessoa-1-empresa (MEI) e hoje é um bug real pras
+  // empresas de verdade com vários funcionários (ex.: ALLIANCE SERVICES,
+  // 52 pessoas) -- inativar 1 pessoa cascateia a tabela `empresas` e
+  // INATIVA TODO MUNDO da mesma empresa. Fica assim por enquanto (Diego
+  // pediu pra não tocar na aba Empresas ainda), mas precisa ser corrigido
+  // antes ou junto da remoção da aba Empresas.
   if (patch.status === "INATIVO" && before.status !== "INATIVO") {
     await inativarPessoaCascata(id, gate.user);
   }

@@ -5,6 +5,7 @@ import { auditDiffFields } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
 import { encontrarDuplicidadePessoa, normalizarNomePessoa, soDigitosCpf } from "@/lib/pessoaDuplicidade";
 import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
+import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 // Edição de um cadastro em Crescimento -- gateado por "crescimento":"editar",
 // INDEPENDENTE de "pessoas" (ver POST /api/crescimento pro resto do
@@ -19,6 +20,7 @@ const CAMPOS_PESSOA_CRESCIMENTO = [
   "tipo_pessoa", "data_admissao", "cpf", "rg", "data_nascimento", "email", "telefone", "cep",
   "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei", "empresa_id",
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
+  ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
 
 function upperOrSame(v: any): any {
@@ -174,6 +176,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   // `empresaCnpj` só vem no body quando o usuário digitou um CNPJ novo no
   // formulário -- em branco (ou ausente) significa "manter a empresa
   // atual" (pedido do Diego, 15/10/2026).
+  let empresaCnpjFinal: string | null = before.empresa_cnpj || null;
+  let empresaColunas: Record<string, any> = {};
   if (Object.prototype.hasOwnProperty.call(body || {}, "empresaCnpj")) {
     const empresaCnpjDigits = onlyDigitsCnpj(body.empresaCnpj || "");
     if (empresaCnpjDigits) {
@@ -184,6 +188,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
         const { empresa_id, empresa_nome } = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
         patch.empresa_id = empresa_id;
         patch.empresa_nome = empresa_nome;
+        // Mesmo raciocínio de POST /api/crescimento: resolve os campos
+        // empresa_* embutidos inteiramente no servidor (cache-first), já
+        // que este formulário não tem campos manuais de empresa visíveis.
+        empresaColunas = colunasEmpresaFromDados(await buscarDadosEmpresaEmbutida(empresaCnpjDigits));
+        Object.assign(patch, empresaColunas);
+        empresaCnpjFinal = empresaCnpjDigits;
       } catch (err: any) {
         if (err instanceof CnpjLookupError) {
           return NextResponse.json({ error: err.message }, { status: err.status });
@@ -216,8 +226,16 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     usuario: gate.user,
   });
 
+  // Sincroniza os campos de empresa com quem mais tiver o mesmo CNPJ --
+  // decisão do Diego (15/10/2026): nunca deixar divergir.
+  if (empresaCnpjFinal && Object.keys(empresaColunas).length > 0) {
+    await propagarCamposEmpresa(admin, empresaCnpjFinal, id, empresaColunas, gate.user);
+  }
+
   // Mesma regra de cascata de PATCH /api/pessoas/[id]: inativar desvincula
-  // de equipes e, se tiver empresa, inativa a empresa também.
+  // de equipes e, se tiver empresa, inativa a empresa também (mesmo
+  // cuidado apontado lá: isso é um bug real pras empresas de verdade com
+  // vários funcionários -- ver comentário em pessoas/[id]/route.ts).
   if (patch.status === "INATIVO" && before.status !== "INATIVO") {
     await inativarPessoaCascata(id, gate.user);
   }

@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
 import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
+import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 // Aba "Crescimento" (pedido do Diego, 15/10/2026): cadastro de pessoas
 // entrando no processo de crescimento da empresa. Acesso restrito a quem o
@@ -21,6 +22,7 @@ const CAMPOS_PESSOA_CRESCIMENTO = [
   "tipo_pessoa", "data_admissao", "cpf", "rg", "data_nascimento", "email", "telefone", "cep",
   "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei", "empresa_id",
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
+  ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
 
 // Mesma lista de cargos operacionais / documentos obrigatórios de POST
@@ -174,8 +176,14 @@ export async function POST(req: Request) {
   }
 
   let empresaResolved: { empresa_id: number; empresa_nome: string };
+  let empresaColunas: Record<string, any>;
   try {
     empresaResolved = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
+    // Resolve os campos empresa_* embutidos inteiramente no servidor
+    // (cache-first) -- o formulário de Crescimento não tem campos manuais
+    // de empresa (PGR/PCMSO etc.) visíveis, então herda tudo de quem já
+    // estiver cadastrado com o mesmo CNPJ (ver src/lib/empresaEmbutida.ts).
+    empresaColunas = colunasEmpresaFromDados(await buscarDadosEmpresaEmbutida(empresaCnpjDigits));
   } catch (err: any) {
     if (err instanceof CnpjLookupError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
@@ -220,6 +228,7 @@ export async function POST(req: Request) {
     mei: /^PJ/i.test((body.tipoPessoa || "").toString().trim()) ? null : "N/A",
     empresa_id,
     empresa_nome,
+    ...empresaColunas,
     responsavel: body.responsavel,
     nome_do_pai: body.nomeDoPai,
     nome_da_mae: body.nomeDaMae,
@@ -262,6 +271,10 @@ export async function POST(req: Request) {
     campos: [...CAMPOS_PESSOA_CRESCIMENTO],
     usuario: gate.user,
   });
+
+  // Sincroniza os campos de empresa com quem mais tiver o mesmo CNPJ --
+  // decisão do Diego (15/10/2026): nunca deixar divergir.
+  await propagarCamposEmpresa(admin, empresaCnpjDigits, pessoa.id, empresaColunas, gate.user);
 
   return NextResponse.json(pessoa, { status: 201 });
 }

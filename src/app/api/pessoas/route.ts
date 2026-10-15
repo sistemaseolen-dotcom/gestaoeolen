@@ -3,6 +3,8 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
+import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
+import { CAMPOS_EMPRESA_EMBUTIDA, colunasEmpresaFromBody, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 const CAMPOS_PESSOA = [
   "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
@@ -23,6 +25,9 @@ const CAMPOS_PESSOA = [
   // por quem tem permissão em "pessoas" (ver /api/crescimento pra quem só
   // tem permissão em "crescimento").
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
+  // Dados de empresa embutidos (pedido do Diego, 15/10/2026) -- ver
+  // src/lib/empresaEmbutida.ts.
+  ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -47,7 +52,6 @@ function pessoaFromBody(body: any): Record<string, any> {
     data_demissao: body?.dataDemissao,
     matricula_esocial: body?.matriculaESocial,
     coordenador: upperOrSame(body?.coordenador),
-    empresa_id: body?.empresaId,
     cargo: body?.cargo,
     cargo_aso: body?.cargoAso,
     email: body?.email,
@@ -121,20 +125,51 @@ const AUTO_DOCS: Array<{ tipo: string; categoria: "treinamento" | "documento" }>
   { tipo: "INTEGRAÇÃO DE SEGURANÇA", categoria: "treinamento" },
 ];
 
-// Resolve empresa_nome a partir de empresa_id — usado tanto no create quanto
-// no update. Se o id não for informado ou a empresa não existir, retorna
-// ambos nulos em vez de falhar a requisição inteira.
-async function resolveEmpresaNome(empresaId: number | null): Promise<{ empresa_id: number | null; empresa_nome: string | null }> {
-  if (empresaId === null || empresaId === undefined || Number.isNaN(empresaId)) {
-    return { empresa_id: null, empresa_nome: null };
-  }
-  const { data } = await supabaseAdmin()
+// Acha a empresa pelo CNPJ (já cadastrada em "Empresas") ou cria uma nova
+// buscando os dados reais na Receita -- mesma lógica de POST /api/crescimento
+// (duplicada de propósito, ver comentário lá). Mantém `empresas`/
+// `empresa_id` funcionando por compatibilidade enquanto a aba Empresas não
+// for removida (pedido do Diego, 15/10/2026) -- a fonte que a ficha de
+// Pessoa de fato exibe agora são as colunas empresa_* embutidas (ver
+// src/lib/empresaEmbutida.ts).
+async function resolveOrCreateEmpresaPorCnpj(
+  admin: ReturnType<typeof supabaseAdmin>,
+  cnpjDigits: string
+): Promise<{ empresa_id: number; empresa_nome: string }> {
+  const { data: existente } = await admin
     .from("empresas")
-    .select("nome, fantasia, cnpj")
-    .eq("id", empresaId)
+    .select("id, nome, fantasia, cnpj")
+    .eq("cnpj", cnpjDigits)
     .maybeSingle();
-  if (!data) return { empresa_id: null, empresa_nome: null };
-  return { empresa_id: empresaId, empresa_nome: empresaTitle(data) };
+  if (existente) {
+    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
+  }
+
+  const dados = await buscarCnpj(cnpjDigits);
+  const { data: nova, error } = await admin
+    .from("empresas")
+    .insert({
+      nome: dados.nome || `CNPJ ${cnpjDigits}`,
+      fantasia: dados.fantasia || null,
+      cnpj: cnpjDigits,
+      porte: dados.porte || null,
+      cidade: dados.cidade || null,
+      uf: dados.uf || null,
+      cep: dados.cep || null,
+      bairro: dados.bairro || null,
+      logradouro: dados.logradouro || null,
+      numero: dados.numero || null,
+      telefone: dados.telefone || null,
+      email: dados.email || null,
+      cnae_principal: dados.cnaePrincipal || null,
+      cnae_descricao: dados.cnaeDescricao || null,
+      situacao_cadastral: dados.situacaoCadastral || null,
+      status: "ATIVO",
+    })
+    .select("id, nome, fantasia, cnpj")
+    .single();
+  if (error) throw error;
+  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
 }
 
 export async function POST(req: Request) {
@@ -181,22 +216,49 @@ export async function POST(req: Request) {
     );
   }
 
-  const empresaIdRaw = body?.empresaId;
-  const empresaId = empresaIdRaw === null || empresaIdRaw === undefined || empresaIdRaw === "" ? null : Number(empresaIdRaw);
-  const { empresa_id, empresa_nome } = await resolveEmpresaNome(empresaId);
+  // Empresa agora é sempre resolvida pelo CNPJ (pedido do Diego, 15/10/2026)
+  // -- em branco significa "sem empresa vinculada" (CLT direto, por
+  // exemplo). Ver colunasEmpresaFromBody/resolveOrCreateEmpresaPorCnpj.
+  const empresaColunas = colunasEmpresaFromBody(body);
+  const empresaCnpjDigits: string | null = empresaColunas.empresa_cnpj || null;
+  let empresaId: { empresa_id: number | null; empresa_nome: string | null } = { empresa_id: null, empresa_nome: null };
+  if (empresaCnpjDigits) {
+    if (empresaCnpjDigits.length !== 14) {
+      return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
+    }
+    try {
+      empresaId = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
+    } catch (err: any) {
+      if (err instanceof CnpjLookupError) {
+        return NextResponse.json({ error: err.message }, { status: err.status });
+      }
+      return NextResponse.json(
+        { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
+        { status: 500 }
+      );
+    }
+  }
 
   const payload = {
     ...pessoaFromBody(body),
+    ...empresaColunas,
     nome,
     cpf,
     status,
-    empresa_id,
-    empresa_nome,
+    empresa_id: empresaId.empresa_id,
+    empresa_nome: empresaId.empresa_nome,
   };
 
   const { data: pessoa, error } = await admin.from("pessoas").insert(payload).select().single();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  // Sincroniza os campos de empresa com quem mais tiver o mesmo CNPJ (ex.:
+  // os outros funcionários da mesma empresa terceirizada) -- decisão do
+  // Diego (15/10/2026): nunca deixar divergir.
+  if (empresaCnpjDigits) {
+    await propagarCamposEmpresa(admin, empresaCnpjDigits, pessoa.id, empresaColunas, gate.user);
   }
 
   // Cargos operacionais ganham automaticamente os 11 treinamentos/documentos
