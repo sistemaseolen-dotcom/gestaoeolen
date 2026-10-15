@@ -4126,14 +4126,33 @@
   function achaItemNaFicha(caCheck, ficha) {
     var keywords = caCheck.especKeywords || [];
     var excluir = caCheck.especKeywordsExcluir || [];
-    var achados = (ficha.epiItens || []).filter(function (it) {
+    var itens = ficha.epiItens || [];
+    var achados = itens.filter(function (it) {
       var esp = normalizarEspecTexto(it.especificacao);
       var bate = keywords.some(function (k) { return esp.indexOf(k) !== -1; });
       if (!bate) return false;
       var excluido = excluir.some(function (k) { return esp.indexOf(k) !== -1; });
       return !excluido;
     });
-    return achados[0] || null;
+    if (achados[0]) return achados[0];
+    // Pedido indireto do Diego (15/10/2026) -- ver comentário completo na
+    // função irmã encontrarItemFicha, em src/lib/epiChecklist.ts (mantido em
+    // sincronia manual aqui, igual ao resto deste arquivo). Resumo: o
+    // Capacete é sempre a 1ª linha da Ficha de EPI; numa fração das fichas o
+    // OCR corrompe o texto dessa linha (nunca bate "CAPACETE"), então usamos
+    // a 1ª linha como Capacete quando ela não bateu em NENHUM outro item --
+    // só nesse caso, pra nunca roubar uma linha já reconhecida como outro
+    // equipamento.
+    if (caCheck.keyBase === "ca_capacete" && itens.length) {
+      var primeira = itens[0];
+      var espPrimeira = normalizarEspecTexto(primeira.especificacao);
+      var bateOutroItem = AUDITORIA_ITEMS_NOKIA.some(function (outro) {
+        return outro.caCheck && outro.caCheck.keyBase !== "ca_capacete" &&
+          (outro.caCheck.especKeywords || []).some(function (k) { return espPrimeira.indexOf(k) !== -1; });
+      });
+      if (!bateOutroItem) return primeira;
+    }
+    return null;
   }
 
   // Acha o treinamento "FICHA DE EPI" da pessoa pelo NOME (é assim que

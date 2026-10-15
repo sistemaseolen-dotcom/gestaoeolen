@@ -103,14 +103,41 @@ export function normalizarFabricacao(s: string | null | undefined): string {
 function encontrarItemFicha(caCheck: CaCheckItem, ficha: TreinamentoFichaEpi): ItemFichaEpi | null {
   const keywords = caCheck.especKeywords || [];
   const excluir = caCheck.especKeywordsExcluir || [];
-  const achados = (ficha.epi_itens || []).filter((it) => {
+  const itens = ficha.epi_itens || [];
+  const achados = itens.filter((it) => {
     const esp = normalizarEspecTexto(it.especificacao);
     const bate = keywords.some((k) => esp.indexOf(k) !== -1);
     if (!bate) return false;
     const excluido = excluir.some((k) => esp.indexOf(k) !== -1);
     return !excluido;
   });
-  return achados[0] || null;
+  if (achados[0]) return achados[0];
+
+  // Pedido indireto do Diego (15/10/2026 -- ficha do Gustavo Ariel de Souza,
+  // que tinha capacete na ficha física mas o item não aparecia na
+  // "Conferência de CA por equipamento" mesmo depois de reler a ficha):
+  // o Capacete é sempre a 1ª linha impressa na tabela da Ficha de EPI (item
+  // 16 do formulário). Investigando o banco, achamos 6 fichas reais (de 324
+  // já lidas) onde o OCR da coluna ESPECIFICAÇÃO dessa 1ª linha sai
+  // corrompido -- ex.: "CAFALVE ITE", "CAPACET", "APACETE TIPO PARAQUEDI" em
+  // vez de "CAPACETE" -- nunca batendo a keyword acima, mesmo relendo a
+  // ficha de novo (o OCR é determinístico pra uma imagem igual). Só usamos a
+  // 1ª linha como Capacete quando ELA MESMA não bateu em NENHUM outro item
+  // conhecido (Óculos, Luva, Cinto etc.) -- isso evita "roubar" uma linha
+  // que já foi corretamente reconhecida como outro equipamento, o que
+  // acontece quando a ficha de alguém realmente não tem capacete preenchido
+  // e a 1ª linha lida é outro item (confirmado: das 16 fichas sem
+  // "CAPACETE" reconhecido, 10 têm a 1ª linha batendo Luva/Óculos/Bota/
+  // Talabarte Y de verdade -- essas 10 não são tocadas por este fallback).
+  if (caCheck.keyBase === "ca_capacete" && itens.length) {
+    const primeira = itens[0];
+    const espPrimeira = normalizarEspecTexto(primeira.especificacao);
+    const bateOutroItem = CA_CHECK_ITEMS.some(
+      (outro) => outro.keyBase !== "ca_capacete" && (outro.especKeywords || []).some((k) => espPrimeira.indexOf(k) !== -1)
+    );
+    if (!bateOutroItem) return primeira;
+  }
+  return null;
 }
 
 export function verificarCaItem(
