@@ -19,6 +19,8 @@ const CAMPOS_PESSOA = [
   // Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego,
   // 10/2026) -- array, pode ter mais de uma ao mesmo tempo.
   "contas",
+  // Campos usados pela aba "Crescimento" (pedido do Diego, 15/10/2026).
+  "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -78,6 +80,11 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
     isignumId: "isignum_id",
     isdpId: "isdp_id",
     contas: "contas",
+    // Campos usados pela aba "Crescimento" (pedido do Diego, 15/10/2026).
+    responsavel: "responsavel",
+    nomeDoPai: "nome_do_pai",
+    nomeDaMae: "nome_da_mae",
+    numeroContatoEmergencia: "numero_contato_emergencia",
   };
   const out: Record<string, any> = {};
   for (const [bodyKey, column] of Object.entries(map)) {

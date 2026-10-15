@@ -25,6 +25,12 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     isignum_id: "ID Isignum (Ericsson)",
     isdp_id: "ID ISDP (Huawei)",
     contas: "Contas Ativas",
+    // Campos da aba "Crescimento" (pedido do Diego, 15/10/2026) — moram na
+    // mesma tabela `pessoas`, por isso entram aqui também.
+    responsavel: "Responsável",
+    nome_do_pai: "Nome do pai",
+    nome_da_mae: "Nome da mãe",
+    numero_contato_emergencia: "Número de contato (emergência)",
   },
   equipe: {
     nome: "Nome", regional: "Regional", projeto: "Projeto", operadora: "Operadora", status: "Status",

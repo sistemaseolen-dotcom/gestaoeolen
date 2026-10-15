@@ -158,7 +158,8 @@
     veiculos: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm14 0a2 2 0 1 0 4 0 2 2 0 0 0-4 0ZM3 17V9.5a1 1 0 0 1 .3-.7l2.5-2.5A2 2 0 0 1 7.2 5.6h9.6a2 2 0 0 1 1.4.6l2.5 2.5a1 1 0 0 1 .3.7V17"/><path d="M5 11h14"/></svg>',
     auditorias: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v2a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V3"/><path d="m9 12 2 2 4-4"/><path d="M8 17h8"/></svg>',
     camera: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2Z"/><circle cx="12" cy="13" r="4"/></svg>',
-    sync: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.36"/><path d="M3 12a9 9 0 0 1 15.5-6.36"/><polyline points="21 3 21 9 15 9"/><polyline points="3 21 3 15 9 15"/></svg>'
+    sync: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.36"/><path d="M3 12a9 9 0 0 1 15.5-6.36"/><polyline points="21 3 21 9 15 9"/><polyline points="3 21 3 15 9 15"/></svg>',
+    crescimento: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>'
   };
 
   /* ---------------- State ---------------- */
@@ -185,7 +186,8 @@
     frotasKmSemana: { mes: "", motorista: "" },
     frotasKmExcedido: { q: "", status: "", page: 1 },
     auditorias: { q: "", status: "", cliente: "", page: 1, painelPeriodo: { tipo: "geral", mes: "", dia: "", de: "", ate: "" } },
-    acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 }
+    acesso: { q: "", operadora: "", projeto: "", regional: "", page: 1 },
+    crescimento: { page: 1 }
   };
 
   /* ---------------- Auth / usuários / permissões ---------------- */
@@ -199,7 +201,8 @@
     { key: "patrimonio", label: "Patrimônio" },
     { key: "veiculos", label: "Gestão de Frotas" },
     { key: "auditorias", label: "Auditorias" },
-    { key: "acesso", label: "Acesso" }
+    { key: "acesso", label: "Acesso" },
+    { key: "crescimento", label: "Crescimento" }
   ];
   var ACTIONS = [
     { key: "ver", label: "Ver" },
@@ -235,6 +238,7 @@
     if (canView("veiculos")) return "veiculos";
     if (canView("auditorias")) return "auditorias";
     if (canView("acesso")) return "acesso";
+    if (canView("crescimento")) return "crescimento";
     return null;
   }
 
@@ -894,7 +898,18 @@
       // 10/2026) — diferente de "projeto" (um valor só, de preenchimento
       // livre): aqui é sempre um dos 4 clientes fixos, e pode ter mais de
       // um marcado ao mesmo tempo.
-      contas: row.contas || []
+      contas: row.contas || [],
+      // Campos da aba "Crescimento" (pedido do Diego, 15/10/2026) — moram
+      // nesta mesma tabela `pessoas`.
+      responsavel: row.responsavel,
+      nomeDoPai: row.nome_do_pai,
+      nomeDaMae: row.nome_da_mae,
+      numeroContatoEmergencia: row.numero_contato_emergencia,
+      // Usado pra calcular "há quantos dias está em crescimento" (contador
+      // na aba Crescimento) — a pessoa é criada no exato momento em que o
+      // pedido de crescimento é registrado, então criadoEm == data do
+      // pedido.
+      criadoEm: row.criado_em
     };
   }
   // Clientes/contas que uma pessoa pode estar ativa (pedido do Diego,
@@ -1151,6 +1166,7 @@
       STATE.caDivergentePessoas = data.caDivergentePessoas;
       STATE.listas = data.listas;
       STATE.config = data.config;
+      STATE.crescimentoPessoas = data.crescimentoPessoas;
       ensureListasSeed();
     });
   }
@@ -1192,6 +1208,9 @@
     // O número no menu é a contagem de PESSOAS (não de equipes) — a lista
     // principal da aba passou a listar pessoas (pedido do Diego, 29/09/2026).
     if (canView("acesso")) navItems.push(["acesso", "Acesso", ICONS.lock, totalAcessoMembros()]);
+    // Aba "Crescimento" (pedido do Diego, 15/10/2026): acesso independente
+    // de "pessoas" -- ver STATE.crescimentoPessoas (GET /api/state).
+    if (canView("crescimento")) navItems.push(["crescimento", "Crescimento", ICONS.crescimento, (STATE.crescimentoPessoas || []).length]);
     if (isAdmin()) navItems.push(["admin", "Administrador", ICONS.treinamentos, null]);
     var navHtml = navItems.map(function (it) {
       var active = route.view === it[0];
@@ -1638,6 +1657,8 @@
         "MEI",
         // Acessos de cliente
         "ID Isignum (Ericsson)", "ID ISDP (Huawei)",
+        // Crescimento (pedido do Diego, 15/10/2026)
+        "Responsável", "Nome do pai", "Nome da mãe", "Número de contato (emergência)",
         // Extra (não é campo de cadastro, mas útil no extrato)
         "Treinamentos vencidos",
       ];
@@ -1658,6 +1679,8 @@
           p.mei || "",
           // Acessos de cliente
           p.isignumId || "", p.isdpId || "",
+          // Crescimento
+          p.responsavel || "", p.nomeDoPai || "", p.nomeDaMae || "", p.numeroContatoEmergencia || "",
           // Extra
           venc,
         ];
@@ -1719,11 +1742,13 @@
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
       detailItem("MEI", p.mei, "mei") + detailItem("CNH", p.cnh + (p.dataValidadeCNH ? " · venc. " + fmtDateBR(p.dataValidadeCNH) : ""), "cnh") +
+      detailItem("Responsável", p.responsavel, "responsavel") + detailItem("Nome do pai", p.nomeDoPai, "nome_do_pai") + detailItem("Nome da mãe", p.nomeDaMae, "nome_da_mae") +
       '<div class="detail-item"><span class="k">Contas Ativas</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
       "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") + "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Contato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("E-mail", p.email, "email") + detailItem("Telefone", p.telefone, "telefone") + detailItem("E-mail corporativo", p.emailCorporativo, "email_corporativo") + detailItem("Telefone corporativo", p.telefoneCorporativo, "telefone_corporativo") +
       detailItem("Endereço", [p.endereco, p.numero].filter(Boolean).join(", "), "endereco") + detailItem("Bairro / Cidade", [p.bairro, p.municipio, p.estado].filter(Boolean).join(" / "), "bairro") +
+      detailItem("Número de contato (emergência)", p.numeroContatoEmergencia, "numero_contato_emergencia") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Acessos de cliente</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("ID Isignum (Ericsson)", p.isignumId, "isignum_id") +
@@ -1923,6 +1948,7 @@
       selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true, emptyLabel: "— Automático —", disabled: true, hint: "Preenchida automaticamente a partir do Estado (atuação)." }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
       field("Operadora", "operadora", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
+      field("Responsável", "responsavel", "text", p) +
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
       '<div class="field"><label>Matrícula eSocial</label><input type="text" name="matriculaESocial" value="' + esc(p ? (p.matriculaESocial || "") : "") + '">' +
@@ -1936,6 +1962,7 @@
       field("Data de nascimento", "dataNascimento", "date", p) + field("PIS", "pis", "text", p) +
       field("CNH", "cnh", "text", p) + field("Validade CNH", "dataValidadeCNH", "date", p) +
       field("Escolaridade", "escolaridade", "text", p) + field("Estado civil", "estadoCivil", "text", p) +
+      field("Nome do pai", "nomeDoPai", "text", p) + field("Nome da mãe", "nomeDaMae", "text", p) +
       "</div></div>" +
       '<div class="tab-pane" data-pane="contato"><div class="field-grid">' +
       field("E-mail", "email", "email", p) + field("Telefone", "telefone", "text", p) +
@@ -1943,6 +1970,7 @@
       field("CEP", "cep", "text", p) + field("Endereço", "endereco", "text", p) +
       field("Número", "numero", "text", p) + field("Complemento", "complemento", "text", p) +
       field("Bairro", "bairro", "text", p) + field("Município", "municipio", "text", p) + field("Estado", "estado", "text", p) +
+      field("Número de contato (emergência)", "numeroContatoEmergencia", "text", p) +
       "</div></div>" +
       '<div class="tab-pane" data-pane="acessos">' +
       '<div class="hint" style="margin-bottom:10px;">Credenciais de acesso ao sistema do cliente — usadas quando esta pessoa atua em projetos Ericsson ou Huawei.</div>' +
@@ -2084,7 +2112,7 @@
         "dataAdmissao", "dataDemissao", "matriculaESocial", "cpf", "rg", "dataNascimento", "pis", "cnh", "dataValidadeCNH",
         "escolaridade", "estadoCivil", "email", "telefone", "emailCorporativo", "telefoneCorporativo", "cep", "endereco",
         "numero", "complemento", "bairro", "municipio", "estado", "mei", "observacao",
-        "isignumId", "isdpId"];
+        "isignumId", "isdpId", "responsavel", "nomeDoPai", "nomeDaMae", "numeroContatoEmergencia"];
       var camposData = ["dataAdmissao", "dataDemissao", "dataNascimento", "dataValidadeCNH"];
       camposEditaveis.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
       camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });
@@ -2124,6 +2152,225 @@
           if (idx !== -1) STATE.pessoas[idx] = rec;
           afterSave();
         }
+      }).catch(handleApiError);
+    });
+    $("#drawer-close").addEventListener("click", closeDrawer);
+    $("#drawer-cancel").addEventListener("click", closeDrawer);
+  }
+
+  /* ================================================================
+     CRESCIMENTO
+     ================================================================ */
+  // Pedido do Diego (15/10/2026): aba "Crescimento" — acesso restrito a
+  // quem o admin conceder (matriz de Usuários/Permissões, página
+  // "crescimento"), INDEPENDENTE de permissão em "pessoas". Ao salvar,
+  // cria um cadastro NOVO em "Pessoas" com status CRESCIMENTO (POST
+  // /api/crescimento) -- a pessoa fica aqui enquanto o status continuar
+  // CRESCIMENTO, e some da lista assim que alguém mudar o status dela pra
+  // ATIVO/INATIVO/BLOQUEADO (ver openCrescimentoForm, confirmado pelo
+  // Diego: "o processo de Crescimento só termina quando uma pessoa muda o
+  // status dela para ativo, inativo ou bloqueado").
+  //
+  // A lista vem de STATE.crescimentoPessoas, não de STATE.pessoas (ver GET
+  // /api/state) -- quem só tem "crescimento" (sem "pessoas") recebe só
+  // este subconjunto, nunca o cadastro completo de todo mundo.
+  function diasEmCrescimento(criadoEm) {
+    if (!criadoEm) return null;
+    var d = new Date(criadoEm);
+    if (isNaN(d.getTime())) return null;
+    var dataSoDia = d.getUTCFullYear() + "-" + String(d.getUTCMonth() + 1).padStart(2, "0") + "-" + String(d.getUTCDate()).padStart(2, "0");
+    return -daysUntil(dataSoDia);
+  }
+
+  function renderCrescimentoList(main) {
+    var ui = uiState.crescimento;
+    var all = (STATE.crescimentoPessoas || []).slice().sort(function (a, b) {
+      return (diasEmCrescimento(b.criadoEm) || 0) - (diasEmCrescimento(a.criadoEm) || 0);
+    });
+
+    function draw() {
+      var pg = paginate(all, ui.page, PAGE_SIZE);
+      ui.page = pg.page;
+      var body = pg.items.map(function (p) {
+        var dias = diasEmCrescimento(p.criadoEm);
+        return '<tr data-id="' + p.id + '">' +
+          '<td><div class="row-primary">' + esc(p.nome) + '</div><div class="row-secondary">' + esc(p.cargo || "—") + '</div></td>' +
+          '<td>' + esc(p.empresaNome || "—") + '</td>' +
+          '<td>' + esc(p.projeto || "—") + '</td>' +
+          '<td>' + esc(p.coordenador || "—") + '</td>' +
+          '<td class="num">' + (dias === null ? "—" : dias + (dias === 1 ? " dia" : " dias")) + "</td>" +
+          "</tr>";
+      }).join("");
+
+      main.innerHTML =
+        '<div class="topbar"><div><h1>Crescimento</h1><div class="sub">Pessoas em processo de crescimento na empresa</div></div>' +
+        (canDo("crescimento", "criar") ? '<button class="btn primary" id="btn-new-crescimento">' + ICONS.plus + "Nova solicitação</button>" : "") + "</div>" +
+        '<div class="kpi-row" style="margin-bottom:16px;">' +
+        '<div class="kpi neutral"><span class="label">Em crescimento agora</span><span class="value tabular">' + all.length + "</span></div>" +
+        "</div>" +
+        tableShell({
+          toolbar: "",
+          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Projeto</th><th>Coordenador</th><th>Dias em crescimento</th>",
+          bodyHtml: body,
+          count: all.length,
+          page: pg.page,
+          totalPages: pg.totalPages,
+          empty: "Nenhuma pessoa em processo de crescimento no momento."
+        });
+
+      if ($("#btn-new-crescimento")) $("#btn-new-crescimento").addEventListener("click", function () { openCrescimentoForm(null); });
+      $all("tbody tr", main).forEach(function (row) {
+        row.addEventListener("click", function () { navigate("#/crescimento/" + row.getAttribute("data-id")); });
+      });
+      bindPagination(main, ui, PAGE_SIZE, all, draw);
+    }
+    draw();
+  }
+
+  function renderCrescimentoDetail(main, id) {
+    var p = byId(STATE.crescimentoPessoas || [], id);
+    if (!p) { navigate("#/crescimento"); return; }
+    var dias = diasEmCrescimento(p.criadoEm);
+    var empresa = p.empresaId ? byId(STATE.empresas || [], p.empresaId) : null;
+
+    main.innerHTML =
+      '<div class="topbar">' +
+      '<div><button class="link-btn" id="back-btn">← Crescimento</button><h1 style="margin-top:6px;">' + esc(p.nome) + "</h1>" +
+      '<div class="sub">' + esc(p.cargo || "—") + " · " + esc(p.projeto || "—") + " · " + statusPillGeneric(p.status) + "</div>" +
+      "</div>" +
+      (canDo("crescimento", "editar") ? '<button class="btn" id="btn-edit-crescimento">Editar</button>' : "") +
+      "</div>" +
+      '<div class="kpi-row" style="margin-bottom:16px;">' +
+      '<div class="kpi neutral"><span class="label">Em crescimento há</span><span class="value tabular">' + (dias === null ? "—" : dias) + '</span><span class="hint">' + (dias === 1 ? "dia" : "dias") + " desde o pedido, em " + fmtDateBR((p.criadoEm || "").slice(0, 10)) + "</span></div>" +
+      "</div>" +
+      '<div class="panel"><div class="panel-head"><h3>Dados da empresa / contratação</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) + detailItem("CNPJ/MEI", p.mei) +
+      detailItem("Responsável", p.responsavel) + detailItem("Tipo de contratação", p.tipoPessoa) +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Dados do profissional</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Nome completo", p.nome) + detailItem("Função/Cargo", p.cargo) +
+      detailItem("RG", p.rg) + detailItem("CPF", p.cpf) +
+      detailItem("Nome do pai", p.nomeDoPai) + detailItem("Nome da mãe", p.nomeDaMae) +
+      detailItem("Data de nascimento", fmtDateBR(p.dataNascimento)) + detailItem("Admissão", fmtDateBR(p.dataAdmissao)) +
+      detailItem("E-mail", p.email) + detailItem("Telefone", p.telefone) +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Atuação profissional</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Estado de atuação", p.estadoAtuacao ? p.estadoAtuacao + " — " + ufNome(p.estadoAtuacao) : "") + detailItem("Regional", p.regional) +
+      detailItem("Projeto", p.projeto) + detailItem("Operadora", p.operadora) + detailItem("Coordenador", p.coordenador) +
+      "</div></div></div>" +
+      '<div class="panel"><div class="panel-head"><h3>Endereço</h3></div><div class="panel-body pad"><div class="detail-grid">' +
+      detailItem("Endereço", p.endereco) + detailItem("Número de contato", p.numero) +
+      detailItem("Complemento", p.complemento) + detailItem("Número de contato (emergência)", p.numeroContatoEmergencia) +
+      detailItem("Cidade", p.municipio) + detailItem("Bairro", p.bairro) +
+      detailItem("CEP", p.cep) + detailItem("UF", p.estado) +
+      "</div></div></div>";
+
+    $("#back-btn").addEventListener("click", function () { navigate("#/crescimento"); });
+    if ($("#btn-edit-crescimento")) $("#btn-edit-crescimento").addEventListener("click", function () { openCrescimentoForm(p); });
+  }
+
+  // `p` null = nova solicitação (sempre cria pessoa nova, status forçado
+  // CRESCIMENTO no servidor); `p` preenchido = edição (aqui sim mostra o
+  // campo Status, pra poder encerrar o processo -- ver comentário no topo
+  // desta seção).
+  function openCrescimentoForm(p) {
+    var isNew = !p;
+    var empresasOpts = (STATE.empresas || []).slice().sort(function (a, b) { return empresaTitle(a).localeCompare(empresaTitle(b)); })
+      .map(function (e) {
+        var selected = p ? p.empresaId === e.id : false;
+        return '<option value="' + e.id + '"' + (selected ? " selected" : "") + '>' + esc(empresaTitle(e)) + "</option>";
+      }).join("");
+
+    var html =
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Nova solicitação de crescimento" : "Editar solicitação de crescimento") + '</h2><div class="sub">' + (isNew ? "Cria um novo cadastro em Pessoas, com status Crescimento" : "Cadastro em Pessoas") + '</div></div>' +
+      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
+      '<form class="drawer-body" id="crescimento-form">' +
+      '<div class="section-tabs">' +
+      '<button type="button" class="section-tab active" data-tab="empresa">1. Empresa/contratação</button>' +
+      '<button type="button" class="section-tab" data-tab="profissional">2. Profissional</button>' +
+      '<button type="button" class="section-tab" data-tab="atuacao">3. Atuação</button>' +
+      '<button type="button" class="section-tab" data-tab="endereco">4. Endereço</button>' +
+      "</div>" +
+      '<div class="tab-pane active" data-pane="empresa"><div class="field-grid">' +
+      '<div class="field"><label>Empresa *</label><select name="empresaId" required><option value="">— Selecione —</option>' + empresasOpts + "</select></div>" +
+      field("CNPJ/MEI *", "mei", "text", p, { required: true }) +
+      field("Responsável *", "responsavel", "text", p, { required: true }) +
+      selectField("Tipo de contratação *", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { required: true, allowEmpty: true }) +
+      (!isNew ? selectField("Status *", "status", listaOptions("statusPessoa"), p.status, { required: true, hint: "Mude para Ativo/Inativo/Bloqueado pra encerrar o processo de crescimento." }) : "") +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="profissional"><div class="field-grid">' +
+      field("Nome completo *", "nome", "text", p, { required: true, span2: true }) +
+      cargoSelectField(p) +
+      field("RG *", "rg", "text", p, { required: true }) + field("CPF *", "cpf", "text", p, { required: true }) +
+      field("Nome do pai *", "nomeDoPai", "text", p, { required: true }) + field("Nome da mãe *", "nomeDaMae", "text", p, { required: true }) +
+      field("Data de nascimento *", "dataNascimento", "date", p, { required: true }) + field("Admissão *", "dataAdmissao", "date", p, { required: true }) +
+      field("E-mail *", "email", "email", p, { required: true }) + field("Telefone *", "telefone", "text", p, { required: true }) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="atuacao"><div class="field-grid">' +
+      ufSelectField("Estado de atuação *", "estadoAtuacao", p ? p.estadoAtuacao : "", { required: true }) +
+      selectField("Regional *", "regional", REGIONAL_OPTS, p ? p.regional : "", { required: true, disabled: true, hint: "Preenchida automaticamente a partir do Estado (atuação)." }) +
+      selectField("Projeto *", "projeto", listaOptions("projeto"), p ? p.projeto : "", { required: true, allowEmpty: true }) +
+      field("Operadora *", "operadora", "text", p, { required: true }) +
+      field("Coordenador *", "coordenador", "text", p, { required: true }) +
+      "</div></div>" +
+      '<div class="tab-pane" data-pane="endereco"><div class="field-grid">' +
+      field("Endereço *", "endereco", "text", p, { required: true }) + field("Número de contato *", "numero", "text", p, { required: true }) +
+      field("Complemento", "complemento", "text", p) + field("Número de contato (emergência) *", "numeroContatoEmergencia", "text", p, { required: true }) +
+      field("Cidade *", "municipio", "text", p, { required: true }) + field("Bairro *", "bairro", "text", p, { required: true }) +
+      field("CEP *", "cep", "text", p, { required: true }) + ufSelectField("UF *", "estado", p ? p.estado : "", { required: true }) +
+      "</div></div>" +
+      "</form>" +
+      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="crescimento-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
+
+    openDrawer(html, { wide: true });
+    setupTabs();
+    bindCepLookup($("#crescimento-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
+
+    // Mesma regra da ficha de Pessoas: Regional é preenchida sozinha a
+    // partir do Estado (atuação) e fica travada pra edição manual (ver
+    // openPessoaForm, pedido do Diego, 10/2026).
+    var estadoAtuacaoEl = $("#crescimento-form [name=estadoAtuacao]");
+    var regionalHiddenEl = $("#crescimento-form #regional-auto-hidden");
+    var regionalSelectEl = $("#crescimento-form #regional-auto-select");
+    if (estadoAtuacaoEl && regionalHiddenEl) {
+      estadoAtuacaoEl.addEventListener("change", function () {
+        var reg = UF_PARA_REGIONAL[estadoAtuacaoEl.value];
+        if (reg) {
+          regionalHiddenEl.value = reg;
+          if (regionalSelectEl) regionalSelectEl.value = reg;
+        }
+      });
+    }
+
+    $("#crescimento-form").addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (!canDo("crescimento", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
+      var fd = new FormData(e.target);
+      var body = {};
+      var campos = ["empresaId", "mei", "responsavel", "tipoPessoa", "nome", "cargo", "rg", "cpf", "nomeDoPai", "nomeDaMae",
+        "dataNascimento", "dataAdmissao", "email", "telefone", "estadoAtuacao", "regional", "projeto", "operadora", "coordenador",
+        "endereco", "numero", "complemento", "numeroContatoEmergencia", "municipio", "bairro", "cep", "estado"];
+      campos.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      if (!isNew) body.status = (fd.get("status") || "").toString().trim();
+      var camposData = ["dataNascimento", "dataAdmissao"];
+      camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });
+
+      var req = isNew
+        ? apiFetch("/api/crescimento", { method: "POST", body: body })
+        : apiFetch("/api/crescimento/" + p.id, { method: "PATCH", body: body });
+
+      req.then(function (data) {
+        var rec = mapPessoaFromApi(data);
+        refreshState().then(function () {
+          closeDrawer();
+          render();
+          renderShellCounts();
+          toast(isNew ? "Solicitação de crescimento cadastrada." : "Cadastro atualizado.", "success");
+          // Se o status mudou pra fora de CRESCIMENTO (processo encerrado),
+          // a pessoa não está mais em STATE.crescimentoPessoas -- volta pra
+          // lista em vez de abrir um detalhe que não existe mais aqui.
+          navigate(rec.status === "CRESCIMENTO" ? "#/crescimento/" + rec.id : "#/crescimento");
+        });
       }).catch(handleApiError);
     });
     $("#drawer-close").addEventListener("click", closeDrawer);
@@ -9332,6 +9579,7 @@
       if (!countEl) return;
       if (key === "equipes") countEl.textContent = countTeamLideres(true);
       else if (key === "acesso") countEl.textContent = totalAcessoMembros();
+      else if (key === "crescimento") countEl.textContent = (STATE.crescimentoPessoas || []).length;
       else if (STATE[key]) countEl.textContent = STATE[key].length;
     });
   }
@@ -9360,7 +9608,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso", crescimento: "crescimento" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -9393,6 +9641,7 @@
       else renderAuditoriasPainel(main);
     }
     else if (route.view === "acesso") route.id ? renderAcessoEquipeDetail(main, route.id) : renderAcessoMembrosList(main);
+    else if (route.view === "crescimento") route.id ? renderCrescimentoDetail(main, route.id) : renderCrescimentoList(main);
     else route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     if (!route.id || route.id === "lista") closeDrawer();
   }

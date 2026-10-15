@@ -15,12 +15,23 @@ import { calcularDivergenciasAuditoria, carregarFichasPorNome } from "@/lib/epiC
 // sem erro. `treinamentos` já passou de 8000 linhas, então buscamos todas as
 // tabelas em páginas de 1000 e concatenamos, em vez de confiar num único
 // `select("*")`.
-async function fetchAllRows(admin: ReturnType<typeof supabaseAdmin>, table: string, columns = "*") {
+async function fetchAllRows(
+  admin: ReturnType<typeof supabaseAdmin>,
+  table: string,
+  columns = "*",
+  // Filtro de igualdade opcional (ex.: {column: "status", value: "CRESCIMENTO"})
+  // -- usado pra buscar só o subconjunto de `pessoas` em crescimento, pra
+  // quem tem permissão em "crescimento" mas não em "pessoas" (ver podeCrescimento
+  // abaixo).
+  eqFilter?: { column: string; value: any }
+) {
   const pageSize = 1000;
   let from = 0;
   const all: any[] = [];
   for (;;) {
-    const { data, error } = await admin.from(table).select(columns).order("id").range(from, from + pageSize - 1);
+    let query = admin.from(table).select(columns).order("id").range(from, from + pageSize - 1);
+    if (eqFilter) query = query.eq(eqFilter.column, eqFilter.value);
+    const { data, error } = await query;
     if (error) return { data: null as any[] | null, error };
     all.push(...(data || []));
     if (!data || data.length < pageSize) break;
@@ -73,6 +84,13 @@ export async function GET() {
   // — só busca do banco quando o usuário logado tem permissão "ver" nessa
   // página, mesmo padrão já usado acima para Auditorias.
   const podeAcesso = canView(gate.user, "acesso");
+  // Aba "Crescimento" (pedido do Diego, 15/10/2026): quem só tem essa
+  // permissão (sem "pessoas") precisa enxergar os cadastros em crescimento
+  // mesmo assim -- buscamos à parte, só o subconjunto com status
+  // CRESCIMENTO, igual ao padrão já usado acima pra "auditorias" com
+  // pessoas (id, nome, cargo, status). Quem já tem "pessoas" não precisa
+  // desta busca extra -- a lista cheia em `pessoas` já cobre.
+  const podeCrescimento = canView(gate.user, "crescimento");
 
   const vazio = () => Promise.resolve({ data: [] as any[], error: null as any });
 
@@ -87,7 +105,7 @@ export async function GET() {
   // isso quem tem só "auditorias" recebe um subconjunto seguro (id, nome,
   // cargo, status) em vez do registro completo -- e quem não tem nenhuma
   // das duas permissões continua recebendo vazio, como antes.
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros] = await Promise.all([
+  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros, crescimentoPessoasOnly] = await Promise.all([
     podePessoas
       ? fetchAllRows(admin, "pessoas")
       : podeAuditorias
@@ -124,9 +142,14 @@ export async function GET() {
     admin.from("configuracoes").select("chave, valor"),
     podeAcesso ? fetchAllRows(admin, "acesso_equipes") : vazio(),
     podeAcesso ? fetchAllRows(admin, "acesso_membros") : vazio(),
+    podePessoas
+      ? vazio() // já tem a lista completa em `pessoas` -- não precisa duplicar
+      : podeCrescimento
+      ? fetchAllRows(admin, "pessoas", "*", { column: "status", value: "CRESCIMENTO" })
+      : vazio(),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros })) {
+  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros, crescimentoPessoasOnly })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -220,8 +243,16 @@ export async function GET() {
   }
   const caDivergentePessoas = Array.from(caDivergentePessoasSet);
 
+  // Lista usada pela aba Crescimento: quem tem "pessoas" filtra a lista
+  // completa no cliente (mesmo status CRESCIMENTO já está em `pessoas`);
+  // quem só tem "crescimento" usa este subconjunto buscado à parte acima.
+  const crescimentoPessoas = podePessoas
+    ? (pessoas.data || []).filter((p: any) => p.status === "CRESCIMENTO")
+    : crescimentoPessoasOnly.data || [];
+
   return NextResponse.json({
     pessoas: pessoas.data,
+    crescimentoPessoas,
     empresas: empresas.data,
     treinamentos: treinamentos.data,
     equipes: equipesComMembros,

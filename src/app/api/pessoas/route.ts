@@ -18,6 +18,11 @@ const CAMPOS_PESSOA = [
   // Conta(s)/cliente(s) em que a pessoa está ativa (pedido do Diego,
   // 10/2026) -- array, pode ter mais de uma ao mesmo tempo.
   "contas",
+  // Campos usados pela aba "Crescimento" (pedido do Diego, 15/10/2026) --
+  // moram nesta mesma tabela `pessoas`, então também podem ser editados
+  // por quem tem permissão em "pessoas" (ver /api/crescimento pra quem só
+  // tem permissão em "crescimento").
+  "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
 ] as const;
 
 // Regional/coordenador são campos de preenchimento livre exibidos em várias
@@ -76,6 +81,10 @@ function pessoaFromBody(body: any): Record<string, any> {
     isignum_id: body?.isignumId,
     isdp_id: body?.isdpId,
     contas: Array.isArray(body?.contas) ? body.contas : [],
+    responsavel: body?.responsavel,
+    nome_do_pai: body?.nomeDoPai,
+    nome_da_mae: body?.nomeDaMae,
+    numero_contato_emergencia: body?.numeroContatoEmergencia,
   };
 }
 

@@ -10,10 +10,13 @@
 // "veiculos" adicionada a pedido do Diego (02/10/2026): a aba "Gestão de
 // Frotas" (contratos de locação de veículos, cadastro/edição/exclusão
 // manual) — mesmo padrão de "patrimonio".
-// "vo" adicionada a pedido do Diego (14/10/2026): a aba "Controle de VO"
-// (POs adicionais da Huawei, lidas do BigQuery — somente leitura). Só "ver"
-// tem efeito; quem vê, vê todas as VOs.
-export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "veiculos", "auditorias", "acesso", "vo"] as const;
+// "crescimento" adicionada a pedido do Diego (15/10/2026): a aba
+// "Crescimento" (cadastro de pessoas entrando no processo de crescimento da
+// empresa) — acesso restrito a quem o admin conceder, INDEPENDENTE de ter
+// permissão em "pessoas" (ver /api/crescimento). Quem só tem "crescimento"
+// consegue ver/criar/editar os cadastros em crescimento sem enxergar o
+// resto do cadastro de Pessoas.
+export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "veiculos", "auditorias", "acesso", "crescimento"] as const;
 export type Page = (typeof PAGES)[number];
 
 export const ACTIONS = ["ver", "criar", "editar", "excluir"] as const;
