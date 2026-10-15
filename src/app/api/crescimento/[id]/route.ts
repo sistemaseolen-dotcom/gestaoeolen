@@ -233,9 +233,8 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
 
   // Mesma regra de cascata de PATCH /api/pessoas/[id]: inativar desvincula
-  // de equipes e, se tiver empresa, inativa a empresa também (mesmo
-  // cuidado apontado lá: isso é um bug real pras empresas de verdade com
-  // vários funcionários -- ver comentário em pessoas/[id]/route.ts).
+  // de equipes, mas NÃO cascateia pra empresa/outras pessoas (corrigido em
+  // 16/10/2026 -- ver src/lib/statusCascade.ts).
   if (patch.status === "INATIVO" && before.status !== "INATIVO") {
     await inativarPessoaCascata(id, gate.user);
   }

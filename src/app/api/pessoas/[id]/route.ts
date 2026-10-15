@@ -288,16 +288,12 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     await propagarCamposEmpresa(admin, empresaCnpjFinal, id, empresaColunas, gate.user);
   }
 
-  // Inativar uma pessoa cascateia: desvincula ela de qualquer equipe e, se
-  // tiver empresa vinculada, inativa a empresa também (que por sua vez
-  // inativa as outras pessoas dessa empresa). Ver src/lib/statusCascade.ts.
-  // ATENÇÃO (achado nesta mesma mudança, 15/10/2026): essa regra foi
-  // pensada pro caso 1-pessoa-1-empresa (MEI) e hoje é um bug real pras
-  // empresas de verdade com vários funcionários (ex.: ALLIANCE SERVICES,
-  // 52 pessoas) -- inativar 1 pessoa cascateia a tabela `empresas` e
-  // INATIVA TODO MUNDO da mesma empresa. Fica assim por enquanto (Diego
-  // pediu pra não tocar na aba Empresas ainda), mas precisa ser corrigido
-  // antes ou junto da remoção da aba Empresas.
+  // Inativar uma pessoa cascateia: desvincula ela de qualquer equipe. Ver
+  // src/lib/statusCascade.ts. CORRIGIDO (16/10/2026, pedido do Diego,
+  // exemplo da RSI): isso NÃO cascateia mais pra empresa nem pras outras
+  // pessoas vinculadas ao mesmo CNPJ -- antes inativar 1 funcionário de
+  // uma empresa prestadora de serviço (ex.: RSI, Alliance) inativava todo
+  // mundo de lá junto, o que estava errado.
   if (patch.status === "INATIVO" && before.status !== "INATIVO") {
     await inativarPessoaCascata(id, gate.user);
   }

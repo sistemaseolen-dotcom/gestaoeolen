@@ -1,19 +1,26 @@
 // Regra de negócio pedida pelo Diego: inativar uma pessoa ou uma empresa não
 // pode deixar as outras telas "erradas" — precisa se propagar:
 //
-//   1. Pessoa inativada (status -> INATIVO) e vinculada a uma empresa
-//      (pessoas.empresa_id) -> a empresa também é inativada.
-//   2. Empresa inativada (status -> INATIVO) -> todas as pessoas vinculadas
+//   1. Empresa inativada (status -> INATIVO) -> todas as pessoas vinculadas
 //      a ela (pessoas.empresa_id = essa empresa) também são inativadas.
-//   3. Pessoa inativada -> é desvinculada de qualquer equipe onde apareça
+//      Isso é uma ação deliberada sobre a EMPRESA (ex.: parar de trabalhar
+//      com aquele prestador de serviço) — continua cascateando de
+//      propósito.
+//   2. Pessoa inativada -> é desvinculada de qualquer equipe onde apareça
 //      (como membro comum em equipe_membros, ou como team_lider_id de uma
 //      equipe) — uma pessoa inativa não deve continuar "presa" numa equipe.
 //
-// (1) e (2) se retroalimentam de propósito (inativar uma pessoa pode
-// inativar a empresa, que por sua vez inativa as outras pessoas dela, que
-// por sua vez são desvinculadas das próprias equipes) — os Sets `visitedPessoas`/
-// `visitedEmpresas` evitam reprocessar a mesma linha duas vezes e garantem
-// que a recursão sempre termina.
+// CORRIGIDO (16/10/2026, pedido do Diego, usando a RSI de exemplo): inativar
+// UMA pessoa NÃO inativa mais a empresa dela nem as outras pessoas vinculadas
+// ao mesmo CNPJ/empresa. Antes, `inativarPessoaCascata` chamava
+// `inativarEmpresaCascata` sempre que a pessoa tinha `empresa_id`, o que
+// fazia sentido só pro caso 1-pessoa-1-empresa (MEI), mas inativava TODO
+// MUNDO nas empresas prestadoras de serviço com vários funcionários (ex.:
+// RSI, ALLIANCE SERVICES com 52 pessoas) ao inativar só 1 delas. Diego:
+// "Se eu inativei apenas uma pessoa, não [posso inativar] as outras que
+// estão vinculadas àquela empresa." Agora o cascateamento só roda no
+// sentido empresa -> pessoas (ação explícita na aba Empresas), nunca no
+// sentido pessoa -> empresa -> outras pessoas.
 //
 // Só cobre as rotas manuais (/api/pessoas/[id], /api/empresas/[id]) — a
 // sincronização com o GPO (gpoSync.ts) já não grava audit_log de propósito
@@ -97,13 +104,16 @@ export async function desvincularPessoaDeEquipes(pessoaId: number, usuario: Usua
 
 // Inativa uma pessoa "em cascata": garante status=INATIVO (se ela já foi
 // marcada INATIVO pela própria rota que chamou esta função, não duplica o
-// update/auditoria), desvincula de qualquer equipe e propaga pra empresa
-// vinculada, se houver.
+// update/auditoria) e desvincula de qualquer equipe.
+//
+// NÃO propaga mais pra empresa (correção de 16/10/2026, ver comentário no
+// topo do arquivo) -- inativar 1 pessoa nunca inativa a empresa dela nem as
+// outras pessoas vinculadas ao mesmo CNPJ/empresa, mesmo em empresas
+// prestadoras de serviço com vários funcionários (RSI, Alliance, etc.).
 export async function inativarPessoaCascata(
   pessoaId: number,
   usuario: UsuarioRow | null,
-  visitedPessoas: Set<number> = new Set(),
-  visitedEmpresas: Set<number> = new Set()
+  visitedPessoas: Set<number> = new Set()
 ) {
   if (visitedPessoas.has(pessoaId)) return;
   visitedPessoas.add(pessoaId);
@@ -133,18 +143,16 @@ export async function inativarPessoaCascata(
   }
 
   await desvincularPessoaDeEquipes(pessoaId, usuario);
-
-  if (before.empresa_id) {
-    await inativarEmpresaCascata(before.empresa_id, usuario, visitedPessoas, visitedEmpresas);
-  }
 }
 
 // Inativa uma empresa "em cascata": garante status=INATIVO e inativa (em
-// cascata) todas as pessoas ainda não-inativas vinculadas a ela.
+// cascata) todas as pessoas ainda não-inativas vinculadas a ela. Essa
+// direção (empresa -> pessoas) continua existindo de propósito -- é uma
+// ação deliberada sobre a empresa (ex.: parar de trabalhar com aquele
+// prestador de serviço), diferente de inativar só 1 funcionário dela.
 export async function inativarEmpresaCascata(
   empresaId: number,
   usuario: UsuarioRow | null,
-  visitedPessoas: Set<number> = new Set(),
   visitedEmpresas: Set<number> = new Set()
 ) {
   if (visitedEmpresas.has(empresaId)) return;
@@ -182,6 +190,6 @@ export async function inativarEmpresaCascata(
 
   for (const p of pessoas || []) {
     if (p.status === "INATIVO") continue;
-    await inativarPessoaCascata(p.id, usuario, visitedPessoas, visitedEmpresas);
+    await inativarPessoaCascata(p.id, usuario);
   }
 }
