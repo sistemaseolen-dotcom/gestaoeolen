@@ -2293,17 +2293,17 @@
     });
     var rowsHtml = list.map(function (p) {
       var dias = diasEmCrescimento(p.criadoEm);
-      return '<tr data-pessoa="' + p.id + '"><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + '</td><td>' + esc(p.empresaNome || "—") + '</td><td class="num">' + (dias === null ? "—" : dias + (dias === 1 ? " dia" : " dias")) + "</td></tr>";
+      return '<tr data-pessoa="' + p.id + '"><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + '</td><td>' + esc(p.empresaNome || "—") + '</td><td>' + esc(p.solicitanteCrescimentoNome || "—") + '</td><td class="num">' + (dias === null ? "—" : dias + (dias === 1 ? " dia" : " dias")) + "</td></tr>";
     }).join("");
     openGenericTableDrawer({
       title: valor + " — Em crescimento",
       subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : ""),
-      theadHtml: "<th>Pessoa</th><th>Cargo</th><th>Empresa</th><th>Dias em crescimento</th>",
+      theadHtml: "<th>Pessoa</th><th>Cargo</th><th>Empresa</th><th>Solicitante</th><th>Dias em crescimento</th>",
       rowsHtml: rowsHtml,
-      exportHeaders: ["Pessoa", "Cargo", "Empresa", "Dias em crescimento"],
+      exportHeaders: ["Pessoa", "Cargo", "Empresa", "Solicitante", "Dias em crescimento"],
       exportRows: list.map(function (p) {
         var dias = diasEmCrescimento(p.criadoEm);
-        return [p.nome || "", p.cargo || "", p.empresaNome || "", dias === null ? "" : dias];
+        return [p.nome || "", p.cargo || "", p.empresaNome || "", p.solicitanteCrescimentoNome || "", dias === null ? "" : dias];
       }),
       onRowBind: function (root) {
         $all("[data-pessoa]", root).forEach(function (row) {
@@ -2329,6 +2329,9 @@
           '<td>' + esc(p.empresaNome || "—") + '</td>' +
           '<td>' + esc(p.projeto || "—") + '</td>' +
           '<td>' + esc(p.coordenador || "—") + '</td>' +
+          // Pedido do Diego (16/10/2026): precisa ficar evidente quem
+          // solicitou o crescimento, não só no detalhe de cada pessoa.
+          '<td>' + esc(p.solicitanteCrescimentoNome || "—") + '</td>' +
           '<td class="num">' + (dias === null ? "—" : dias + (dias === 1 ? " dia" : " dias")) + "</td>" +
           "</tr>";
       }).join("");
@@ -2341,7 +2344,7 @@
         "</div>" +
         tableShell({
           toolbar: "",
-          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Projeto</th><th>Coordenador</th><th>Dias em crescimento</th>",
+          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Projeto</th><th>Coordenador</th><th>Solicitante</th><th>Dias em crescimento</th>",
           bodyHtml: body,
           count: all.length,
           page: pg.page,
