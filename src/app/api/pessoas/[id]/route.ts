@@ -257,6 +257,16 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
 
+  // Pedido do Diego (16/10/2026): "Admissão" (data_admissao) só é
+  // preenchida automaticamente quando a pessoa passa pra ATIVO -- nunca
+  // manualmente durante o processo de Crescimento. Vale tanto editando
+  // aqui direto em Pessoas quanto encerrando o processo em Crescimento
+  // (PATCH /api/crescimento/[id] tem a mesma regra). Não sobrescreve se já
+  // tinha uma data.
+  if (patch.status === "ATIVO" && before.status !== "ATIVO" && !before.data_admissao && !patch.data_admissao) {
+    patch.data_admissao = new Date().toISOString().slice(0, 10);
+  }
+
   // atualizado_em é mantido por trigger no banco — não setamos aqui.
   const { data: after, error: updateError } = await admin
     .from("pessoas")

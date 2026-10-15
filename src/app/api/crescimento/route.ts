@@ -22,6 +22,8 @@ const CAMPOS_PESSOA_CRESCIMENTO = [
   "tipo_pessoa", "data_admissao", "cpf", "rg", "data_nascimento", "email", "telefone", "cep",
   "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei", "empresa_id",
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
+  // Quem solicitou (pedido do Diego, 16/10/2026) -- ver comentário no payload abaixo.
+  "solicitante_crescimento_nome",
   ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
 
@@ -114,7 +116,6 @@ const CAMPOS_OBRIGATORIOS: Array<{ key: string; msg: string }> = [
   { key: "nomeDoPai", msg: "Informe o nome do pai." },
   { key: "nomeDaMae", msg: "Informe o nome da mãe." },
   { key: "dataNascimento", msg: "Informe a data de nascimento." },
-  { key: "dataAdmissao", msg: "Informe a admissão." },
   { key: "email", msg: "Informe o e-mail." },
   { key: "telefone", msg: "Informe o telefone." },
   { key: "estadoAtuacao", msg: "Informe o estado de atuação." },
@@ -206,7 +207,13 @@ export async function POST(req: Request) {
     operadora: body.operadora,
     coordenador: upperOrSame(body.coordenador),
     tipo_pessoa: body.tipoPessoa,
-    data_admissao: body.dataAdmissao,
+    // Pedido do Diego (16/10/2026): "essa data de contratação... só vai ser
+    // preenchida quando passar essa pessoa para ativo" -- nunca no
+    // cadastro em Crescimento (removida do formulário e do CAMPOS_
+    // OBRIGATORIOS acima). Quem controla o preenchimento automático é o
+    // PATCH /api/crescimento/[id] (e /api/pessoas/[id]), no momento em que
+    // o status muda pra ATIVO.
+    data_admissao: null,
     rg: body.rg,
     data_nascimento: body.dataNascimento,
     email: body.email,
@@ -233,6 +240,10 @@ export async function POST(req: Request) {
     nome_do_pai: body.nomeDoPai,
     nome_da_mae: body.nomeDaMae,
     numero_contato_emergencia: body.numeroContatoEmergencia,
+    // Quem (usuário logado) está solicitando este crescimento -- pedido do
+    // Diego (16/10/2026), preenchido automaticamente, não vem do body.
+    solicitante_crescimento_id: gate.user?.id ?? null,
+    solicitante_crescimento_nome: gate.user?.nome ?? null,
   };
 
   const { data: pessoa, error } = await admin.from("pessoas").insert(payload).select().single();

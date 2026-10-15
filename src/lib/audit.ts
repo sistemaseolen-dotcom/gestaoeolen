@@ -31,6 +31,10 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     nome_do_pai: "Nome do pai",
     nome_da_mae: "Nome da mãe",
     numero_contato_emergencia: "Número de contato (emergência)",
+    // Quem (usuário do sistema) solicitou o pedido de Crescimento (pedido
+    // do Diego, 16/10/2026) -- preenchido automaticamente na criação, não é
+    // editável pelo formulário.
+    solicitante_crescimento_nome: "Solicitado por",
     // Dados de empresa embutidos em pessoas (pedido do Diego, 15/10/2026) --
     // ver src/lib/empresaEmbutida.ts.
     empresa_cnpj: "CNPJ da empresa",

@@ -206,6 +206,16 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
 
+  // Pedido do Diego (16/10/2026): "essa data de contratação... só vai ser
+  // preenchida quando passar essa pessoa para ativo" -- nunca manualmente
+  // durante o processo de Crescimento (por isso saiu do formulário de
+  // criação/edição). Preenche sozinha com a data de hoje no exato momento
+  // em que o status muda pra ATIVO, só se ainda não tiver uma data (não
+  // sobrescreve se alguém já corrigiu à mão).
+  if (patch.status === "ATIVO" && before.status !== "ATIVO" && !before.data_admissao && !patch.data_admissao) {
+    patch.data_admissao = new Date().toISOString().slice(0, 10);
+  }
+
   const { data: after, error: updateError } = await admin
     .from("pessoas")
     .update(patch)

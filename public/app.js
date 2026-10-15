@@ -922,7 +922,10 @@
       // na aba Crescimento) — a pessoa é criada no exato momento em que o
       // pedido de crescimento é registrado, então criadoEm == data do
       // pedido.
-      criadoEm: row.criado_em
+      criadoEm: row.criado_em,
+      // Qual usuário do sistema solicitou o pedido de Crescimento (pedido
+      // do Diego, 16/10/2026) -- preenchido automaticamente na criação.
+      solicitanteCrescimentoNome: row.solicitante_crescimento_nome
     };
   }
   // Clientes/contas que uma pessoa pode estar ativa (pedido do Diego,
@@ -2257,6 +2260,48 @@
     return -daysUntil(dataSoDia);
   }
 
+  // Pedido do Diego (16/10/2026): quantas pessoas em crescimento por
+  // Regional/Projeto, usado pelos painéis "Crescimento por regional/
+  // projeto" do Painel (renderTreinoOverview).
+  function crescimentoCountsPorCampo(campo) {
+    var counts = {};
+    (STATE.crescimentoPessoas || []).forEach(function (p) {
+      var v = (campo === "regional" ? p.regional : p.projeto) || "—";
+      counts[v] = (counts[v] || 0) + 1;
+    });
+    return counts;
+  }
+  // Drawer com a lista de pessoas em crescimento filtrada por Regional ou
+  // Projeto, aberta ao clicar numa barra do Painel -- mesma coluna "dias
+  // em crescimento" já usada na aba Crescimento (ver diasEmCrescimento).
+  function openCrescimentoAgrupadoDrawer(campo, valor) {
+    var list = (STATE.crescimentoPessoas || []).filter(function (p) {
+      return ((campo === "regional" ? p.regional : p.projeto) || "—") === valor;
+    }).slice().sort(function (a, b) {
+      return (diasEmCrescimento(b.criadoEm) || 0) - (diasEmCrescimento(a.criadoEm) || 0);
+    });
+    var rowsHtml = list.map(function (p) {
+      var dias = diasEmCrescimento(p.criadoEm);
+      return '<tr data-pessoa="' + p.id + '"><td class="row-primary">' + esc(p.nome) + '</td><td>' + esc(p.cargo || "—") + '</td><td>' + esc(p.empresaNome || "—") + '</td><td class="num">' + (dias === null ? "—" : dias + (dias === 1 ? " dia" : " dias")) + "</td></tr>";
+    }).join("");
+    openGenericTableDrawer({
+      title: valor + " — Em crescimento",
+      subtitle: list.length + " pessoa" + (list.length !== 1 ? "s" : ""),
+      theadHtml: "<th>Pessoa</th><th>Cargo</th><th>Empresa</th><th>Dias em crescimento</th>",
+      rowsHtml: rowsHtml,
+      exportHeaders: ["Pessoa", "Cargo", "Empresa", "Dias em crescimento"],
+      exportRows: list.map(function (p) {
+        var dias = diasEmCrescimento(p.criadoEm);
+        return [p.nome || "", p.cargo || "", p.empresaNome || "", dias === null ? "" : dias];
+      }),
+      onRowBind: function (root) {
+        $all("[data-pessoa]", root).forEach(function (row) {
+          row.addEventListener("click", function () { closeDrawer(); navigate("#/crescimento/" + row.getAttribute("data-pessoa")); });
+        });
+      }
+    });
+  }
+
   function renderCrescimentoList(main) {
     var ui = uiState.crescimento;
     var all = (STATE.crescimentoPessoas || []).slice().sort(function (a, b) {
@@ -2321,6 +2366,9 @@
       '<div class="panel"><div class="panel-head"><h3>Dados da empresa / contratação</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) +
       detailItem("Responsável", p.responsavel) + detailItem("Tipo de contrato", p.tipoPessoa) +
+      // Pedido do Diego (16/10/2026): quem (usuário do sistema) solicitou
+      // este crescimento -- preenchido automaticamente na criação.
+      detailItem("Solicitado por", p.solicitanteCrescimentoNome || "—") +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados do profissional</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Nome completo", p.nome) + detailItem("Função/Cargo", p.cargo) +
@@ -2378,7 +2426,14 @@
       cargoSelectField(p) +
       field("RG *", "rg", "text", p, { required: true }) + field("CPF *", "cpf", "text", p, { required: true }) +
       field("Nome do pai *", "nomeDoPai", "text", p, { required: true }) + field("Nome da mãe *", "nomeDaMae", "text", p, { required: true }) +
-      field("Data de nascimento *", "dataNascimento", "date", p, { required: true }) + field("Admissão *", "dataAdmissao", "date", p, { required: true }) +
+      field("Data de nascimento *", "dataNascimento", "date", p, { required: true }) +
+      // Pedido do Diego (16/10/2026): "essa data de contratação... só vai
+      // ser preenchida quando passar essa pessoa para ativo" -- não existe
+      // mais no cadastro novo de Crescimento. Na edição, fica visível e
+      // editável (pra corrigir à mão se precisar), mas preenche sozinha
+      // quando o Status muda pra Ativo (ver PATCH /api/crescimento/[id]).
+      (!isNew ? '<div class="field"><label>Admissão</label><input type="date" name="dataAdmissao" value="' + esc(p.dataAdmissao || "") + '">' +
+        '<div class="hint">Preenchida automaticamente quando o Status mudar para Ativo — deixe em branco até lá.</div></div>' : "") +
       field("E-mail *", "email", "email", p, { required: true }) + field("Telefone *", "telefone", "text", p, { required: true }) +
       "</div></div>" +
       '<div class="tab-pane" data-pane="atuacao"><div class="field-grid">' +
@@ -7756,6 +7811,14 @@
       ["Técnicos ativos", countPessoasAtivas("TÉCNICO"), "", ' data-headcount-cargo="TÉCNICO" data-headcount-title="Técnicos ativos"'],
       ["Pessoas em CLEAN UP", countPessoasAtivas("CLEAN UP"), "", ' data-headcount-cargo="CLEAN UP" data-headcount-title="Pessoas em CLEAN UP (ativas)"']
     ];
+    // Pedido do Diego (16/10/2026): indicador de "Pessoas em crescimento" no
+    // Painel -- só pra quem tem permissão em "crescimento" (mesma regra de
+    // STATE.crescimentoPessoas, ver GET /api/state). Clicar navega pra
+    // aba Crescimento, que já mostra a lista completa com "desde quando"
+    // cada uma está em processo (dias, calculados a partir de criadoEm).
+    if (canView("crescimento")) {
+      headcountKpis.push(["Pessoas em crescimento", (STATE.crescimentoPessoas || []).length, "", ' data-headcount-nav="crescimento"']);
+    }
     var headcountKpiHtml = headcountKpis.map(function (k) {
       return '<div class="kpi ' + k[2] + '" tabindex="0" style="cursor:pointer;"' + k[3] + '><span class="label">' + k[0] + '</span><span class="value tabular">' + k[1] + "</span></div>";
     }).join("");
@@ -7780,6 +7843,15 @@
       '<div id="gpo-pendencias-panel"></div>' +
       '<div class="panel"><div class="panel-head"><h3>Equipes por cliente</h3><span class="hint">clique para ver as equipes</span></div><div class="panel-body pad"><div class="client-cards">' + clientCardsHtml() + "</div></div></div>" +
       '<div class="kpi-row">' + headcountKpiHtml + "</div>" +
+      // Pedido do Diego (16/10/2026): quantas pessoas estão em crescimento
+      // por Regional e por Projeto, direto no Painel (não só dentro da
+      // aba Crescimento) -- mesma permissão do KPI acima.
+      (canView("crescimento")
+        ? '<div class="viz-grid">' +
+          '<div class="panel"><div class="panel-head"><h3>Crescimento por regional</h3><span class="hint">clique numa barra para ver as pessoas</span></div><div class="panel-body pad">' + simpleBarsHtml(crescimentoCountsPorCampo("regional"), "crescimentoRegional") + "</div></div>" +
+          '<div class="panel"><div class="panel-head"><h3>Crescimento por projeto</h3><span class="hint">clique numa barra para ver as pessoas</span></div><div class="panel-body pad">' + simpleBarsHtml(crescimentoCountsPorCampo("projeto"), "crescimentoProjeto") + "</div></div>" +
+          "</div>"
+        : "") +
       '<div class="kpi-row">' + kpiHtml + "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Distribuição por status</h3><span class="hint">clique para ver as pessoas</span></div><div class="panel-body pad">' + statusBarLgHtml(data.byStatus, data.total) + "</div></div>" +
       '<div class="viz-grid">' +
@@ -7820,6 +7892,8 @@
         }
         else if (kind === "pessoas") openPessoasRegionalDrawer(val, null, "Pessoas ativas");
         else if (kind === "tecnicos") openPessoasRegionalDrawer(val, "TÉCNICO", "Técnicos ativos");
+        else if (kind === "crescimentoRegional") openCrescimentoAgrupadoDrawer("regional", val);
+        else if (kind === "crescimentoProjeto") openCrescimentoAgrupadoDrawer("projeto", val);
       });
       el.addEventListener("keydown", function (ev) {
         if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); el.click(); }
