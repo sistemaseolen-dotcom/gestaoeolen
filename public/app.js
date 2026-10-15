@@ -1985,6 +1985,42 @@
       preencherMatriculaEsocialSePJ();
       tipoPessoaEl.addEventListener("change", preencherMatriculaEsocialSePJ);
     }
+    // Pedido do Diego (15/10/2026): regra de duplicidade -- não pode
+    // existir dois cadastros com o mesmo CPF nem dois com o mesmo nome. A
+    // regra que BLOQUEIA de verdade fica no servidor (POST /api/pessoas e
+    // PATCH /api/pessoas/[id] — ver pessoaDuplicidade.ts), inclusive se o
+    // usuário desligar o JS ou mandar a requisição na mão. Isto aqui é só
+    // o aviso ao vivo: assim que o usuário sai do campo CPF ou Nome (e o
+    // valor realmente mudou — comparado com o que estava lá quando o campo
+    // ganhou foco), consulta /api/pessoas/verificar-duplicidade e já avisa
+    // na hora, antes de tentar salvar.
+    (function () {
+      var cpfEl = $("#pessoa-form [name=cpf]");
+      var nomeEl = $("#pessoa-form [name=nome]");
+      if (!cpfEl && !nomeEl) return;
+      function verificarDuplicidade() {
+        var cpfVal = cpfEl ? cpfEl.value : "";
+        var nomeVal = nomeEl ? nomeEl.value : "";
+        if (!cpfVal.trim() && !nomeVal.trim()) return;
+        apiFetch("/api/pessoas/verificar-duplicidade", { method: "POST", body: { cpf: cpfVal, nome: nomeVal, excluirId: p ? p.id : null } })
+          .then(function (data) {
+            if (data.cpfDuplicado) toast("Já existe um cadastro com esse CPF: " + data.cpfDuplicado.nome + " (ID " + data.cpfDuplicado.id + ").", "error");
+            if (data.nomeDuplicado) toast("Já existe uma pessoa cadastrada com esse nome: " + data.nomeDuplicado.nome + " (ID " + data.nomeDuplicado.id + ").", "error");
+          })
+          .catch(function () { /* falha na checagem ao vivo não deve travar o preenchimento -- o servidor valida de novo no salvar */ });
+      }
+      function bindBlurSeMudou(el) {
+        if (!el) return;
+        var valorAoFocar = el.value;
+        el.addEventListener("focus", function () { valorAoFocar = el.value; });
+        el.addEventListener("blur", function () {
+          if (el.value === valorAoFocar) return; // não mudou -- nada a verificar (evita falso alarme ao reabrir um cadastro que já é duplicado antigo)
+          verificarDuplicidade();
+        });
+      }
+      bindBlurSeMudou(cpfEl);
+      bindBlurSeMudou(nomeEl);
+    })();
     $("#pessoa-form").addEventListener("submit", function (e) {
       e.preventDefault();
       if (!canDo("pessoas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }

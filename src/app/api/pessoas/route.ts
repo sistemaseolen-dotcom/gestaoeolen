@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
+import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
 
 const CAMPOS_PESSOA = [
   "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
@@ -151,6 +152,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Informe o status da pessoa." }, { status: 400 });
   }
 
+  const admin = supabaseAdmin();
+
+  // Pedido do Diego (15/10/2026): não pode existir dois cadastros com o
+  // mesmo CPF nem dois com o mesmo nome — regra que efetivamente bloqueia
+  // o cadastro (a checagem ao vivo em POST /api/pessoas/verificar-
+  // duplicidade só avisa cedo, mas é esta aqui que vale de verdade).
+  const duplicidade = await encontrarDuplicidadePessoa(admin, { cpf, nome });
+  if (duplicidade.cpfDuplicado) {
+    return NextResponse.json(
+      { error: `Já existe um cadastro com esse CPF: ${duplicidade.cpfDuplicado.nome} (ID ${duplicidade.cpfDuplicado.id}).` },
+      { status: 409 }
+    );
+  }
+  if (duplicidade.nomeDuplicado) {
+    return NextResponse.json(
+      { error: `Já existe uma pessoa cadastrada com esse nome: ${duplicidade.nomeDuplicado.nome} (ID ${duplicidade.nomeDuplicado.id}).` },
+      { status: 409 }
+    );
+  }
+
   const empresaIdRaw = body?.empresaId;
   const empresaId = empresaIdRaw === null || empresaIdRaw === undefined || empresaIdRaw === "" ? null : Number(empresaIdRaw);
   const { empresa_id, empresa_nome } = await resolveEmpresaNome(empresaId);
@@ -164,7 +185,6 @@ export async function POST(req: Request) {
     empresa_nome,
   };
 
-  const admin = supabaseAdmin();
   const { data: pessoa, error } = await admin.from("pessoas").insert(payload).select().single();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

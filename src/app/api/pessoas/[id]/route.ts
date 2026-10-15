@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
+import { encontrarDuplicidadePessoa, normalizarNomePessoa, soDigitosCpf } from "@/lib/pessoaDuplicidade";
 
 const CAMPOS_PESSOA = [
   "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
@@ -141,6 +142,31 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
         return NextResponse.json({ error: `O campo obrigatório "${campo}" não pode ficar em branco.` }, { status: 400 });
       }
       patch[campo] = campo === "nome" ? valor.toUpperCase() : valor;
+    }
+  }
+
+  // Pedido do Diego (15/10/2026): não pode existir dois cadastros com o
+  // mesmo CPF nem dois com o mesmo nome. Só valida quando o CPF ou o nome
+  // estão REALMENTE mudando (comparado ao valor já salvo) -- sem isso,
+  // editar qualquer outro campo (telefone, cargo etc.) de um dos ~10 pares
+  // de cadastros duplicados que já existiam no banco antes desta regra
+  // ficaria bloqueado sem motivo, mesmo sem mexer no CPF/nome.
+  if (Object.prototype.hasOwnProperty.call(patch, "cpf") && soDigitosCpf(patch.cpf) !== soDigitosCpf(before.cpf)) {
+    const duplicidade = await encontrarDuplicidadePessoa(admin, { cpf: patch.cpf, excluirId: id });
+    if (duplicidade.cpfDuplicado) {
+      return NextResponse.json(
+        { error: `Já existe um cadastro com esse CPF: ${duplicidade.cpfDuplicado.nome} (ID ${duplicidade.cpfDuplicado.id}).` },
+        { status: 409 }
+      );
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, "nome") && normalizarNomePessoa(patch.nome) !== normalizarNomePessoa(before.nome)) {
+    const duplicidade = await encontrarDuplicidadePessoa(admin, { nome: patch.nome, excluirId: id });
+    if (duplicidade.nomeDuplicado) {
+      return NextResponse.json(
+        { error: `Já existe uma pessoa cadastrada com esse nome: ${duplicidade.nomeDuplicado.nome} (ID ${duplicidade.nomeDuplicado.id}).` },
+        { status: 409 }
+      );
     }
   }
 
