@@ -163,6 +163,12 @@
 
   /* ---------------- State ---------------- */
   var STATE = null;
+  // Pedido do Diego (15/10/2026): trava de "clique duplo" nos formulários —
+  // ver o listener global de "submit" e o patch em apiFetch mais abaixo.
+  // Guarda, só entre o momento em que o form dispara o evento "submit" e o
+  // momento em que o apiFetch correspondente é chamado (sempre síncrono,
+  // dentro do mesmo handler), qual <form> está em processo de envio.
+  var FORM_SUBMIT_EM_ANDAMENTO = null;
   var uiState = {
     // cargoFiltro "OPERACIONAIS" é o padrão pedido pelo Diego (10/2026): a
     // tela de Pessoas abre mostrando só os cargos operacionais de campo
@@ -799,6 +805,20 @@
      .catch (ver handleApiError). */
   function apiFetch(url, opts) {
     opts = opts || {};
+    // Pedido do Diego (15/10/2026): clicar em "Salvar" várias vezes seguidas
+    // (enquanto a chamada anterior ainda está em andamento) disparava um
+    // POST/PATCH novo a cada clique — em telas com checagem de duplicidade
+    // feita no servidor por requisição isolada (ex.: Pessoas), dois cliques
+    // quase simultâneos passavam os dois pela checagem antes de qualquer um
+    // terminar de gravar, criando cadastro duplicado mesmo com a regra
+    // ativa. A primeira chamada de apiFetch feita de dentro de um handler de
+    // "submit" (ver listener global mais abaixo) "reivindica" o form que
+    // disparou o evento -- se a chamada falhar (ex.: erro de validação),
+    // reabilita o botão na hora pra pessoa corrigir e tentar de novo; se der
+    // certo, deixa travado (a tela normalmente fecha o drawer/modal em
+    // seguida de qualquer forma).
+    var formParaLiberar = FORM_SUBMIT_EM_ANDAMENTO;
+    FORM_SUBMIT_EM_ANDAMENTO = null;
     var fetchOpts = { method: opts.method || "GET", credentials: "same-origin" };
     if (opts.body !== undefined) {
       if (opts.isFormData) {
@@ -808,7 +828,7 @@
         fetchOpts.body = JSON.stringify(opts.body);
       }
     }
-    return fetch(url, fetchOpts).then(function (res) {
+    var promessa = fetch(url, fetchOpts).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         if (res.status === 401 && !opts.silentAuth) {
           CURRENT_USER = null;
@@ -824,6 +844,13 @@
         return data;
       });
     });
+    if (formParaLiberar) {
+      promessa = promessa.catch(function (err) {
+        liberarTravaDeSubmit(formParaLiberar);
+        throw err;
+      });
+    }
+    return promessa;
   }
   function handleApiError(err) {
     if (err && err.status === 401) return; // já tratado (toast + logout) dentro de apiFetch
@@ -9094,6 +9121,63 @@
       try { el.setSelectionRange(start, end); } catch (err) { /* alguns tipos de input não suportam — ignora */ }
     }
   });
+  // Pedido do Diego (15/10/2026): trava genérica de "clique duplo" em TODOS
+  // os formulários do sistema (pessoa, empresa, auditoria, treinamento,
+  // etc.) — não só Pessoas, onde o problema foi relatado primeiro, já que o
+  // mesmo bug existe em qualquer form daqui que não desabilitava o botão de
+  // "Salvar" enquanto a requisição anterior ainda estava em andamento.
+  //
+  // Funciona em dois pedaços que se completam:
+  //  1. Este listener, em fase de CAPTURA no document (roda ANTES do
+  //     listener de "submit" do próprio formulário): se o form já está
+  //     marcado como "enviando", engole o evento (preventDefault +
+  //     stopImmediatePropagation) -- o clique extra nem chega a rodar o
+  //     handler de verdade. Senão, marca o form como "enviando", desabilita
+  //     o(s) botão(ões) de salvar (inclusive um `<button form="id">` fora
+  //     do <form>, padrão usado nos drawers) e guarda uma referência em
+  //     FORM_SUBMIT_EM_ANDAMENTO.
+  //  2. O patch em apiFetch (ver acima) "reivindica" essa referência assim
+  //     que a PRIMEIRA chamada de rede do handler começa -- se ela falhar
+  //     (erro de validação, duplicidade etc.), libera na hora pra pessoa
+  //     corrigir e tentar de novo. Se ela der certo, não libera explicita-
+  //     mente: a tela normalmente fecha o drawer/modal (removendo o form da
+  //     tela) logo em seguida de qualquer jeito.
+  // Um temporizador de segurança (30s) sempre libera no fim das contas,
+  // mesmo se algum handler nunca chamar apiFetch nem fechar a tela --
+  // nenhum formulário fica travado pra sempre.
+  function botoesSubmitDoForm(form) {
+    var botoes = $all('button[type="submit"]', form);
+    if (form.id) botoes = botoes.concat($all('button[type="submit"][form="' + form.id + '"]'));
+    return botoes;
+  }
+  function liberarTravaDeSubmit(form) {
+    if (!form) return;
+    form.dataset.travaSubmit = "0";
+    if (form._travaSubmitTimeout) { clearTimeout(form._travaSubmitTimeout); form._travaSubmitTimeout = null; }
+    botoesSubmitDoForm(form).forEach(function (b) { b.disabled = false; });
+  }
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (!form || form.tagName !== "FORM") return;
+    if (form.dataset.travaSubmit === "1") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      return;
+    }
+    form.dataset.travaSubmit = "1";
+    botoesSubmitDoForm(form).forEach(function (b) { b.disabled = true; });
+    FORM_SUBMIT_EM_ANDAMENTO = form;
+    form._travaSubmitTimeout = setTimeout(function () { liberarTravaDeSubmit(form); }, 30000);
+    // Se o handler de verdade do form retornar sem nunca chamar apiFetch
+    // (ex.: "Você não tem permissão para isso.", "Informe o nome da
+    // pessoa." — validações que abortam antes de qualquer requisição),
+    // ninguém reivindica FORM_SUBMIT_EM_ANDAMENTO -- libera na hora em vez
+    // de esperar os 30s do temporizador de segurança. Roda depois do
+    // handler de verdade (fase de bolha, registrado só agora, depois dele).
+    form.addEventListener("submit", function () {
+      if (FORM_SUBMIT_EM_ANDAMENTO === form) liberarTravaDeSubmit(form);
+    }, { once: true });
+  }, true);
   document.addEventListener("click", function (e) {
     if (e.target.id === "drawer-overlay") closeDrawer();
     if (e.target.id === "modal-overlay") closeModal();
