@@ -1761,7 +1761,11 @@
       // empresa vinculada (CNPJ preenchido); CLT direto não tem nada aqui.
       (p.empresaCnpj
         ? '<div class="panel"><div class="panel-head"><h3>Empresa</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-          detailItem("Empresa", p.empresaFantasia || p.empresaRazaoSocial || p.empresaNome || "—", "empresa_fantasia") +
+          // Pedido do Diego (16/10/2026): mostrar Razão social e Nome
+          // fantasia sempre os dois, lado a lado -- antes aparecia só um
+          // nome combinado (fantasia, com fallback pra razão social).
+          detailItem("Razão social", p.empresaRazaoSocial || p.empresaNome || "—", "empresa_razao_social") +
+          detailItem("Nome fantasia", p.empresaFantasia || "—", "empresa_fantasia") +
           detailItem("CNPJ", p.empresaCnpj, "empresa_cnpj") +
           detailItem("Situação cadastral", p.empresaSituacaoCadastral, "empresa_situacao_cadastral") +
           detailItem("Porte", p.empresaPorte, "empresa_porte") +
