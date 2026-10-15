@@ -2244,7 +2244,7 @@
       '<div class="kpi neutral"><span class="label">Em crescimento há</span><span class="value tabular">' + (dias === null ? "—" : dias) + '</span><span class="hint">' + (dias === 1 ? "dia" : "dias") + " desde o pedido, em " + fmtDateBR((p.criadoEm || "").slice(0, 10)) + "</span></div>" +
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados da empresa / contratação</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) + detailItem("CNPJ/MEI", p.mei) +
+      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) +
       detailItem("Responsável", p.responsavel) + detailItem("Tipo de contratação", p.tipoPessoa) +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados do profissional</h3></div><div class="panel-body pad"><div class="detail-grid">' +
@@ -2275,11 +2275,6 @@
   // desta seção).
   function openCrescimentoForm(p) {
     var isNew = !p;
-    var empresasOpts = (STATE.empresas || []).slice().sort(function (a, b) { return empresaTitle(a).localeCompare(empresaTitle(b)); })
-      .map(function (e) {
-        var selected = p ? p.empresaId === e.id : false;
-        return '<option value="' + e.id + '"' + (selected ? " selected" : "") + '>' + esc(empresaTitle(e)) + "</option>";
-      }).join("");
 
     var html =
       '<div class="drawer-head"><div><h2>' + (isNew ? "Nova solicitação de crescimento" : "Editar solicitação de crescimento") + '</h2><div class="sub">' + (isNew ? "Cria um novo cadastro em Pessoas, com status Crescimento" : "Cadastro em Pessoas") + '</div></div>' +
@@ -2292,8 +2287,13 @@
       '<button type="button" class="section-tab" data-tab="endereco">4. Endereço</button>' +
       "</div>" +
       '<div class="tab-pane active" data-pane="empresa"><div class="field-grid">' +
-      '<div class="field"><label>Empresa *</label><select name="empresaId" required><option value="">— Selecione —</option>' + empresasOpts + "</select></div>" +
-      field("CNPJ/MEI *", "mei", "text", p, { required: true }) +
+      '<div class="field"><label>CNPJ da empresa' + (isNew ? " *" : "") + '</label><div style="display:flex;gap:6px;">' +
+      '<input type="text" name="empresaCnpj"' + (isNew ? " required" : "") + ' placeholder="00.000.000/0000-00">' +
+      '<button type="button" class="btn ghost sm" id="btn-crescimento-cnpj-lookup" style="white-space:nowrap;">Buscar CNPJ</button>' +
+      "</div>" +
+      (!isNew ? '<div class="hint">Empresa atual: ' + esc(p.empresaNome || "—") + " — deixe em branco para manter, ou digite um novo CNPJ para trocar.</div>" : "") +
+      "</div>" +
+      '<div class="field"><label>Empresa</label><input type="text" name="empresaNomeDisplay" value="' + esc(p ? (p.empresaNome || "") : "") + '" readonly placeholder="Preenchido automaticamente ao buscar o CNPJ"></div>' +
       field("Responsável *", "responsavel", "text", p, { required: true }) +
       selectField("Tipo de contratação *", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { required: true, allowEmpty: true }) +
       (!isNew ? selectField("Status *", "status", listaOptions("statusPessoa"), p.status, { required: true, hint: "Mude para Ativo/Inativo/Bloqueado pra encerrar o processo de crescimento." }) : "") +
@@ -2324,6 +2324,7 @@
 
     openDrawer(html, { wide: true });
     setupTabs();
+    bindCrescimentoCnpjLookup($("#crescimento-form"));
     bindCepLookup($("#crescimento-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
 
     // Mesma regra da ficha de Pessoas: Regional é preenchida sozinha a
@@ -2347,10 +2348,18 @@
       if (!canDo("crescimento", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
       var fd = new FormData(e.target);
       var body = {};
-      var campos = ["empresaId", "mei", "responsavel", "tipoPessoa", "nome", "cargo", "rg", "cpf", "nomeDoPai", "nomeDaMae",
+      var campos = ["responsavel", "tipoPessoa", "nome", "cargo", "rg", "cpf", "nomeDoPai", "nomeDaMae",
         "dataNascimento", "dataAdmissao", "email", "telefone", "estadoAtuacao", "regional", "projeto", "operadora", "coordenador",
         "endereco", "numero", "complemento", "numeroContatoEmergencia", "municipio", "bairro", "cep", "estado"];
       campos.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
+      // CNPJ da empresa: busca/cria a empresa no servidor (ver POST/PATCH
+      // /api/crescimento). Em branco na edição = manter a empresa atual.
+      var empresaCnpjDigits = (fd.get("empresaCnpj") || "").toString().replace(/\D/g, "");
+      if (isNew && empresaCnpjDigits.length !== 14) {
+        toast("Informe um CNPJ válido para a empresa (14 dígitos).", "error");
+        return;
+      }
+      if (empresaCnpjDigits) body.empresaCnpj = empresaCnpjDigits;
       if (!isNew) body.status = (fd.get("status") || "").toString().trim();
       var camposData = ["dataNascimento", "dataAdmissao"];
       camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });
@@ -6853,6 +6862,59 @@
     cepInput.addEventListener("input", tentarBuscar);
     cepInput.addEventListener("blur", tentarBuscar);
   }
+
+  // Busca de CNPJ pra aba "Crescimento" (pedido do Diego, 15/10/2026): mesmo
+  // padrão de bindCnpjLookup, mas chama /api/crescimento/cnpj-lookup (gateada
+  // por "crescimento", não por "empresas" -- um usuário só-crescimento
+  // precisa conseguir buscar também) e só preenche o nome de exibição da
+  // empresa, nunca os campos de endereço/contato da PESSOA -- a empresa
+  // encontrada ou criada é resolvida de novo no servidor ao salvar (ver
+  // POST/PATCH /api/crescimento).
+  function bindCrescimentoCnpjLookup(form) {
+    var btn = $("#btn-crescimento-cnpj-lookup", form);
+    var cnpjInput = form.querySelector('[name="empresaCnpj"]');
+    var nomeDisplay = form.querySelector('[name="empresaNomeDisplay"]');
+    if (!cnpjInput) return;
+    var lastBuscado = "";
+    function buscar(digits, opts) {
+      opts = opts || {};
+      if (digits.length !== 14) {
+        if (!opts.silent) toast("Informe um CNPJ com 14 dígitos.", "error");
+        return;
+      }
+      if (digits === lastBuscado) return;
+      lastBuscado = digits;
+      var originalLabel = btn ? btn.textContent : null;
+      if (btn) { btn.disabled = true; btn.textContent = "Buscando…"; }
+      apiFetch("/api/crescimento/cnpj-lookup", { method: "POST", body: { cnpj: digits } })
+        .then(function (data) {
+          var r = data.empresa || {};
+          if (nomeDisplay) nomeDisplay.value = r.fantasia || r.nome || "";
+          toast("Empresa localizada: " + (r.fantasia || r.nome || "—") + ". Confira antes de salvar.", "success");
+        })
+        .catch(function (err) {
+          lastBuscado = ""; // permite tentar de novo depois de um erro
+          if (nomeDisplay) nomeDisplay.value = "";
+          if (!opts.silent) handleApiError(err);
+        })
+        .then(function () {
+          if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+        });
+    }
+    if (btn) {
+      btn.addEventListener("click", function () {
+        lastBuscado = ""; // botão manual sempre força uma busca nova, mesmo repetindo o CNPJ
+        buscar((cnpjInput.value || "").replace(/\D/g, ""));
+      });
+    }
+    function autoTentar() {
+      var digits = (cnpjInput.value || "").replace(/\D/g, "");
+      if (digits.length === 14) buscar(digits, { silent: true });
+    }
+    cnpjInput.addEventListener("input", autoTentar);
+    cnpjInput.addEventListener("blur", autoTentar);
+  }
+
   function openEmpresaForm(e) {
     var isNew = !e;
     var html =

@@ -3,6 +3,7 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
+import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
 
 // Aba "Crescimento" (pedido do Diego, 15/10/2026): cadastro de pessoas
 // entrando no processo de crescimento da empresa. Acesso restrito a quem o
@@ -51,24 +52,57 @@ function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?
   return e?.fantasia || e?.nome || (e?.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
 }
 
-async function resolveEmpresaNome(empresaId: number | null): Promise<{ empresa_id: number | null; empresa_nome: string | null }> {
-  if (empresaId === null || empresaId === undefined || Number.isNaN(empresaId)) {
-    return { empresa_id: null, empresa_nome: null };
-  }
-  const { data } = await supabaseAdmin()
+// Acha a empresa pelo CNPJ (já cadastrada em "Empresas") ou cria uma nova,
+// buscando os dados reais na Receita -- pedido do Diego (15/10/2026): "ao
+// digitar o CNPJ ja deve buscar todas as informações pertinentes daquela
+// empresa e não buscar da lista existente, pois como é crescimento, se
+// refere a uma pessoa nova" (ou seja, a empresa pode ser nova também, não
+// só a pessoa). Reaproveitada por POST aqui e por PATCH em [id]/route.ts
+// (duplicada lá de propósito, mesmo padrão já usado neste projeto).
+async function resolveOrCreateEmpresaPorCnpj(
+  admin: ReturnType<typeof supabaseAdmin>,
+  cnpjDigits: string
+): Promise<{ empresa_id: number; empresa_nome: string }> {
+  const { data: existente } = await admin
     .from("empresas")
-    .select("nome, fantasia, cnpj")
-    .eq("id", empresaId)
+    .select("id, nome, fantasia, cnpj")
+    .eq("cnpj", cnpjDigits)
     .maybeSingle();
-  if (!data) return { empresa_id: null, empresa_nome: null };
-  return { empresa_id: empresaId, empresa_nome: empresaTitle(data) };
+  if (existente) {
+    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
+  }
+
+  const dados = await buscarCnpj(cnpjDigits);
+  const { data: nova, error } = await admin
+    .from("empresas")
+    .insert({
+      nome: dados.nome || `CNPJ ${cnpjDigits}`,
+      fantasia: dados.fantasia || null,
+      cnpj: cnpjDigits,
+      porte: dados.porte || null,
+      cidade: dados.cidade || null,
+      uf: dados.uf || null,
+      cep: dados.cep || null,
+      bairro: dados.bairro || null,
+      logradouro: dados.logradouro || null,
+      numero: dados.numero || null,
+      telefone: dados.telefone || null,
+      email: dados.email || null,
+      cnae_principal: dados.cnaePrincipal || null,
+      cnae_descricao: dados.cnaeDescricao || null,
+      situacao_cadastral: dados.situacaoCadastral || null,
+      status: "ATIVO",
+    })
+    .select("id, nome, fantasia, cnpj")
+    .single();
+  if (error) throw error;
+  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
 }
 
 // Campos obrigatórios do print que o Diego mandou (seção 1 a 4), com a
 // mensagem exibida pro usuário se ficar em branco.
 const CAMPOS_OBRIGATORIOS: Array<{ key: string; msg: string }> = [
-  { key: "empresaId", msg: "Selecione a empresa." },
-  { key: "mei", msg: "Informe o CNPJ/MEI." },
+  { key: "empresaCnpj", msg: "Informe o CNPJ da empresa." },
   { key: "responsavel", msg: "Informe o responsável." },
   { key: "tipoPessoa", msg: "Selecione o tipo de contratação." },
   { key: "nome", msg: "Informe o nome completo." },
@@ -113,6 +147,11 @@ export async function POST(req: Request) {
     }
   }
 
+  const empresaCnpjDigits = onlyDigitsCnpj(body.empresaCnpj || "");
+  if (empresaCnpjDigits.length !== 14) {
+    return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
+  }
+
   const nome = (body.nome || "").toString().trim().toUpperCase();
   const cpf = (body.cpf || "").toString().trim();
 
@@ -134,8 +173,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const empresaId = Number(body.empresaId);
-  const { empresa_id, empresa_nome } = await resolveEmpresaNome(empresaId);
+  let empresaResolved: { empresa_id: number; empresa_nome: string };
+  try {
+    empresaResolved = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
+  } catch (err: any) {
+    if (err instanceof CnpjLookupError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    return NextResponse.json(
+      { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
+      { status: 500 }
+    );
+  }
+  const { empresa_id, empresa_nome } = empresaResolved;
 
   const payload = {
     nome,
@@ -160,7 +210,14 @@ export async function POST(req: Request) {
     bairro: body.bairro,
     municipio: body.municipio,
     estado: body.estado,
-    mei: body.mei,
+    // CNPJ/MEI deste formulário é da EMPRESA (resolvido acima por
+    // resolveOrCreateEmpresaPorCnpj), não é mais o MEI pessoal do
+    // profissional -- esse campo some deste formulário (pedido do Diego,
+    // 15/10/2026). Fica com a mesma regra automática usada em /api/pessoas
+    // (ajustarMeiConformeTipo no client): "N/A" quando não é PJ; quando é
+    // PJ, fica em branco pra ser preenchido depois, editando a pessoa em
+    // "Pessoas".
+    mei: /^PJ/i.test((body.tipoPessoa || "").toString().trim()) ? null : "N/A",
     empresa_id,
     empresa_nome,
     responsavel: body.responsavel,

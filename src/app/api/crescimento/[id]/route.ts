@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
 import { encontrarDuplicidadePessoa, normalizarNomePessoa, soDigitosCpf } from "@/lib/pessoaDuplicidade";
+import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
 
 // Edição de um cadastro em Crescimento -- gateado por "crescimento":"editar",
 // INDEPENDENTE de "pessoas" (ver POST /api/crescimento pro resto do
@@ -30,17 +31,48 @@ function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?
   return e?.fantasia || e?.nome || (e?.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
 }
 
-async function resolveEmpresaNome(empresaId: number | null): Promise<{ empresa_id: number | null; empresa_nome: string | null }> {
-  if (empresaId === null || empresaId === undefined || Number.isNaN(empresaId)) {
-    return { empresa_id: null, empresa_nome: null };
-  }
-  const { data } = await supabaseAdmin()
+// Mesma lógica de POST /api/crescimento (duplicada de propósito, ver
+// comentário lá): acha a empresa pelo CNPJ ou cria uma nova buscando na
+// Receita. Usada aqui só quando o body trouxer um `empresaCnpj` novo --
+// CNPJ em branco na edição significa "manter a empresa atual".
+async function resolveOrCreateEmpresaPorCnpj(
+  admin: ReturnType<typeof supabaseAdmin>,
+  cnpjDigits: string
+): Promise<{ empresa_id: number; empresa_nome: string }> {
+  const { data: existente } = await admin
     .from("empresas")
-    .select("nome, fantasia, cnpj")
-    .eq("id", empresaId)
+    .select("id, nome, fantasia, cnpj")
+    .eq("cnpj", cnpjDigits)
     .maybeSingle();
-  if (!data) return { empresa_id: null, empresa_nome: null };
-  return { empresa_id: empresaId, empresa_nome: empresaTitle(data) };
+  if (existente) {
+    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
+  }
+
+  const dados = await buscarCnpj(cnpjDigits);
+  const { data: nova, error } = await admin
+    .from("empresas")
+    .insert({
+      nome: dados.nome || `CNPJ ${cnpjDigits}`,
+      fantasia: dados.fantasia || null,
+      cnpj: cnpjDigits,
+      porte: dados.porte || null,
+      cidade: dados.cidade || null,
+      uf: dados.uf || null,
+      cep: dados.cep || null,
+      bairro: dados.bairro || null,
+      logradouro: dados.logradouro || null,
+      numero: dados.numero || null,
+      telefone: dados.telefone || null,
+      email: dados.email || null,
+      cnae_principal: dados.cnaePrincipal || null,
+      cnae_descricao: dados.cnaeDescricao || null,
+      situacao_cadastral: dados.situacaoCadastral || null,
+      status: "ATIVO",
+    })
+    .select("id, nome, fantasia, cnpj")
+    .single();
+  if (error) throw error;
+  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
 }
 
 function pessoaPatchFromBody(body: any): Record<string, any> {
@@ -67,7 +99,6 @@ function pessoaPatchFromBody(body: any): Record<string, any> {
     bairro: "bairro",
     municipio: "municipio",
     estado: "estado",
-    mei: "mei",
     responsavel: "responsavel",
     nomeDoPai: "nome_do_pai",
     nomeDaMae: "nome_da_mae",
@@ -140,12 +171,29 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(body || {}, "empresaId")) {
-    const empresaIdRaw = body.empresaId;
-    const empresaId = empresaIdRaw === null || empresaIdRaw === undefined || empresaIdRaw === "" ? null : Number(empresaIdRaw);
-    const { empresa_id, empresa_nome } = await resolveEmpresaNome(empresaId);
-    patch.empresa_id = empresa_id;
-    patch.empresa_nome = empresa_nome;
+  // `empresaCnpj` só vem no body quando o usuário digitou um CNPJ novo no
+  // formulário -- em branco (ou ausente) significa "manter a empresa
+  // atual" (pedido do Diego, 15/10/2026).
+  if (Object.prototype.hasOwnProperty.call(body || {}, "empresaCnpj")) {
+    const empresaCnpjDigits = onlyDigitsCnpj(body.empresaCnpj || "");
+    if (empresaCnpjDigits) {
+      if (empresaCnpjDigits.length !== 14) {
+        return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
+      }
+      try {
+        const { empresa_id, empresa_nome } = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
+        patch.empresa_id = empresa_id;
+        patch.empresa_nome = empresa_nome;
+      } catch (err: any) {
+        if (err instanceof CnpjLookupError) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        return NextResponse.json(
+          { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
+          { status: 500 }
+        );
+      }
+    }
   }
 
   const { data: after, error: updateError } = await admin
