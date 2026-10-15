@@ -1161,7 +1161,18 @@
         // é checado uma vez por linha em listas com centenas de pessoas.
         caDivergentePessoas: new Set(data.caDivergentePessoas || []),
         listas: data.listas || {},
-        config: data.configuracoes || {}
+        config: data.configuracoes || {},
+        // BUG encontrado e corrigido (16/10/2026, relatado pelo Diego com o
+        // caso do Robson de Camargo): GET /api/state já devolve
+        // `crescimentoPessoas` (ver src/app/api/state/route.ts) desde que a
+        // aba Crescimento foi criada, mas esta função nunca extraía esse
+        // campo da resposta pro objeto de STATE -- por isso
+        // STATE.crescimentoPessoas ficava sempre undefined (`[]` só pelo
+        // `|| []` defensivo usado em todo lugar que lê isso), fazendo a
+        // lista de Crescimento, o contador no menu e o indicador novo do
+        // Painel SEMPRE mostrarem vazio/zero, pra qualquer pessoa em
+        // qualquer momento -- não era um problema específico do Robson.
+        crescimentoPessoas: (data.crescimentoPessoas || []).map(mapPessoaFromApi)
       };
     });
   }
