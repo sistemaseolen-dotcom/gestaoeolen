@@ -13,7 +13,7 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     nome: "Nome", cargo: "Cargo", status: "Status", regional: "Regional",
     estado_atuacao: "Estado (atuação)",
     projeto: "Projeto",
-    operadora: "Operadora", cadastro: "Cadastro", coordenador: "Coordenador", tipo_pessoa: "Tipo de pessoa",
+    operadora: "Operadora", cadastro: "Cadastro", coordenador: "Coordenador", tipo_pessoa: "Tipo de contrato",
     data_admissao: "Data de admissão", data_demissao: "Data de demissão", matricula_esocial: "Matrícula eSocial",
     cpf: "CPF", rg: "RG", data_nascimento: "Data de nascimento", pis: "PIS", cnh: "CNH",
     data_validade_cnh: "Validade CNH", escolaridade: "Escolaridade", estado_civil: "Estado civil",

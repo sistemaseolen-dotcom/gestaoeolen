@@ -245,7 +245,7 @@
   /* ---------------- Listas configuráveis (editáveis em Administrador → Listas) ---------------- */
   var LISTAS_META = [
     { key: "cargo", label: "Cargo (pessoas)", defaults: ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE"] },
-    { key: "tipoPessoa", label: "Tipo de pessoa", defaults: ["CLT", "PJ", "JOVEM APRENDIZ", "ESTAGIÁRIO"] },
+    { key: "tipoPessoa", label: "Tipo de contrato", defaults: ["CLT", "PJ", "JOVEM APRENDIZ", "ESTAGIÁRIO"] },
     { key: "statusPessoa", label: "Status (pessoas)", defaults: ["ATIVO", "INATIVO", "BLOQUEADO", "CRESCIMENTO", "FÉRIAS"] },
     { key: "projeto", label: "Projeto", defaults: ["HUAWEI", "ERICSSON", "NOKIA", "TELEFONICA", "NG"] },
     { key: "cargoAso", label: "Cargo ASO (pessoas)", defaults: [
@@ -1659,7 +1659,7 @@
       var exportHeaders = [
         // Geral
         "Nome", "Cargo", "Cargo ASO", "Status", "Estado (atuação)", "Regional", "Projeto atual", "Operadora",
-        "Coordenador", "Tipo de pessoa", "Empresa",
+        "Coordenador", "Tipo de contrato", "Empresa",
         "Data de admissão", "Data de desligamento", "Matrícula eSocial", "Contas Ativas", "Observação",
         // Documentos
         "CPF", "RG", "Data de nascimento", "PIS", "CNH", "Validade CNH", "Escolaridade", "Estado civil",
@@ -1748,7 +1748,7 @@
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados gerais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("CPF", p.cpf, "cpf") + detailItem("RG", p.rg, "rg") + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento), "data_nascimento") +
-      detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") +
+      detailItem("Tipo de contrato", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") +
       detailItem("Estado (atuação)", p.estadoAtuacao ? p.estadoAtuacao + " — " + ufNome(p.estadoAtuacao) : "", "estado_atuacao") + detailItem("Regional", p.regional, "regional") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
@@ -1991,11 +1991,11 @@
       ufSelectField("Estado (atuação)", "estadoAtuacao", p ? p.estadoAtuacao : "") +
       selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true, emptyLabel: "— Automático —", disabled: true, hint: "Preenchida automaticamente a partir do Estado (atuação)." }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
       field("Operadora", "operadora", "text", p) +
-      field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
+      field("Coordenador", "coordenador", "text", p) + selectField("Tipo de contrato", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
       field("Responsável", "responsavel", "text", p) +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
       '<div class="field"><label>Matrícula eSocial</label><input type="text" name="matriculaESocial" value="' + esc(p ? (p.matriculaESocial || "") : "") + '">' +
-      '<div class="hint" id="matricula-esocial-hint" style="margin-top:4px;display:none;">Preenchida automaticamente com N/A para PJ (que não tem matrícula no eSocial) — não pode ser editada enquanto o Tipo de pessoa for PJ.</div></div>' +
+      '<div class="hint" id="matricula-esocial-hint" style="margin-top:4px;display:none;">Preenchida automaticamente com N/A para PJ (que não tem matrícula no eSocial) — não pode ser editada enquanto o Tipo de contrato for PJ.</div></div>' +
       field("MEI", "mei", "text", p) +
       checkboxGroupField("Contas Ativas", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(p ? p.observacao : "") + "</textarea></div>" +
@@ -2070,7 +2070,7 @@
       });
     }
     // Pedido do Diego (14/10/2026): PJ não tem matrícula no eSocial (isso é
-    // coisa de CLT) — quando o Tipo de pessoa for PJ, o campo Matrícula
+    // coisa de CLT) — quando o Tipo de contrato for PJ, o campo Matrícula
     // eSocial já se preenche sozinho com "N/A", sem precisar digitar isso à
     // mão em cada cadastro.
     // Correção do próprio Diego (14/10/2026, mesmo dia): a 1ª versão só
@@ -2320,7 +2320,7 @@
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados da empresa / contratação</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) +
-      detailItem("Responsável", p.responsavel) + detailItem("Tipo de contratação", p.tipoPessoa) +
+      detailItem("Responsável", p.responsavel) + detailItem("Tipo de contrato", p.tipoPessoa) +
       "</div></div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados do profissional</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Nome completo", p.nome) + detailItem("Função/Cargo", p.cargo) +
@@ -2370,7 +2370,7 @@
       "</div>" +
       '<div class="field"><label>Empresa</label><input type="text" name="empresaNomeDisplay" value="' + esc(p ? (p.empresaNome || "") : "") + '" readonly placeholder="Preenchido automaticamente ao buscar o CNPJ"></div>' +
       field("Responsável *", "responsavel", "text", p, { required: true }) +
-      selectField("Tipo de contratação *", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { required: true, allowEmpty: true }) +
+      selectField("Tipo de contrato *", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { required: true, allowEmpty: true }) +
       (!isNew ? selectField("Status *", "status", listaOptions("statusPessoa"), p.status, { required: true, hint: "Mude para Ativo/Inativo/Bloqueado pra encerrar o processo de crescimento." }) : "") +
       "</div></div>" +
       '<div class="tab-pane" data-pane="profissional"><div class="field-grid">' +
@@ -9117,7 +9117,7 @@
       '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div></div>' +
       adminTabsHtml("listas") +
       '<div class="panel"><div class="panel-body pad">' +
-      '<p class="hint" style="margin-bottom:14px;">Gerencie as opções que aparecem nos campos de seleção do cadastro de pessoas (Cargo, Tipo de pessoa, Status e Projeto). As alterações valem para todos os usuários.</p>' +
+      '<p class="hint" style="margin-bottom:14px;">Gerencie as opções que aparecem nos campos de seleção do cadastro de pessoas (Cargo, Tipo de contrato, Status e Projeto). As alterações valem para todos os usuários.</p>' +
       '<div id="listas-body"></div>' +
       "</div></div>";
     bindAdminTabs(main);
