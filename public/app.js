@@ -1634,8 +1634,8 @@
         // Contato
         "E-mail", "Telefone", "E-mail corporativo", "Telefone corporativo", "CEP", "Endereço",
         "Número", "Complemento", "Bairro", "Município", "Estado",
-        // Contrato
-        "MEI", "Nº contrato", "Validade do contrato", "Valor hora", "Salário bruto",
+        // MEI (aba "Contrato" foi removida do cadastro -- pedido do Diego, 15/10/2026)
+        "MEI",
         // Acessos de cliente
         "ID Isignum (Ericsson)", "ID ISDP (Huawei)",
         // Extra (não é campo de cadastro, mas útil no extrato)
@@ -1654,8 +1654,8 @@
           // Contato
           p.email || "", p.telefone || "", p.emailCorporativo || "", p.telefoneCorporativo || "", p.cep || "", p.endereco || "",
           p.numero || "", p.complemento || "", p.bairro || "", p.municipio || "", p.estado || "",
-          // Contrato
-          p.mei || "", p.numeroContrato || "", fmtDateBR(p.validadeContrato), fmtMoney(p.valorHora), fmtMoney(p.salarioBruto),
+          // MEI
+          p.mei || "",
           // Acessos de cliente
           p.isignumId || "", p.isdpId || "",
           // Extra
@@ -1718,16 +1718,13 @@
       detailItem("Estado (atuação)", p.estadoAtuacao ? p.estadoAtuacao + " — " + ufNome(p.estadoAtuacao) : "", "estado_atuacao") + detailItem("Regional", p.regional, "regional") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
+      detailItem("MEI", p.mei, "mei") + detailItem("CNH", p.cnh + (p.dataValidadeCNH ? " · venc. " + fmtDateBR(p.dataValidadeCNH) : ""), "cnh") +
       '<div class="detail-item"><span class="k">Contas Ativas</span><span class="v">' + contaTagsHtml(p.contas) + "</span>" + fieldNoteHtml("contas") + "</div>" +
-      "</div></div></div>" +
+      "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") + "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Contato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("E-mail", p.email, "email") + detailItem("Telefone", p.telefone, "telefone") + detailItem("E-mail corporativo", p.emailCorporativo, "email_corporativo") + detailItem("Telefone corporativo", p.telefoneCorporativo, "telefone_corporativo") +
       detailItem("Endereço", [p.endereco, p.numero].filter(Boolean).join(", "), "endereco") + detailItem("Bairro / Cidade", [p.bairro, p.municipio, p.estado].filter(Boolean).join(" / "), "bairro") +
       "</div></div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Contrato</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("MEI", p.mei, "mei") + detailItem("Nº contrato", p.numeroContrato, "numero_contrato") + detailItem("Validade contrato", fmtDateBR(p.validadeContrato), "validade_contrato") +
-      detailItem("Valor hora", fmtMoney(p.valorHora), "valor_hora") + detailItem("Salário bruto", fmtMoney(p.salarioBruto), "salario_bruto") + detailItem("CNH", p.cnh + (p.dataValidadeCNH ? " · venc. " + fmtDateBR(p.dataValidadeCNH) : ""), "cnh") +
-      "</div>" + (p.observacao ? '<div style="margin-top:12px;" class="detail-item"><span class="k">Observação</span><span class="v">' + esc(p.observacao) + "</span>" + fieldNoteHtml("observacao") + "</div>" : "") + "</div></div>" +
       '<div class="panel"><div class="panel-head"><h3>Acessos de cliente</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("ID Isignum (Ericsson)", p.isignumId, "isignum_id") +
       detailItem("ID ISDP (Huawei)", p.isdpId, "isdp_id") +
@@ -1916,7 +1913,6 @@
       '<button type="button" class="section-tab active" data-tab="geral">Geral</button>' +
       '<button type="button" class="section-tab" data-tab="doc">Documentos</button>' +
       '<button type="button" class="section-tab" data-tab="contato">Contato</button>' +
-      '<button type="button" class="section-tab" data-tab="contrato">Contrato</button>' +
       '<button type="button" class="section-tab" data-tab="acessos">Acessos de cliente</button>' +
       "</div>" +
       '<div class="tab-pane active" data-pane="geral"><div class="field-grid">' +
@@ -1930,6 +1926,7 @@
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
       field("Matrícula eSocial", "matriculaESocial", "text", p) +
+      field("MEI", "mei", "text", p) +
       checkboxGroupField("Contas Ativas", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(p ? p.observacao : "") + "</textarea></div>" +
       "</div></div>" +
@@ -1945,11 +1942,6 @@
       field("CEP", "cep", "text", p) + field("Endereço", "endereco", "text", p) +
       field("Número", "numero", "text", p) + field("Complemento", "complemento", "text", p) +
       field("Bairro", "bairro", "text", p) + field("Município", "municipio", "text", p) + field("Estado", "estado", "text", p) +
-      "</div></div>" +
-      '<div class="tab-pane" data-pane="contrato"><div class="field-grid">' +
-      field("MEI", "mei", "text", p) + field("Nº contrato", "numeroContrato", "text", p) +
-      field("Validade do contrato", "validadeContrato", "date", p) + field("Valor hora (R$)", "valorHora", "number", p) +
-      field("Salário bruto (R$)", "salarioBruto", "number", p) +
       "</div></div>" +
       '<div class="tab-pane" data-pane="acessos">' +
       '<div class="hint" style="margin-bottom:10px;">Credenciais de acesso ao sistema do cliente — usadas quando esta pessoa atua em projetos Ericsson ou Huawei.</div>' +
@@ -2012,6 +2004,28 @@
       preencherMatriculaEsocialSePJ();
       tipoPessoaEl.addEventListener("change", preencherMatriculaEsocialSePJ);
     }
+    // Pedido do Diego (15/10/2026): o campo MEI só faz sentido pra PJ --
+    // removemos a aba "Contrato" inteira (Nº contrato, Validade do
+    // contrato, Valor hora, Salário bruto saíram do cadastro) e o MEI
+    // subiu pra aba Geral. Igual já fazemos com a Matrícula eSocial acima,
+    // mas aqui SEMPRE força "N/A" quando o Tipo não é PJ -- nunca deixa um
+    // valor indevido parado ali (achamos 54 cadastros de CLT com o CNPJ da
+    // própria Eolen digitado por engano nesse campo). Se a pessoa trocar o
+    // Tipo pra PJ e o campo ainda tiver esse "N/A" de quando era outro
+    // tipo, limpa pra poder digitar o MEI de verdade.
+    var meiEl = $("#pessoa-form [name=mei]");
+    if (tipoPessoaEl && meiEl) {
+      var ajustarMeiConformeTipo = function () {
+        var ehPJ = /^PJ/i.test((tipoPessoaEl.value || "").trim());
+        if (!ehPJ) {
+          meiEl.value = "N/A";
+        } else if (meiEl.value.trim().toUpperCase() === "N/A") {
+          meiEl.value = "";
+        }
+      };
+      ajustarMeiConformeTipo();
+      tipoPessoaEl.addEventListener("change", ajustarMeiConformeTipo);
+    }
     // Pedido do Diego (15/10/2026): regra de duplicidade -- não pode
     // existir dois cadastros com o mesmo CPF nem dois com o mesmo nome. A
     // regra que BLOQUEIA de verdade fica no servidor (POST /api/pessoas e
@@ -2056,13 +2070,11 @@
       var camposEditaveis = ["nome", "cargo", "cargoAso", "status", "regional", "estadoAtuacao", "projeto", "operadora", "cadastro", "coordenador", "tipoPessoa",
         "dataAdmissao", "dataDemissao", "matriculaESocial", "cpf", "rg", "dataNascimento", "pis", "cnh", "dataValidadeCNH",
         "escolaridade", "estadoCivil", "email", "telefone", "emailCorporativo", "telefoneCorporativo", "cep", "endereco",
-        "numero", "complemento", "bairro", "municipio", "estado", "mei", "numeroContrato", "validadeContrato", "observacao",
+        "numero", "complemento", "bairro", "municipio", "estado", "mei", "observacao",
         "isignumId", "isdpId"];
-      var camposData = ["dataAdmissao", "dataDemissao", "dataNascimento", "dataValidadeCNH", "validadeContrato"];
+      var camposData = ["dataAdmissao", "dataDemissao", "dataNascimento", "dataValidadeCNH"];
       camposEditaveis.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
       camposData.forEach(function (k) { body[k] = emptyToNull(body[k]); });
-      body.valorHora = Number(fd.get("valorHora") || 0);
-      body.salarioBruto = Number(fd.get("salarioBruto") || 0);
       body.contas = fd.getAll("contas");
       var empId = fd.get("empresaId");
       body.empresaId = empId ? Number(empId) : null;
