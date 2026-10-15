@@ -1997,9 +1997,18 @@
     var tipoPessoaEl = $("#pessoa-form [name=tipoPessoa]");
     var matriculaEsocialEl = $("#pessoa-form [name=matriculaESocial]");
     if (tipoPessoaEl && matriculaEsocialEl) {
+      // Correção do Diego (15/10/2026): quando o campo é preenchido
+      // sozinho com "N/A" (seguindo a regra acima), ele não pode mais
+      // ficar aberto pra edição -- vira só-leitura (readonly, não
+      // disabled, pra continuar indo junto no FormData do submit). Se o
+      // campo tiver algum outro valor (ex.: um cadastro PJ antigo que já
+      // tinha uma matrícula digitada à mão antes desta regra existir),
+      // fica editável normalmente, pra dar pra corrigir na mão se for o
+      // caso.
       var preencherMatriculaEsocialSePJ = function () {
         var ehPJ = /^PJ/i.test((tipoPessoaEl.value || "").trim());
         if (ehPJ && !matriculaEsocialEl.value.trim()) matriculaEsocialEl.value = "N/A";
+        matriculaEsocialEl.readOnly = ehPJ && matriculaEsocialEl.value.trim().toUpperCase() === "N/A";
       };
       preencherMatriculaEsocialSePJ();
       tipoPessoaEl.addEventListener("change", preencherMatriculaEsocialSePJ);
