@@ -1627,7 +1627,7 @@
       var exportHeaders = [
         // Geral
         "Nome", "Cargo", "Cargo ASO", "Status", "Estado (atuação)", "Regional", "Projeto atual", "Operadora",
-        "Cadastro (origem)", "Coordenador", "Tipo de pessoa", "Empresa",
+        "Coordenador", "Tipo de pessoa", "Empresa",
         "Data de admissão", "Data de desligamento", "Matrícula eSocial", "Contas Ativas", "Observação",
         // Documentos
         "CPF", "RG", "Data de nascimento", "PIS", "CNH", "Validade CNH", "Escolaridade", "Estado civil",
@@ -1647,7 +1647,7 @@
         return [
           // Geral
           p.nome || "", p.cargo || "", p.cargoAso || "", p.status || "", p.estadoAtuacao || "", p.regional || "", p.projeto || "", p.operadora || "",
-          p.cadastro || "", p.coordenador || "", p.tipoPessoa || "", p.empresaNome || "",
+          p.coordenador || "", p.tipoPessoa || "", p.empresaNome || "",
           fmtDateBR(p.dataAdmissao), fmtDateBR(p.dataDemissao), p.matriculaESocial || "", (p.contas || []).join(", "), p.observacao || "",
           // Documentos
           p.cpf || "", p.rg || "", fmtDateBR(p.dataNascimento), p.pis || "", p.cnh || "", fmtDateBR(p.dataValidadeCNH), p.escolaridade || "", p.estadoCivil || "",
@@ -1714,7 +1714,7 @@
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados gerais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("CPF", p.cpf, "cpf") + detailItem("RG", p.rg, "rg") + detailItem("Data de nascimento", fmtDateBR(p.dataNascimento), "data_nascimento") +
-      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") + detailItem("Cadastro/Operadora origem", p.cadastro, "cadastro") +
+      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—"), "empresa_id") + detailItem("Tipo", p.tipoPessoa, "tipo_pessoa") + detailItem("Cargo ASO", p.cargoAso, "cargo_aso") +
       detailItem("Estado (atuação)", p.estadoAtuacao ? p.estadoAtuacao + " — " + ufNome(p.estadoAtuacao) : "", "estado_atuacao") + detailItem("Regional", p.regional, "regional") +
       detailItem("Projeto", p.projeto, "projeto") + detailItem("Operadora", p.operadora, "operadora") + detailItem("Coordenador", p.coordenador, "coordenador") +
       detailItem("Admissão", fmtDateBR(p.dataAdmissao), "data_admissao") + detailItem("Desligamento", fmtDateBR(p.dataDemissao), "data_demissao") + detailItem("Matrícula eSocial", p.matriculaESocial, "matricula_esocial") +
@@ -1921,7 +1921,7 @@
       selectField("Status *", "status", listaOptions("statusPessoa"), p ? p.status : "ATIVO", { required: true }) +
       ufSelectField("Estado (atuação)", "estadoAtuacao", p ? p.estadoAtuacao : "") +
       selectField("Regional", "regional", REGIONAL_OPTS, p ? p.regional : "", { allowEmpty: true, emptyLabel: "— Automático —", disabled: true, hint: "Preenchida automaticamente a partir do Estado (atuação)." }) + selectField("Projeto", "projeto", listaOptions("projeto"), p ? p.projeto : "", { allowEmpty: true }) +
-      field("Operadora", "operadora", "text", p) + field("Cadastro (origem)", "cadastro", "text", p) +
+      field("Operadora", "operadora", "text", p) +
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
@@ -2067,7 +2067,7 @@
       if (!canDo("pessoas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
       var fd = new FormData(e.target);
       var body = {};
-      var camposEditaveis = ["nome", "cargo", "cargoAso", "status", "regional", "estadoAtuacao", "projeto", "operadora", "cadastro", "coordenador", "tipoPessoa",
+      var camposEditaveis = ["nome", "cargo", "cargoAso", "status", "regional", "estadoAtuacao", "projeto", "operadora", "coordenador", "tipoPessoa",
         "dataAdmissao", "dataDemissao", "matriculaESocial", "cpf", "rg", "dataNascimento", "pis", "cnh", "dataValidadeCNH",
         "escolaridade", "estadoCivil", "email", "telefone", "emailCorporativo", "telefoneCorporativo", "cep", "endereco",
         "numero", "complemento", "bairro", "municipio", "estado", "mei", "observacao",
