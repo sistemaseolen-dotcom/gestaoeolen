@@ -1925,7 +1925,8 @@
       field("Coordenador", "coordenador", "text", p) + selectField("Tipo de pessoa", "tipoPessoa", listaOptions("tipoPessoa"), p ? p.tipoPessoa : "", { allowEmpty: true }) +
       '<div class="field"><label>Empresa</label><select name="empresaId"><option value="">— nenhuma —</option>' + empresasOpts + "</select></div>" +
       field("Data de admissão", "dataAdmissao", "date", p) + field("Data de desligamento", "dataDemissao", "date", p) +
-      field("Matrícula eSocial", "matriculaESocial", "text", p) +
+      '<div class="field"><label>Matrícula eSocial</label><input type="text" name="matriculaESocial" value="' + esc(p ? (p.matriculaESocial || "") : "") + '">' +
+      '<div class="hint" id="matricula-esocial-hint" style="margin-top:4px;display:none;">Preenchida automaticamente com N/A para PJ (que não tem matrícula no eSocial) — não pode ser editada enquanto o Tipo de pessoa for PJ.</div></div>' +
       field("MEI", "mei", "text", p) +
       checkboxGroupField("Contas Ativas", "contas", CONTA_OPTS, p ? p.contas : [], { span2: true }) +
       '<div class="field span2"><label>Observação</label><textarea name="observacao">' + esc(p ? p.observacao : "") + "</textarea></div>" +
@@ -2005,10 +2006,13 @@
       // tinha uma matrícula digitada à mão antes desta regra existir),
       // fica editável normalmente, pra dar pra corrigir na mão se for o
       // caso.
+      var matriculaEsocialHintEl = $("#matricula-esocial-hint");
       var preencherMatriculaEsocialSePJ = function () {
         var ehPJ = /^PJ/i.test((tipoPessoaEl.value || "").trim());
         if (ehPJ && !matriculaEsocialEl.value.trim()) matriculaEsocialEl.value = "N/A";
-        matriculaEsocialEl.readOnly = ehPJ && matriculaEsocialEl.value.trim().toUpperCase() === "N/A";
+        var travada = ehPJ && matriculaEsocialEl.value.trim().toUpperCase() === "N/A";
+        matriculaEsocialEl.readOnly = travada;
+        if (matriculaEsocialHintEl) matriculaEsocialHintEl.style.display = travada ? "" : "none";
       };
       preencherMatriculaEsocialSePJ();
       tipoPessoaEl.addEventListener("change", preencherMatriculaEsocialSePJ);
