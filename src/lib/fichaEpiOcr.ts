@@ -221,8 +221,37 @@ export async function extrairItensFichaEpi(buffer: Buffer): Promise<ResultadoOcr
       cacheMethod: "none",
     });
 
-    async function ocrColuna(frac: { x0: number; x1: number }): Promise<string[]> {
+    // Pedido do Diego (15/10/2026, com ficha real do Gustavo Ariel de Souza
+    // em mãos pra comparar lado a lado): vários números de CA estavam saindo
+    // errados da leitura -- não só a linha do Capacete (já tratada à parte,
+    // ver encontrarItemFicha em epiChecklist.ts), mas também CAs de outras
+    // linhas vindo com um dígito a menos (ex.: "34491" lido como "3449",
+    // "40196" lido como "4019") ou visivelmente trocados ("14816" lido como
+    // "1540"). A causa provável: sem restringir o conjunto de caracteres, o
+    // modelo "eng" do Tesseract tenta decidir entre dígito e letra parecida
+    // (0/O, 1/l, 8/B etc.) usando heurísticas de idioma que não fazem
+    // sentido pra uma coluna que SÓ tem números -- e gasta "confiança" nessa
+    // decisão errada, o que explica dígitos trocados OU descartados (quando
+    // o classificador não fica confiante o suficiente num caractere permitido
+    // pro alfabeto inteiro, ele pode simplesmente omitir esse caractere).
+    // `tessedit_char_whitelist` restringe o reconhecimento ao alfabeto real
+    // de cada coluna (só dígitos no CA; só letras maiúsculas e espaço na
+    // ESPECIFICAÇÃO -- nunca tem dígito nesse formulário; letras, dígitos,
+    // espaço e "/" na FABRICAÇÃO, que imprime "mês/ano" tipo "set/22") --
+    // é a técnica padrão do Tesseract pra campos com alfabeto restrito e
+    // reduz muito esse tipo de erro, sem mexer em nada do recorte/posição
+    // (que já está calibrado, ver comentários de COL_* acima).
+    //
+    // IMPORTANTE: as três colunas usam o MESMO worker (criar um worker novo
+    // por coluna custaria tempo/memória demais num ambiente serverless, e
+    // isso aqui já roda por ficha inteira, não por linha) -- por isso as
+    // três chamadas rodam em SEQUÊNCIA, nunca em paralelo (Promise.all):
+    // setParameters muda o estado do worker inteiro, então rodar em paralelo
+    // arriscaria aplicar o whitelist errado numa coluna por causa da ordem
+    // de execução não-determinística entre as três chamadas concorrentes.
+    async function ocrColuna(frac: { x0: number; x1: number }, whitelist: string): Promise<string[]> {
       const recorte = await recortarColuna(pageBuf as Buffer, frac);
+      await worker.setParameters({ tessedit_char_whitelist: whitelist });
       const { data } = await worker.recognize(recorte);
       return (data.text || "")
         .split("\n")
@@ -230,11 +259,9 @@ export async function extrairItensFichaEpi(buffer: Buffer): Promise<ResultadoOcr
         .filter(Boolean);
     }
 
-    let [linhasCa, linhasEspecificacao, linhasFabricacao] = await Promise.all([
-      ocrColuna(COL_CA),
-      ocrColuna(COL_ESPECIFICACAO),
-      ocrColuna(COL_FABRICACAO),
-    ]);
+    let linhasCa = await ocrColuna(COL_CA, "0123456789");
+    let linhasEspecificacao = await ocrColuna(COL_ESPECIFICACAO, "ABCDEFGHIJKLMNOPQRSTUVWXYZ ");
+    let linhasFabricacao = await ocrColuna(COL_FABRICACAO, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/ ");
 
     // Descarta um possível vazamento da linha de cabeçalho (ver comentário
     // de LINHAS_Y) em CADA coluna independentemente — só pode acontecer na
