@@ -8137,9 +8137,10 @@
       '<button type="button" class="section-tab' + (active === "acessos" ? " active" : "") + '" data-admintab="acessos">Log técnico (acessos)</button>' +
       '<button type="button" class="section-tab' + (active === "listas" ? " active" : "") + '" data-admintab="listas">Listas</button>' +
       '<button type="button" class="section-tab' + (active === "config" ? " active" : "") + '" data-admintab="config">Configurações</button>' +
+      '<button type="button" class="section-tab' + (active === "tokens" ? " active" : "") + '" data-admintab="tokens">Tokens de API</button>' +
       "</div>";
   }
-  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", acessos: "#/admin/acessos", listas: "#/admin/listas", config: "#/admin/config" };
+  var ADMIN_TAB_ROUTES = { usuarios: "#/admin", log: "#/admin/log", acessos: "#/admin/acessos", listas: "#/admin/listas", config: "#/admin/config", tokens: "#/admin/tokens" };
   function bindAdminTabs(main) {
     $all("[data-admintab]", main).forEach(function (btn) {
       btn.addEventListener("click", function () { navigate(ADMIN_TAB_ROUTES[btn.getAttribute("data-admintab")] || "#/admin"); });
@@ -9103,6 +9104,122 @@
     }
   }
 
+  // Tokens de API EXTERNA (pedido do Diego, 16/10/2026): "preciso criar
+  // essas API para que outras pessoas tenha acesso as informações, mas
+  // quero que seja segura, com token" -- cada integração externa recebe o
+  // próprio token, criado/revogado por aqui (só admin -- a aba
+  // Administrador NUNCA é exposta pelas rotas /api/externa/*, que só
+  // devolvem pessoas/equipes/patrimônio/veículos/auditorias/documentos/
+  // acesso). O valor bruto do token só aparece UMA VEZ, na hora da criação
+  // -- o banco guarda só o hash, então perdido é perdido (gera outro).
+  function renderAdminApiTokens(main) {
+    function draw() {
+      var body = $("#tokens-body", main);
+      body.innerHTML = '<div class="hint" style="padding:20px;">Carregando…</div>';
+      apiFetch("/api/admin/api-tokens").then(function (tokens) {
+        body = $("#tokens-body", main);
+        if (!body) return;
+        if (!tokens.length) {
+          body.innerHTML = '<div class="hint" style="padding:20px;">Nenhum token criado ainda.</div>';
+          return;
+        }
+        var rows = tokens.map(function (t) {
+          return '<tr data-tid="' + t.id + '">' +
+            '<td><div class="row-primary">' + esc(t.nome) + '</div>' + (t.observacao ? '<div class="row-secondary">' + esc(t.observacao) + "</div>" : "") + "</td>" +
+            '<td><code>' + esc(t.token_prefixo) + '…</code></td>' +
+            "<td>" + (t.ativo ? '<span class="pill ok">Ativo</span>' : '<span class="pill neutral">Revogado</span>') + "</td>" +
+            "<td>" + fmtDateHoraBR(t.criado_em) + (t.criado_por_nome ? '<div class="row-secondary">' + esc(t.criado_por_nome) + "</div>" : "") + "</td>" +
+            "<td>" + (t.ultimo_uso_em ? fmtDateHoraBR(t.ultimo_uso_em) : '<span class="hint">nunca usado</span>') + "</td>" +
+            '<td style="text-align:right;white-space:nowrap;">' +
+            '<button class="btn ghost sm" data-toggle-token="' + t.id + '">' + (t.ativo ? "Revogar" : "Reativar") + "</button> " +
+            '<button class="btn sm danger" data-delete-token="' + t.id + '">' + ICONS.trash + "Excluir</button>" +
+            "</td></tr>";
+        }).join("");
+
+        body.innerHTML = '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Nome</th><th>Token</th><th>Status</th><th>Criado em</th><th>Último uso</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+
+        $all("[data-toggle-token]", body).forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var id = btn.getAttribute("data-toggle-token");
+            var tk = tokens.filter(function (t) { return String(t.id) === id; })[0];
+            if (!tk) return;
+            apiFetch("/api/admin/api-tokens/" + id, { method: "PATCH", body: { ativo: !tk.ativo } })
+              .then(function () { toast(tk.ativo ? "Token revogado." : "Token reativado.", "success"); draw(); })
+              .catch(handleApiError);
+          });
+        });
+        $all("[data-delete-token]", body).forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var id = btn.getAttribute("data-delete-token");
+            confirmAction("Excluir token?", "Quem estiver usando este token perde o acesso imediatamente. Esta ação não pode ser desfeita.", "Excluir", function (closeModal) {
+              apiFetch("/api/admin/api-tokens/" + id, { method: "DELETE" })
+                .then(function () { closeModal(); toast("Token excluído.", "success"); draw(); })
+                .catch(function (err) { closeModal(); handleApiError(err); });
+            });
+          });
+        });
+      }).catch(handleApiError);
+    }
+
+    function openNovoTokenForm() {
+      var html =
+        '<div class="modal-box"><h3>Novo token de API</h3>' +
+        '<form id="token-form"><div class="field-grid" style="margin-top:10px;">' +
+        '<div class="field span2"><label>Nome do integrador *</label><input type="text" name="nome" required placeholder="Ex.: Sistema de folha de pagamento"></div>' +
+        '<div class="field span2"><label>Observação</label><input type="text" name="observacao" placeholder="Opcional -- pra você lembrar o que é isso depois"></div>' +
+        "</div>" +
+        '<div class="modal-actions"><button type="button" class="btn" id="token-cancel">Cancelar</button><button type="submit" class="btn primary">' + ICONS.plus + "Gerar token</button></div>" +
+        "</form></div>";
+      openModal(html);
+      $("#token-cancel").addEventListener("click", closeModal);
+      $("#token-form").addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var fd = new FormData(ev.target);
+        apiFetch("/api/admin/api-tokens", { method: "POST", body: { nome: fd.get("nome"), observacao: fd.get("observacao") } })
+          .then(function (novo) {
+            closeModal();
+            mostrarTokenGerado(novo);
+            draw();
+          })
+          .catch(handleApiError);
+      });
+    }
+
+    // O valor bruto (`novo.token`) só existe nesta resposta -- o banco só
+    // guarda o hash, então esta é a ÚNICA vez que ele aparece na tela.
+    function mostrarTokenGerado(novo) {
+      var html =
+        '<div class="modal-box"><h3>' + ICONS.lock + "Token criado</h3>" +
+        '<p>Copie e guarde agora -- por segurança, este valor <strong>não aparece de novo</strong>. Se perder, exclua este token e crie outro.</p>' +
+        '<div class="field"><label>Token de "' + esc(novo.nome) + '"</label>' +
+        '<input type="text" id="token-valor-gerado" value="' + esc(novo.token) + '" readonly style="font-family:monospace;"></div>' +
+        '<div class="hint" style="margin:10px 0 0;">A integração deve enviar este valor no header <code>Authorization: Bearer ' + esc(novo.token) + '</code> em toda chamada à API externa (<code>/api/externa/...</code>).</div>' +
+        '<div class="modal-actions"><button type="button" class="btn primary" id="token-copiar">' + ICONS.copy + "Copiar</button><button type=\"button\" class=\"btn\" id=\"token-fechar\">Fechar</button></div>" +
+        "</div>";
+      openModal(html);
+      $("#token-fechar").addEventListener("click", closeModal);
+      $("#token-copiar").addEventListener("click", function () {
+        var input = $("#token-valor-gerado");
+        input.select();
+        navigator.clipboard && navigator.clipboard.writeText(novo.token).then(function () {
+          toast("Token copiado.", "success");
+        }, function () {
+          toast("Não foi possível copiar automaticamente -- selecione e copie manualmente.", "error");
+        });
+      });
+    }
+
+    main.innerHTML =
+      '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div>' +
+      '<button class="btn primary" id="btn-new-token">' + ICONS.plus + "Novo token</button></div>" +
+      adminTabsHtml("tokens") +
+      '<p class="hint" style="margin-bottom:14px;">Tokens dão acesso de LEITURA, por fora do sistema, aos dados de Pessoas/Crescimento, Equipes, Acesso, Patrimônio, Veículos, Auditorias e Documentos -- nunca à aba Administrador. Crie um token por integração/cliente externo, assim dá pra revogar só o de quem precisar, sem afetar os outros.</p>' +
+      '<div id="tokens-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
+    bindAdminTabs(main);
+    $("#btn-new-token").addEventListener("click", openNovoTokenForm);
+    draw();
+  }
+
   /* ---------------- Form field helpers ---------------- */
   function field(label, name, type, obj, opts) {
     opts = opts || {};
@@ -9699,7 +9816,7 @@
 
     if (route.view === "admin") {
       if (!isAdmin()) { renderSemPermissao(main); if (!route.id) closeDrawer(); return; }
-      route.id === "log" ? renderAdminLog(main) : route.id === "acessos" ? renderAdminAcessos(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "config" ? renderAdminConfiguracoes(main) : renderAdminUsuarios(main);
+      route.id === "log" ? renderAdminLog(main) : route.id === "acessos" ? renderAdminAcessos(main) : route.id === "listas" ? renderAdminListas(main) : route.id === "config" ? renderAdminConfiguracoes(main) : route.id === "tokens" ? renderAdminApiTokens(main) : renderAdminUsuarios(main);
       if (!route.id) closeDrawer();
       return;
     }

@@ -5,7 +5,7 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import type { UsuarioRow } from "./permissions";
 
-export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "veiculo" | "auditoria" | "configuracao" | "acesso_equipe";
+export type Entidade = "pessoa" | "equipe" | "empresa" | "treinamento" | "usuario" | "lista" | "patrimonio" | "veiculo" | "auditoria" | "configuracao" | "acesso_equipe" | "api_token";
 
 // Rótulos amigáveis por campo, por entidade — espelha FIELD_LABELS do app.js.
 export const FIELD_LABELS: Record<string, Record<string, string>> = {
@@ -96,6 +96,13 @@ export const FIELD_LABELS: Record<string, Record<string, string>> = {
     nome_equipe: "Nome da equipe", operadora: "Operadora", projetos: "Projeto(s)", regionais: "Regional(is)",
     atividade: "Atividade", empresa: "Empresa", status: "Status", validade: "Validade", contrato: "Contrato",
     membros: "Membros",
+  },
+  // Token de API EXTERNA (pedido do Diego, 16/10/2026) -- nunca loga
+  // token_hash/token_prefixo aqui, só os campos administrativos (nome,
+  // ativo, observação) via auditDiffFields (que só grava o que estiver na
+  // whitelist `campos` passada por quem chama).
+  api_token: {
+    nome: "Nome", ativo: "Ativo", observacao: "Observação",
   },
 };
 
