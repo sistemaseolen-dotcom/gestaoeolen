@@ -172,6 +172,51 @@ export async function buscarDadosEmpresaEmbutida(
     };
   }
 
+  // Segunda fonte de cache, antes de bater na Receita: a tabela `empresas`
+  // (bug notado pelo Diego, 16/10/2026, testando com o CNPJ do Robson de
+  // Camargo -- já tinha sido resolvido e salvo em `empresas` horas antes,
+  // mas como a PESSOA que usou aquele CNPJ foi excluída depois, o cache
+  // acima (só em `pessoas`) não achava mais nada e ia direto pra Receita de
+  // novo, dependendo do serviço externo estar no ar bem na hora do teste.
+  // `empresas` guarda o CNPJ de QUALQUER empresa já resolvida (criada por
+  // resolveOrCreateEmpresaPorCnpj em pessoas/crescimento), então checar
+  // aqui também evita uma consulta externa desnecessária sempre que esse
+  // CNPJ já foi usado antes por alguém, mesmo que a pessoa tenha sido
+  // excluída depois.
+  const { data: empresaExistente } = await admin
+    .from("empresas")
+    .select("nome, fantasia, cnpj, porte, cidade, uf, cep, bairro, logradouro, numero, telefone, email, nome_responsavel, cnae_principal, cnae_descricao, situacao_cadastral, pgr, pcmso, contratos, tipo_pj, observacao")
+    .eq("cnpj", cnpjDigits)
+    .limit(1)
+    .maybeSingle();
+
+  if (empresaExistente) {
+    return {
+      cnpj: empresaExistente.cnpj,
+      razaoSocial: empresaExistente.nome,
+      fantasia: empresaExistente.fantasia,
+      porte: empresaExistente.porte,
+      cidade: empresaExistente.cidade,
+      uf: empresaExistente.uf,
+      cep: empresaExistente.cep,
+      bairro: empresaExistente.bairro,
+      logradouro: empresaExistente.logradouro,
+      numero: empresaExistente.numero,
+      telefone: empresaExistente.telefone,
+      email: empresaExistente.email,
+      nomeResponsavel: empresaExistente.nome_responsavel,
+      cnaePrincipal: empresaExistente.cnae_principal,
+      cnaeDescricao: empresaExistente.cnae_descricao,
+      situacaoCadastral: empresaExistente.situacao_cadastral,
+      pgr: empresaExistente.pgr,
+      pcmso: empresaExistente.pcmso,
+      contratos: empresaExistente.contratos,
+      tipoPj: empresaExistente.tipo_pj,
+      observacao: empresaExistente.observacao,
+      cacheHit: true,
+    };
+  }
+
   const dados = dadosReceitaPreBuscados || (await buscarCnpj(cnpjDigits));
   return {
     cnpj: dados.cnpj,
