@@ -164,6 +164,22 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   // criação/edição). Preenche sozinha com a data de hoje no exato momento
   // em que o status muda pra ATIVO, só se ainda não tiver uma data (não
   // sobrescreve se alguém já corrigiu à mão).
+  // Fluxo de aprovação (pedido do Diego, 16/10/2026): enquanto o pedido
+  // não foi aprovado, a tratativa nem começou -- não dá pra encerrar o
+  // crescimento como ATIVO. (INATIVO/BLOQUEADO continuam permitidos, pra
+  // poder cancelar um pedido.)
+  if (
+    patch.status === "ATIVO" &&
+    before.status === "CRESCIMENTO" &&
+    before.crescimento_aprovacao_status &&
+    before.crescimento_aprovacao_status !== "APROVADO"
+  ) {
+    return NextResponse.json(
+      { error: "Este crescimento ainda não foi aprovado -- não dá para mudar o status para Ativo antes da aprovação." },
+      { status: 400 }
+    );
+  }
+
   if (patch.status === "ATIVO" && before.status !== "ATIVO" && !before.data_admissao && !patch.data_admissao) {
     patch.data_admissao = new Date().toISOString().slice(0, 10);
   }

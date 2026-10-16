@@ -3,6 +3,7 @@ import { requireAuth } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { canView } from "@/lib/permissions";
 import { calcularDivergenciasAuditoria, carregarFichasPorNome } from "@/lib/epiChecklist";
+import { getAprovadorCrescimento } from "@/lib/crescimentoAprovacao";
 
 // Hidratação inicial da SPA — equivalente ao antigo `#seed-data` embutido na
 // página. NÃO inclui usuarios nem audit_log (essa última é paginada à parte
@@ -89,7 +90,12 @@ export async function GET() {
   // CRESCIMENTO, igual ao padrão já usado acima pra "auditorias" com
   // pessoas (id, nome, cargo, status). Quem já tem "pessoas" não precisa
   // desta busca extra -- a lista cheia em `pessoas` já cobre.
-  const podeCrescimento = canView(gate.user, "crescimento");
+  // Fluxo de aprovação (pedido do Diego, 16/10/2026): o aprovador de
+  // crescimento (Administrador > Configurações) precisa enxergar os pedidos
+  // pra aprovar, mesmo sem permissão nenhuma em "crescimento".
+  const aprovadorCrescimento = await getAprovadorCrescimento(admin);
+  const souAprovadorCrescimento = !!aprovadorCrescimento && aprovadorCrescimento.id === gate.user!.id;
+  const podeCrescimento = canView(gate.user, "crescimento") || souAprovadorCrescimento;
 
   const vazio = () => Promise.resolve({ data: [] as any[], error: null as any });
 
@@ -246,12 +252,28 @@ export async function GET() {
   // quem só tem "crescimento" usa este subconjunto buscado à parte acima.
   const crescimentoPessoas = podePessoas
     ? (pessoas.data || []).filter((p: any) => p.status === "CRESCIMENTO")
-    : crescimentoPessoasOnly.data || [];
+    : podeCrescimento
+    ? crescimentoPessoasOnly.data || []
+    : [];
+
+  // Documentação do Crescimento (pedido do Diego, 16/10/2026): quem só tem
+  // acesso à aba Crescimento (sem painel/pessoas/auditorias) não recebe a
+  // tabela `treinamentos` inteira -- mas precisa dos documentos das pessoas
+  // em crescimento, pra tratar a documentação e ver a porcentagem.
+  let treinamentosFinal = treinamentos.data || [];
+  if (!podeTreinamentos && podeCrescimento && crescimentoPessoas.length) {
+    const ids = crescimentoPessoas.map((p: any) => p.id);
+    const { data: trCresc, error: trCrescError } = await admin.from("treinamentos").select("*").in("pessoa_id", ids).order("id");
+    if (trCrescError) {
+      return NextResponse.json({ error: `Falha ao carregar treinamentos do crescimento: ${trCrescError.message}` }, { status: 500 });
+    }
+    treinamentosFinal = trCresc || [];
+  }
 
   return NextResponse.json({
     pessoas: pessoas.data,
     crescimentoPessoas,
-    treinamentos: treinamentos.data,
+    treinamentos: treinamentosFinal,
     equipes: equipesComMembros,
     patrimonios: patrimonios.data,
     veiculos: veiculosComKmLancamentos,
@@ -260,5 +282,9 @@ export async function GET() {
     listas,
     configuracoes: config,
     acessoEquipes: acessoEquipesComMembros,
+    // Só id + nome do aprovador (nunca e-mail) -- usado pela tela pra
+    // mostrar "Aguardando aprovação de X" e pra saber se quem está logado é
+    // o aprovador (botões Aprovar/Reprovar).
+    crescimentoAprovador: aprovadorCrescimento ? { id: aprovadorCrescimento.id, nome: aprovadorCrescimento.nome } : null,
   });
 }

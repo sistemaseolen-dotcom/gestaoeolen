@@ -1056,3 +1056,32 @@ tr[data-vo]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2
 .vo-anexos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
 .vo-anexo { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12.5px; max-width: 100%; overflow-wrap: anywhere; }
 .vo-anexo .ic { width: 14px; height: 14px; flex: none; color: var(--ink-faint); }
+
+/* ---------- Crescimento: andamento da documentação (pedido do Diego, 16/10/2026) ----------
+   Barra de porcentagem na lista e no detalhe -- cor só muda em 100%
+   (concluído), o resto do tempo fica no acento do sistema; o número ao lado
+   é o que se lê de verdade, a barra só ajuda a escanear a lista. */
+.cresc-progress { display: flex; align-items: center; gap: 8px; min-width: 150px; }
+.cresc-progress-track { flex: 1; height: 8px; border-radius: 999px; background: var(--surface-alt); overflow: hidden; }
+.cresc-progress-fill { height: 100%; border-radius: 999px; background: var(--accent); transition: width .3s ease; }
+.cresc-progress-fill.done { background: var(--success); }
+.cresc-progress-text { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; min-width: 40px; text-align: right; }
+.cresc-progress-sub { font-size: 11.5px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.cresc-progress.lg .cresc-progress-track { height: 12px; }
+.cresc-progress.lg .cresc-progress-text { font-size: 22px; font-family: var(--font-display); min-width: 64px; }
+
+.cresc-docs-table td { vertical-align: middle; }
+.cresc-docs-table input.filter, .cresc-docs-table select.filter { width: 100%; min-width: 0; padding: 6px 8px; font-size: 13px; }
+.cresc-docs-table input[type="date"].filter { min-width: 140px; }
+.cresc-docs-table .obs-input { min-width: 180px; }
+.cresc-doc-check { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; background: var(--neutral-soft); color: var(--ink-faint); }
+.cresc-doc-check.ok { background: var(--success-soft); color: var(--success-ink); }
+.cresc-doc-check .ic { width: 13px; height: 13px; }
+.cresc-doc-row.ok td:first-child .row-primary { color: var(--success-ink); }
+
+.cresc-aprovacao-panel { border-left: 4px solid var(--warning); margin-bottom: 16px; }
+.cresc-aprovacao-panel.aprovado { border-left-color: var(--success); }
+.cresc-aprovacao-panel.reprovado { border-left-color: var(--danger); }
+.cresc-aprovacao-panel .panel-body { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cresc-aprovacao-panel .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.cresc-motivo { margin-top: 6px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--danger-soft); color: var(--danger-ink); font-size: 13.5px; }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/lib/authGuard";
+import { requireTreinamentoAcesso } from "@/lib/treinamentoAcesso";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import * as storage from "@/lib/magaluStorage";
 import { auditDiffFields } from "@/lib/audit";
@@ -15,7 +15,7 @@ import { recomputarCaDivergentePorPessoa } from "@/lib/epiChecklist";
 // rota existir).
 export async function POST(req: Request, context: { params: Promise<{ id: string }> }) {
   const params = await context.params;
-  const gate = await requirePermission("documentos", "editar");
+  const gate = await requireTreinamentoAcesso(Number(params.id), "editar");
   if (gate.response) return gate.response;
 
   const id = Number(params.id);

@@ -203,6 +203,21 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   // aqui direto em Pessoas quanto encerrando o processo em Crescimento
   // (PATCH /api/crescimento/[id] tem a mesma regra). Não sobrescreve se já
   // tinha uma data.
+  // Mesma trava de PATCH /api/crescimento/[id] (pedido do Diego,
+  // 16/10/2026): crescimento ainda não aprovado não pode virar ATIVO, nem
+  // por aqui pela aba Pessoas.
+  if (
+    patch.status === "ATIVO" &&
+    before.status === "CRESCIMENTO" &&
+    before.crescimento_aprovacao_status &&
+    before.crescimento_aprovacao_status !== "APROVADO"
+  ) {
+    return NextResponse.json(
+      { error: "Este crescimento ainda não foi aprovado -- não dá para mudar o status para Ativo antes da aprovação." },
+      { status: 400 }
+    );
+  }
+
   if (patch.status === "ATIVO" && before.status !== "ATIVO" && !before.data_admissao && !patch.data_admissao) {
     patch.data_admissao = new Date().toISOString().slice(0, 10);
   }

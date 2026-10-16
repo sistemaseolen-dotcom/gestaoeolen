@@ -222,7 +222,15 @@
   function isAdmin() { return !!(CURRENT_USER && CURRENT_USER.role === "admin"); }
   function canView(page) {
     if (isAdmin()) return true;
+    // Fluxo de aprovação do Crescimento (pedido do Diego, 16/10/2026): o
+    // aprovador definido em Administrador enxerga a aba Crescimento pra
+    // poder aprovar, mesmo sem permissão nenhuma nela (o servidor aplica a
+    // mesma regra em GET /api/state).
+    if (page === "crescimento" && souAprovadorCrescimento()) return true;
     return !!(CURRENT_USER && CURRENT_USER.permissoes && CURRENT_USER.permissoes[page] && CURRENT_USER.permissoes[page].ver);
+  }
+  function souAprovadorCrescimento() {
+    return !!(CURRENT_USER && typeof STATE !== "undefined" && STATE && STATE.crescimentoAprovador && STATE.crescimentoAprovador.id === CURRENT_USER.id);
   }
   function canDo(page, acao) {
     if (isAdmin()) return true;
@@ -920,7 +928,13 @@
       criadoEm: row.criado_em,
       // Qual usuário do sistema solicitou o pedido de Crescimento (pedido
       // do Diego, 16/10/2026) -- preenchido automaticamente na criação.
-      solicitanteCrescimentoNome: row.solicitante_crescimento_nome
+      solicitanteCrescimentoNome: row.solicitante_crescimento_nome,
+      // Fluxo de aprovação do Crescimento (pedido do Diego, 16/10/2026) --
+      // AGUARDANDO / APROVADO / REPROVADO (null = nunca passou por isso).
+      crescimentoAprovacaoStatus: row.crescimento_aprovacao_status || null,
+      crescimentoAprovacaoPorNome: row.crescimento_aprovacao_por_nome || null,
+      crescimentoAprovacaoEm: row.crescimento_aprovacao_em || null,
+      crescimentoReprovacaoMotivo: row.crescimento_reprovacao_motivo || null
     };
   }
   // Clientes/contas que uma pessoa pode estar ativa (pedido do Diego,
@@ -1156,7 +1170,8 @@
         // lista de Crescimento, o contador no menu e o indicador novo do
         // Painel SEMPRE mostrarem vazio/zero, pra qualquer pessoa em
         // qualquer momento -- não era um problema específico do Robson.
-        crescimentoPessoas: (data.crescimentoPessoas || []).map(mapPessoaFromApi)
+        crescimentoPessoas: (data.crescimentoPessoas || []).map(mapPessoaFromApi),
+        crescimentoAprovador: data.crescimentoAprovador || null
       };
     });
   }
@@ -1177,6 +1192,7 @@
       STATE.listas = data.listas;
       STATE.config = data.config;
       STATE.crescimentoPessoas = data.crescimentoPessoas;
+      STATE.crescimentoAprovador = data.crescimentoAprovador;
       ensureListasSeed();
     });
   }
@@ -2302,11 +2318,65 @@
     });
   }
 
+  // Documentos obrigatórios do Crescimento (pedido do Diego, 16/10/2026) --
+  // mesma lista (e ordem) de DOCS_OBRIGATORIOS_CRESCIMENTO em
+  // src/lib/crescimentoAprovacao.ts. Criados no servidor no momento em que
+  // o aprovador aprova o pedido.
+  var CRESCIMENTO_DOCS_OBRIGATORIOS = [
+    "FICHA DE EPI", "NR35", "NR10", "PRIMEIROS SOCORROS", "ASO", "PGR", "PCMSO", "NR06",
+    "INTEGRAÇÃO DE SEGURANÇA", "ORDEM DE SERVIÇO (NR01)", "SEGURO", "CONTRATO", "TERMO DE CONSENTIMENTO"
+  ];
+  function crescimentoTipoObrigatorio(tipo) {
+    return CRESCIMENTO_DOCS_OBRIGATORIOS.indexOf((tipo || "").toString().trim().toUpperCase()) !== -1;
+  }
+  // Documento "ok" (pedido do Diego): tem anexo + data de validade + status
+  // marcado como Válido -- e a validade ainda não passou (vencido não
+  // conta como ok, mesmo marcado como Válido).
+  function crescimentoDocOk(t) {
+    return !!(t && t.arquivoPath && t.vencimento && (t.situacaoOriginal || "").toUpperCase() === "VALIDO" && daysUntil(t.vencimento) >= 0);
+  }
+  // Porcentagem do andamento: considera só os tipos da lista obrigatória
+  // que a pessoa TEM (as 13 pessoas que já estavam em Crescimento antes
+  // desta regra ficaram com os documentos que já tinham -- decisão do
+  // Diego). Um tipo repetido conta uma vez só, ok se qualquer um estiver ok.
+  function crescimentoProgresso(p) {
+    var porTipo = {};
+    pessoaTreinamentos(p.id).forEach(function (t) {
+      var tipo = (t.tipo || "").toString().trim().toUpperCase();
+      if (CRESCIMENTO_DOCS_OBRIGATORIOS.indexOf(tipo) === -1) return;
+      porTipo[tipo] = porTipo[tipo] || crescimentoDocOk(t);
+    });
+    var tipos = Object.keys(porTipo);
+    var ok = tipos.filter(function (k) { return porTipo[k]; }).length;
+    return { ok: ok, total: tipos.length, pct: tipos.length ? Math.round((ok * 100) / tipos.length) : null };
+  }
+  function crescimentoProgressoHtml(prog, opts) {
+    opts = opts || {};
+    if (!prog || prog.pct === null) return '<span class="hint">—</span>';
+    return '<div class="cresc-progress' + (opts.lg ? " lg" : "") + '" title="' + prog.ok + " de " + prog.total + ' documentos ok">' +
+      '<div class="cresc-progress-track"><div class="cresc-progress-fill' + (prog.pct === 100 ? " done" : "") + '" style="width:' + prog.pct + '%;"></div></div>' +
+      '<span class="cresc-progress-text">' + prog.pct + "%</span></div>" +
+      (opts.semSub ? "" : '<div class="cresc-progress-sub">' + prog.ok + " de " + prog.total + " ok</div>");
+  }
+  function crescimentoAprovacaoPill(status) {
+    if (status === "AGUARDANDO") return '<span class="pill warn">Aguardando aprovação</span>';
+    if (status === "REPROVADO") return '<span class="pill danger">Reprovado</span>';
+    if (status === "APROVADO") return '<span class="pill ok">Aprovado</span>';
+    return '<span class="pill neutral">—</span>';
+  }
+  // Pessoas sem o campo (cadastros antigos que de algum jeito ficaram sem)
+  // são tratadas como aprovadas, igual à migração das 13 pessoas antigas.
+  function crescimentoAprovado(p) {
+    return !p.crescimentoAprovacaoStatus || p.crescimentoAprovacaoStatus === "APROVADO";
+  }
+
   function renderCrescimentoList(main) {
     var ui = uiState.crescimento;
     var all = (STATE.crescimentoPessoas || []).slice().sort(function (a, b) {
       return (diasEmCrescimento(b.criadoEm) || 0) - (diasEmCrescimento(a.criadoEm) || 0);
     });
+    var aguardando = all.filter(function (p) { return p.crescimentoAprovacaoStatus === "AGUARDANDO"; }).length;
+    var reprovados = all.filter(function (p) { return p.crescimentoAprovacaoStatus === "REPROVADO"; }).length;
 
     function draw() {
       var pg = paginate(all, ui.page, PAGE_SIZE);
@@ -2315,12 +2385,16 @@
         var dias = diasEmCrescimento(p.criadoEm);
         return '<tr data-id="' + p.id + '">' +
           '<td><div class="row-primary">' + esc(p.nome) + '</div><div class="row-secondary">' + esc(p.cargo || "—") + '</div></td>' +
-          '<td>' + esc(p.empresaNome || "—") + '</td>' +
+          '<td>' + esc(p.responsavel || "—") + '</td>' +
           '<td>' + esc(p.projeto || "—") + '</td>' +
-          '<td>' + esc(p.coordenador || "—") + '</td>' +
           // Pedido do Diego (16/10/2026): precisa ficar evidente quem
           // solicitou o crescimento, não só no detalhe de cada pessoa.
           '<td>' + esc(p.solicitanteCrescimentoNome || "—") + '</td>' +
+          '<td>' + crescimentoAprovacaoPill(p.crescimentoAprovacaoStatus || "APROVADO") + '</td>' +
+          // Andamento da documentação (pedido do Diego, 16/10/2026) -- só
+          // faz sentido depois de aprovado (antes disso nem existem os
+          // documentos obrigatórios).
+          '<td>' + (crescimentoAprovado(p) ? crescimentoProgressoHtml(crescimentoProgresso(p)) : '<span class="hint">após aprovação</span>') + '</td>' +
           '<td class="num">' + (dias === null ? "—" : dias + (dias === 1 ? " dia" : " dias")) + "</td>" +
           "</tr>";
       }).join("");
@@ -2330,10 +2404,13 @@
         (canDo("crescimento", "criar") ? '<button class="btn primary" id="btn-new-crescimento">' + ICONS.plus + "Nova solicitação</button>" : "") + "</div>" +
         '<div class="kpi-row" style="margin-bottom:16px;">' +
         '<div class="kpi neutral"><span class="label">Em crescimento agora</span><span class="value tabular">' + all.length + "</span></div>" +
+        '<div class="kpi' + (aguardando ? " warn" : " neutral") + '"><span class="label">Aguardando aprovação</span><span class="value tabular">' + aguardando + "</span>" +
+        (STATE.crescimentoAprovador ? '<span class="hint">Aprovador: ' + esc(STATE.crescimentoAprovador.nome) + "</span>" : '<span class="hint">Nenhum aprovador definido</span>') + "</div>" +
+        (reprovados ? '<div class="kpi danger"><span class="label">Reprovados (aguardando correção)</span><span class="value tabular">' + reprovados + "</span></div>" : "") +
         "</div>" +
         tableShell({
           toolbar: "",
-          headHtml: "<th>Nome / Cargo</th><th>Empresa</th><th>Projeto</th><th>Coordenador</th><th>Solicitante</th><th>Dias em crescimento</th>",
+          headHtml: "<th>Nome / Cargo</th><th>Responsável</th><th>Projeto</th><th>Solicitante</th><th>Aprovação</th><th>Documentação</th><th>Dias em crescimento</th>",
           bodyHtml: body,
           count: all.length,
           page: pg.page,
@@ -2350,10 +2427,90 @@
     draw();
   }
 
+  // Igual a confirmAction, mas com botão primário (confirmAction é sempre
+  // vermelho com lixeira -- pensado pra excluir, não pra aprovar/reenviar).
+  function confirmarAcaoPrimaria(titulo, mensagem, textoBotao, onConfirm) {
+    openModal(
+      '<div class="modal-box"><h3>' + esc(titulo) + "</h3><p>" + esc(mensagem) + "</p>" +
+      '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="button" class="btn primary" id="modal-confirm">' + ICONS.check + esc(textoBotao) + "</button></div></div>"
+    );
+    $("#modal-cancel").addEventListener("click", closeModal);
+    $("#modal-confirm").addEventListener("click", function () { onConfirm(closeModal); });
+  }
+
+  // Painel de aprovação no topo do detalhe (pedido do Diego, 16/10/2026).
+  function crescimentoAprovacaoPanelHtml(p) {
+    var st = p.crescimentoAprovacaoStatus || "APROVADO";
+    var cls = st === "APROVADO" ? " aprovado" : st === "REPROVADO" ? " reprovado" : "";
+    var texto, acoes = "";
+    if (st === "AGUARDANDO") {
+      texto = '<div class="row-primary">Aguardando aprovação</div><div class="hint">' +
+        (STATE.crescimentoAprovador ? "Aprovador: " + esc(STATE.crescimentoAprovador.nome) + ". A documentação só começa depois da aprovação." : "Nenhum aprovador definido em Administrador > Configurações — peça para um administrador definir.") + "</div>";
+      if (souAprovadorCrescimento()) {
+        acoes = '<button class="btn danger" id="btn-cresc-reprovar">' + ICONS.close + "Reprovar</button>" +
+          '<button class="btn primary" id="btn-cresc-aprovar">' + ICONS.check + "Aprovar</button>";
+      }
+    } else if (st === "REPROVADO") {
+      texto = '<div class="row-primary">Reprovado' + (p.crescimentoAprovacaoPorNome ? " por " + esc(p.crescimentoAprovacaoPorNome) : "") +
+        (p.crescimentoAprovacaoEm ? " em " + fmtDateHoraBR(p.crescimentoAprovacaoEm) : "") + "</div>" +
+        '<div class="cresc-motivo"><strong>Motivo:</strong> ' + esc(p.crescimentoReprovacaoMotivo || "—") + "</div>" +
+        '<div class="hint" style="margin-top:6px;">Corrija os dados em "Editar" e reenvie para aprovação.</div>';
+      if (canDo("crescimento", "editar")) acoes = '<button class="btn primary" id="btn-cresc-reenviar">Reenviar para aprovação</button>';
+    } else {
+      texto = '<div class="row-primary">Aprovado' + (p.crescimentoAprovacaoPorNome ? " por " + esc(p.crescimentoAprovacaoPorNome) : "") +
+        (p.crescimentoAprovacaoEm ? " em " + fmtDateHoraBR(p.crescimentoAprovacaoEm) : "") + "</div>" +
+        '<div class="hint">Documentação liberada para tratativa.</div>';
+    }
+    return '<div class="panel cresc-aprovacao-panel' + cls + '"><div class="panel-body pad"><div>' + crescimentoAprovacaoPill(st) + '<div style="margin-top:8px;">' + texto + "</div></div>" +
+      (acoes ? '<div class="acoes">' + acoes + "</div>" : "") + "</div></div>";
+  }
+
+  // Tabela da documentação obrigatória (pedido do Diego, 16/10/2026): anexo,
+  // validade, status e observação de cada documento, editáveis direto na
+  // linha (salva sozinho ao mudar o campo). Mostra primeiro os obrigatórios,
+  // na ordem da lista.
+  function crescimentoDocsPanelHtml(p, podeEditar) {
+    var docs = pessoaTreinamentos(p.id).filter(function (t) { return crescimentoTipoObrigatorio(t.tipo); });
+    docs.sort(function (a, b) {
+      return CRESCIMENTO_DOCS_OBRIGATORIOS.indexOf((a.tipo || "").toUpperCase()) - CRESCIMENTO_DOCS_OBRIGATORIOS.indexOf((b.tipo || "").toUpperCase());
+    });
+    var prog = crescimentoProgresso(p);
+    var rows = docs.map(function (t) {
+      var ok = crescimentoDocOk(t);
+      var vencido = t.vencimento && daysUntil(t.vencimento) < 0;
+      var dis = podeEditar ? "" : " disabled";
+      return '<tr class="cresc-doc-row' + (ok ? " ok" : "") + '" data-cresc-tr="' + t.id + '">' +
+        '<td><span class="cresc-doc-check' + (ok ? " ok" : "") + '" title="' + (ok ? "Documento ok" : "Pendente") + '">' + (ok ? ICONS.check : "") + "</span></td>" +
+        '<td><div class="row-primary">' + esc(t.tipo) + '</div><div class="row-secondary"><span class="tag">' + esc(t.categoria) + "</span></div></td>" +
+        "<td>" + (t.arquivoPath ? '<a href="#" data-cresc-download="' + t.id + '">' + esc(t.arquivoNome || "Baixar") + "</a>" : '<span class="hint">sem anexo</span>') +
+        (podeEditar ? '<div><button type="button" class="link-btn" data-cresc-attach="' + t.id + '">' + ICONS.paperclip + (t.arquivoPath ? "Trocar" : "Anexar") + "</button></div>" : "") + "</td>" +
+        '<td><input type="date" class="filter" data-cresc-field="vencimento" value="' + esc(t.vencimento || "") + '"' + dis + ">" +
+        (vencido ? '<div class="hint" style="color:var(--danger-ink);">Vencido</div>' : "") + "</td>" +
+        '<td><select class="filter" data-cresc-field="situacaoOriginal"' + dis + ">" +
+        '<option value=""' + ((t.situacaoOriginal || "") !== "VALIDO" ? " selected" : "") + ">Pendente</option>" +
+        '<option value="VALIDO"' + ((t.situacaoOriginal || "").toUpperCase() === "VALIDO" ? " selected" : "") + ">Válido</option>" +
+        "</select></td>" +
+        '<td><input type="text" class="filter obs-input" data-cresc-field="observacao" value="' + esc(t.observacao || "") + '" placeholder="Observação…"' + dis + "></td>" +
+        "</tr>";
+    }).join("");
+    return '<div class="panel"><div class="panel-head"><h3>Documentação obrigatória</h3>' +
+      '<div style="min-width:220px;">' + crescimentoProgressoHtml(prog, { semSub: true }) + "</div></div>" +
+      '<div class="panel-body">' +
+      (docs.length
+        ? '<div class="hint" style="padding:10px 18px 0;">Cada documento fica ok com <strong>anexo</strong> + <strong>data de validade</strong> + status <strong>Válido</strong>. ' + prog.ok + " de " + prog.total + " ok.</div>" +
+          '<div class="table-scroll"><table class="data cresc-docs-table"><thead><tr><th style="width:36px;"></th><th>Documento</th><th>Anexo</th><th>Validade</th><th>Status</th><th>Observação</th></tr></thead><tbody>' + rows + "</tbody></table></div>"
+        : '<div class="empty-state" style="padding:20px;">Nenhum documento obrigatório cadastrado para esta pessoa.</div>') +
+      "</div></div>" +
+      '<input type="file" id="cresc-attach-input" style="display:none">';
+  }
+
   function renderCrescimentoDetail(main, id) {
     var p = byId(STATE.crescimentoPessoas || [], id);
     if (!p) { navigate("#/crescimento"); return; }
     var dias = diasEmCrescimento(p.criadoEm);
+    var aprovado = crescimentoAprovado(p);
+    var podeEditarDocs = aprovado && (canDo("crescimento", "editar") || canDo("documentos", "editar"));
+    var prog = aprovado ? crescimentoProgresso(p) : null;
     main.innerHTML =
       '<div class="topbar">' +
       '<div><button class="link-btn" id="back-btn">← Crescimento</button><h1 style="margin-top:6px;">' + esc(p.nome) + "</h1>" +
@@ -2361,9 +2518,12 @@
       "</div>" +
       (canDo("crescimento", "editar") ? '<button class="btn" id="btn-edit-crescimento">Editar</button>' : "") +
       "</div>" +
+      crescimentoAprovacaoPanelHtml(p) +
       '<div class="kpi-row" style="margin-bottom:16px;">' +
       '<div class="kpi neutral"><span class="label">Em crescimento há</span><span class="value tabular">' + (dias === null ? "—" : dias) + '</span><span class="hint">' + (dias === 1 ? "dia" : "dias") + " desde o pedido, em " + fmtDateBR((p.criadoEm || "").slice(0, 10)) + "</span></div>" +
+      (aprovado ? '<div class="kpi' + (prog && prog.pct === 100 ? " ok" : " neutral") + '"><span class="label">Andamento da documentação</span><span class="value tabular">' + (prog && prog.pct !== null ? prog.pct + "%" : "—") + '</span><span class="hint">' + (prog ? prog.ok + " de " + prog.total + " documentos ok" : "") + "</span></div>" : "") +
       "</div>" +
+      (aprovado ? crescimentoDocsPanelHtml(p, podeEditarDocs) : "") +
       '<div class="panel"><div class="panel-head"><h3>Dados da empresa / contratação</h3></div><div class="panel-body pad"><div class="detail-grid">' +
       detailItem("Empresa", p.empresaNome || "—") +
       detailItem("Responsável", p.responsavel) + detailItem("Tipo de contrato", p.tipoPessoa) +
@@ -2391,6 +2551,105 @@
 
     $("#back-btn").addEventListener("click", function () { navigate("#/crescimento"); });
     if ($("#btn-edit-crescimento")) $("#btn-edit-crescimento").addEventListener("click", function () { openCrescimentoForm(p); });
+
+    // --- Aprovação ---
+    function aposDecisao(data, msg) {
+      refreshState().then(function () {
+        render();
+        renderShellCounts();
+        toast(msg, "success");
+        if (data && data.aviso) toast(data.aviso, "error");
+      });
+    }
+    if ($("#btn-cresc-aprovar")) {
+      $("#btn-cresc-aprovar").addEventListener("click", function () {
+        confirmarAcaoPrimaria("Aprovar crescimento?", "Ao aprovar, os " + CRESCIMENTO_DOCS_OBRIGATORIOS.length + " documentos obrigatórios entram na lista de " + p.nome + " e o solicitante é avisado por e-mail.", "Aprovar", function (closeModal) {
+          apiFetch("/api/crescimento/" + p.id + "/aprovacao", { method: "POST", body: { acao: "aprovar" } })
+            .then(function (data) { closeModal(); aposDecisao(data, "Crescimento aprovado."); })
+            .catch(function (err) { closeModal(); handleApiError(err); });
+        });
+      });
+    }
+    if ($("#btn-cresc-reprovar")) {
+      $("#btn-cresc-reprovar").addEventListener("click", function () {
+        openModal(
+          '<div class="modal-box"><h3>Reprovar crescimento</h3><p>O pedido volta para o solicitante corrigir e reenviar. Ele recebe o motivo por e-mail.</p>' +
+          '<form id="cresc-reprovar-form" class="field-grid one"><div class="field"><label>Motivo da reprovação *</label><textarea name="motivo" required rows="4" placeholder="Explique o que precisa ser corrigido"></textarea></div>' +
+          '<div class="modal-actions"><button type="button" class="btn" id="modal-cancel">Cancelar</button><button type="submit" class="btn danger">Reprovar</button></div></form></div>'
+        );
+        $("#modal-cancel").addEventListener("click", closeModal);
+        $("#cresc-reprovar-form").addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          var motivo = (new FormData(ev.target).get("motivo") || "").toString().trim();
+          if (!motivo) { toast("Informe o motivo da reprovação.", "error"); return; }
+          apiFetch("/api/crescimento/" + p.id + "/aprovacao", { method: "POST", body: { acao: "reprovar", motivo: motivo } })
+            .then(function (data) { closeModal(); aposDecisao(data, "Crescimento reprovado — o solicitante foi avisado."); })
+            .catch(handleApiError);
+        });
+      });
+    }
+    if ($("#btn-cresc-reenviar")) {
+      $("#btn-cresc-reenviar").addEventListener("click", function () {
+        confirmarAcaoPrimaria("Reenviar para aprovação?", "O aprovador recebe um novo e-mail para aprovar este crescimento.", "Reenviar", function (closeModal) {
+          apiFetch("/api/crescimento/" + p.id + "/reenviar", { method: "POST" })
+            .then(function (data) { closeModal(); aposDecisao(data, "Reenviado para aprovação."); })
+            .catch(function (err) { closeModal(); handleApiError(err); });
+        });
+      });
+    }
+
+    // --- Documentação (edição direto na linha) ---
+    function atualizarTreino(updated) {
+      var rec = mapTreinamentoFromApi(updated);
+      var idx = STATE.treinamentos.findIndex(function (x) { return x.id === rec.id; });
+      if (idx !== -1) STATE.treinamentos[idx] = rec; else STATE.treinamentos.push(rec);
+    }
+    $all("[data-cresc-field]", main).forEach(function (input) {
+      var evento = input.tagName === "SELECT" || input.type === "date" ? "change" : "blur";
+      input.addEventListener(evento, function () {
+        var row = input.closest("[data-cresc-tr]");
+        var trId = Number(row.getAttribute("data-cresc-tr"));
+        var tr = byId(STATE.treinamentos, trId);
+        if (!tr) return;
+        var campo = input.getAttribute("data-cresc-field");
+        var valor = input.value;
+        var atual = campo === "vencimento" ? (tr.vencimento || "") : campo === "situacaoOriginal" ? (tr.situacaoOriginal || "") : (tr.observacao || "");
+        if (valor === atual) return;
+        var body = {};
+        body[campo] = campo === "vencimento" ? emptyToNull(valor) : campo === "observacao" ? (valor.trim() || null) : valor;
+        apiFetch("/api/treinamentos/" + trId, { method: "PATCH", body: body })
+          .then(function (data) {
+            atualizarTreino(data);
+            // Observação não muda a porcentagem -- não precisa redesenhar
+            // a tela inteira (e perder o foco de quem está digitando).
+            if (campo !== "observacao") render();
+            else toast("Observação salva.", "success");
+          })
+          .catch(handleApiError);
+      });
+    });
+    $all("[data-cresc-download]", main).forEach(function (a) {
+      a.addEventListener("click", function (ev) { ev.preventDefault(); baixarAnexo(a.getAttribute("data-cresc-download")); });
+    });
+    var attachInput = $("#cresc-attach-input", main);
+    var attachTargetId = null;
+    $all("[data-cresc-attach]", main).forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        attachTargetId = btn.getAttribute("data-cresc-attach");
+        attachInput.value = "";
+        attachInput.click();
+      });
+    });
+    if (attachInput) {
+      attachInput.addEventListener("change", function () {
+        var file = attachInput.files[0];
+        if (!file || !attachTargetId) return;
+        toast("Enviando anexo…");
+        uploadArquivoTreinamento(attachTargetId, file)
+          .then(function (data) { atualizarTreino(data); render(); toast("Anexo adicionado.", "success"); })
+          .catch(handleApiError);
+      });
+    }
   }
 
   // `p` null = nova solicitação (sempre cria pessoa nova, status forçado
@@ -2401,7 +2660,7 @@
     var isNew = !p;
 
     var html =
-      '<div class="drawer-head"><div><h2>' + (isNew ? "Nova solicitação de crescimento" : "Editar solicitação de crescimento") + '</h2><div class="sub">' + (isNew ? "Cria um novo cadastro em Pessoas, com status Crescimento" : "Cadastro em Pessoas") + '</div></div>' +
+      '<div class="drawer-head"><div><h2>' + (isNew ? "Nova solicitação de crescimento" : "Editar solicitação de crescimento") + '</h2><div class="sub">' + (isNew ? "Cria um novo cadastro em Pessoas, com status Crescimento, e envia para o aprovador" : "Cadastro em Pessoas") + '</div></div>' +
       '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
       '<form class="drawer-body" id="crescimento-form">' +
       '<div class="section-tabs">' +
@@ -2524,7 +2783,10 @@
           closeDrawer();
           render();
           renderShellCounts();
-          toast(isNew ? "Solicitação de crescimento cadastrada." : "Cadastro atualizado.", "success");
+          toast(isNew ? "Solicitação cadastrada e enviada para aprovação." : "Cadastro atualizado.", "success");
+          // Ex.: nenhum aprovador definido, ou o e-mail não saiu -- o pedido
+          // foi registrado mesmo assim, só avisa (ver POST /api/crescimento).
+          if (data && data.aviso) toast(data.aviso, "error");
           // Se o status mudou pra fora de CRESCIMENTO (processo encerrado),
           // a pessoa não está mais em STATE.crescimentoPessoas -- volta pra
           // lista em vez de abrir um detalhe que não existe mais aqui.
@@ -9065,6 +9327,17 @@
       '<p class="hint" style="margin-bottom:14px;">Regras e exceções que valem para todos os usuários do sistema.</p>' +
       '<div id="config-body"></div>' +
       "</div></div>" +
+      // Pedido do Diego (16/10/2026): "em administrador crie um campo para
+      // definir quem é o Aprovador" do Crescimento -- um único usuário,
+      // que recebe o e-mail de cada pedido novo e é o único que pode
+      // aprovar/reprovar (ver src/lib/crescimentoAprovacao.ts).
+      '<div class="panel"><div class="panel-head"><h3>Aprovação de crescimento</h3></div><div class="panel-body pad">' +
+      '<div class="config-row">' +
+      '<div class="config-row-text"><div class="config-row-title">Aprovador de crescimento</div>' +
+      '<div class="hint">Recebe por e-mail cada solicitação de crescimento ("Crescimento de equipe - Responsável") e é o único que pode aprovar ou reprovar, entrando com o próprio usuário. Ele passa a enxergar a aba Crescimento automaticamente.</div></div>' +
+      '<div style="display:flex;gap:8px;align-items:center;"><select class="filter" id="cfg-aprovador-crescimento" style="min-width:240px;"><option value="">Carregando…</option></select>' +
+      '<button type="button" class="btn primary sm" id="btn-salvar-aprovador">Salvar</button></div>' +
+      "</div></div></div>" +
       // Pedido do Diego (10/2026): reler em massa as Fichas de EPI já
       // cadastradas que nunca foram lidas por OCR com sucesso (muitas de
       // antes da correção do bug do bmp-js/tesseract.js). Fichas novas já
@@ -9080,6 +9353,30 @@
       "</div></div></div>";
     bindAdminTabs(main);
     draw();
+
+    var selAprovador = $("#cfg-aprovador-crescimento", main);
+    var btnSalvarAprovador = $("#btn-salvar-aprovador", main);
+    apiFetch("/api/usuarios").then(function (data) {
+      var atual = (STATE.config && typeof STATE.config.crescimento_aprovador_id === "string") ? STATE.config.crescimento_aprovador_id : "";
+      var usuarios = (data.usuarios || []).filter(function (u) { return u.ativo || u.id === atual; });
+      selAprovador.innerHTML = '<option value="">— Nenhum —</option>' + usuarios.map(function (u) {
+        return '<option value="' + esc(u.id) + '"' + (u.id === atual ? " selected" : "") + ">" + esc(u.nome) + " (" + esc(u.email) + ")" + (u.ativo ? "" : " — inativo") + "</option>";
+      }).join("");
+    }).catch(handleApiError);
+    btnSalvarAprovador.addEventListener("click", function () {
+      var valor = selAprovador.value;
+      btnSalvarAprovador.disabled = true;
+      apiFetch("/api/configuracoes", { method: "PATCH", body: { chave: "crescimento_aprovador_id", valor: valor } })
+        .then(function () {
+          btnSalvarAprovador.disabled = false;
+          STATE.config = STATE.config || {};
+          STATE.config.crescimento_aprovador_id = valor;
+          var opt = selAprovador.options[selAprovador.selectedIndex];
+          STATE.crescimentoAprovador = valor ? { id: valor, nome: (opt ? opt.textContent : "").replace(/\s*\(.*$/, "") } : null;
+          toast(valor ? "Aprovador de crescimento definido." : "Aprovador de crescimento removido.", "success");
+        })
+        .catch(function (err) { btnSalvarAprovador.disabled = false; handleApiError(err); });
+    });
 
     var btnRelerTodas = $("#btn-reler-epi-todas", main);
     if (btnRelerTodas) {

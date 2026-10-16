@@ -5,6 +5,7 @@ import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
 import { CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
 import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, nomeEmpresaEmbutida, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
+import { enviarEmailSolicitacaoCrescimento } from "@/lib/crescimentoAprovacao";
 
 // Aba "Crescimento" (pedido do Diego, 15/10/2026): cadastro de pessoas
 // entrando no processo de crescimento da empresa. Acesso restrito a quem o
@@ -12,8 +13,8 @@ import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFrom
 // Permissões) -- INDEPENDENTE de ter permissão em "pessoas". Ao salvar,
 // cria um cadastro NOVO na mesma tabela `pessoas`, com status forçado
 // "CRESCIMENTO" -- por isso esta rota reaproveita a checagem de
-// duplicidade e a regra dos 11 documentos obrigatórios por cargo
-// operacional, igual a POST /api/pessoas, mas com sua própria whitelist de
+// duplicidade de POST /api/pessoas (os documentos obrigatórios só entram
+// depois da aprovação -- ver mais abaixo), mas com sua própria whitelist de
 // campos (só os que aparecem no formulário de Crescimento) e sua própria
 // permissão.
 
@@ -27,24 +28,12 @@ const CAMPOS_PESSOA_CRESCIMENTO = [
   ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
 
-// Mesma lista de cargos operacionais / documentos obrigatórios de POST
-// /api/pessoas (src/app/api/pessoas/route.ts) -- duplicada de propósito,
-// mesmo padrão já usado neste projeto pra CAMPOS_PESSOA entre as duas rotas
-// de pessoas (ver comentário lá).
-const CARGOS_AUTO_DOCS = ["TEAM LIDER", "MEMBRO", "TÉCNICO", "VISTORIADOR", "CLEAN UP", "AUDITOR DE QUALIDADE"];
-const AUTO_DOCS: Array<{ tipo: string; categoria: "treinamento" | "documento" }> = [
-  { tipo: "NR35", categoria: "treinamento" },
-  { tipo: "NR10", categoria: "treinamento" },
-  { tipo: "ASO", categoria: "documento" },
-  { tipo: "PGR", categoria: "documento" },
-  { tipo: "PCMSO", categoria: "documento" },
-  { tipo: "PRIMEIROS SOCORROS", categoria: "treinamento" },
-  { tipo: "ORDEM DE SERVIÇO (NR01)", categoria: "documento" },
-  { tipo: "CONTRATO", categoria: "documento" },
-  { tipo: "NR06", categoria: "treinamento" },
-  { tipo: "TERMO DE CONSENTIMENTO", categoria: "documento" },
-  { tipo: "INTEGRAÇÃO DE SEGURANÇA", categoria: "treinamento" },
-];
+// Documentos obrigatórios: desde 16/10/2026 (pedido do Diego) NÃO são mais
+// criados aqui na solicitação -- só quando o aprovador aprovar o
+// crescimento (ver POST /api/crescimento/[id]/aprovacao e
+// DOCS_OBRIGATORIOS_CRESCIMENTO em src/lib/crescimentoAprovacao.ts): "antes
+// de iniciar toda a tratativa das documentações esse crescimento que foi
+// solicitado deve passar por uma aprovação".
 
 function upperOrSame(v: any): any {
   if (typeof v !== "string") return v;
@@ -192,33 +181,14 @@ export async function POST(req: Request) {
     // Diego (16/10/2026), preenchido automaticamente, não vem do body.
     solicitante_crescimento_id: gate.user?.id ?? null,
     solicitante_crescimento_nome: gate.user?.nome ?? null,
+    // Fluxo de aprovação (pedido do Diego, 16/10/2026) -- todo pedido novo
+    // nasce aguardando o aprovador definido em Administrador.
+    crescimento_aprovacao_status: "AGUARDANDO",
   };
 
   const { data: pessoa, error } = await admin.from("pessoas").insert(payload).select().single();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  // Mesma regra de POST /api/pessoas: cargo operacional ganha os 11
-  // documentos obrigatórios como pendentes.
-  const cargoNormalizado = (pessoa.cargo || "").toString().trim().toUpperCase();
-  if (CARGOS_AUTO_DOCS.includes(cargoNormalizado)) {
-    const rows = AUTO_DOCS.map((doc) => ({
-      pessoa_id: pessoa.id,
-      pessoa_nome: pessoa.nome,
-      tipo: doc.tipo,
-      categoria: doc.categoria,
-      vencimento: null,
-      data_emissao: null,
-      situacao_original: "",
-      arquivo_path: null,
-      arquivo_nome: null,
-      observacao: null,
-    }));
-    const { error: docsError } = await admin.from("treinamentos").insert(rows);
-    if (docsError) {
-      return NextResponse.json({ error: docsError.message }, { status: 500 });
-    }
   }
 
   await auditDiffFields({
@@ -235,5 +205,10 @@ export async function POST(req: Request) {
   // decisão do Diego (15/10/2026): nunca deixar divergir.
   await propagarCamposEmpresa(admin, empresaCnpjDigits, pessoa.id, empresaColunas, gate.user);
 
-  return NextResponse.json(pessoa, { status: 201 });
+  // Avisa o aprovador por e-mail (best-effort: se falhar ou não houver
+  // aprovador definido, o pedido continua registrado e aguardando -- só
+  // devolve um aviso pra tela mostrar).
+  const email = await enviarEmailSolicitacaoCrescimento({ admin, pessoa, origin: new URL(req.url).origin });
+
+  return NextResponse.json({ ...pessoa, aviso: email.aviso }, { status: 201 });
 }
