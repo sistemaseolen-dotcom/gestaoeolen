@@ -88,7 +88,7 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
 
   const { data: pessoa, error: pessoaError } = await admin
     .from("pessoas")
-    .select("id, nome, cpf, cargo, empresa_id, empresa_nome")
+    .select("id, nome, cpf, cargo, empresa_cnpj, empresa_nome, empresa_cidade")
     .eq("nome", nomeColaborador)
     .maybeSingle();
   if (pessoaError) return NextResponse.json({ error: pessoaError.message }, { status: 500 });
@@ -105,13 +105,13 @@ export async function POST(req: Request, context: { params: Promise<{ id: string
     return NextResponse.json({ error: "Essa pessoa não tem um registro de Ficha de EPI para atualizar." }, { status: 404 });
   }
 
-  let cnpj: string | null = null;
-  let cidade: string | null = null;
-  if (pessoa.empresa_id) {
-    const { data: empresa } = await admin.from("empresas").select("cnpj, cidade").eq("id", pessoa.empresa_id).maybeSingle();
-    cnpj = empresa?.cnpj || null;
-    cidade = empresa?.cidade || null;
-  }
+  // Migrado (16/10/2026, pedido do Diego) pra ler direto dos campos
+  // embutidos da própria pessoa (empresa_cnpj/empresa_cidade -- ver
+  // src/lib/empresaEmbutida.ts) em vez de resolver empresa_id contra a
+  // tabela `empresas`, que tem CNPJs duplicados e vai deixar de ser a fonte
+  // de verdade.
+  const cnpj: string | null = pessoa.empresa_cnpj || null;
+  const cidade: string | null = pessoa.empresa_cidade || null;
 
   const itensPdf: ItemFichaGerada[] = itensBody.map((it) => ({
     especificacao: it.especificacao,

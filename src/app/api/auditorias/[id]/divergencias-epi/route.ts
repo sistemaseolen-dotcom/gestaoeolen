@@ -50,18 +50,18 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
   // Dados de pessoa/empresa pro cabeçalho da ficha (CPF, empresa, CNPJ,
   // função) — só busca de quem realmente tem algo pendente (divergência ou
   // assinatura).
+  //
+  // Migrado (16/10/2026, pedido do Diego) pra ler o CNPJ direto da própria
+  // pessoa (empresa_cnpj, já embutido -- ver src/lib/empresaEmbutida.ts) em
+  // vez de resolver empresa_id contra a tabela `empresas`: essa tabela tem
+  // CNPJs duplicados (formatado com pontuação em algumas linhas, só dígitos
+  // em outras) e vai deixar de ser a fonte de verdade.
   const nomesRelevantes = [...nomesComDivergencia, ...nomesPendenteAssinatura];
   const { data: pessoas } = await admin
     .from("pessoas")
-    .select("id, nome, cpf, cargo, empresa_id, empresa_nome, email, email_corporativo")
+    .select("id, nome, cpf, cargo, empresa_cnpj, empresa_nome, email, email_corporativo")
     .in("nome", nomesRelevantes);
   const pessoaPorNome = new Map((pessoas || []).map((p: any) => [p.nome, p]));
-
-  const empresaIds = Array.from(new Set((pessoas || []).map((p: any) => p.empresa_id).filter((v: any) => v != null)));
-  const { data: empresas } = empresaIds.length
-    ? await admin.from("empresas").select("id, cnpj").in("id", empresaIds)
-    : { data: [] as any[] };
-  const cnpjPorEmpresaId = new Map((empresas || []).map((e: any) => [e.id, e.cnpj]));
 
   const url = new URL(req.url);
   const somenteNome = url.searchParams.get("colaborador");
@@ -132,7 +132,7 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
               cpf: pessoa.cpf,
               cargo: pessoa.cargo,
               empresaNome: pessoa.empresa_nome,
-              cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null,
+              cnpj: pessoa.empresa_cnpj || null,
               // Assinatura eletrônica (Docsales) exige e-mail do
               // signatário — prioriza o corporativo (mais provável de
               // estar ativo/monitorado) e cai pro pessoal se não tiver.
@@ -164,7 +164,7 @@ export async function GET(req: Request, context: { params: Promise<{ id: string 
               cpf: pessoa.cpf,
               cargo: pessoa.cargo,
               empresaNome: pessoa.empresa_nome,
-              cnpj: pessoa.empresa_id ? cnpjPorEmpresaId.get(pessoa.empresa_id) || null : null,
+              cnpj: pessoa.empresa_cnpj || null,
               // Assinatura eletrônica (Docsales) exige e-mail do
               // signatário — prioriza o corporativo (mais provável de
               // estar ativo/monitorado) e cai pro pessoal se não tiver.

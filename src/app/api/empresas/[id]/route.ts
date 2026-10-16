@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
-import { inativarEmpresaCascata } from "@/lib/statusCascade";
 
 const CAMPOS_EMPRESA = [
   "nome", "fantasia", "cnpj", "porte", "cidade", "uf", "cep", "bairro", "logradouro",
@@ -124,11 +123,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     usuario: gate.user,
   });
 
-  // Inativar uma empresa cascateia: inativa (e desvincula de equipes) todas
-  // as pessoas vinculadas a ela. Ver src/lib/statusCascade.ts.
-  if (patch.status === "INATIVO" && before.status !== "INATIVO") {
-    await inativarEmpresaCascata(id, gate.user);
-  }
+  // Correção (16/10/2026, pedido do Diego): status ativo/inativo agora é
+  // decidido SEMPRE por pessoa, nunca mais por empresa -- inativar uma
+  // empresa aqui não cascateia mais pras pessoas vinculadas a ela (ver
+  // src/lib/statusCascade.ts, que teve inativarEmpresaCascata removida).
 
   return NextResponse.json(after);
 }

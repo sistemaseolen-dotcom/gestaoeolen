@@ -1,14 +1,8 @@
-// Regra de negócio pedida pelo Diego: inativar uma pessoa ou uma empresa não
-// pode deixar as outras telas "erradas" — precisa se propagar:
-//
-//   1. Empresa inativada (status -> INATIVO) -> todas as pessoas vinculadas
-//      a ela (pessoas.empresa_id = essa empresa) também são inativadas.
-//      Isso é uma ação deliberada sobre a EMPRESA (ex.: parar de trabalhar
-//      com aquele prestador de serviço) — continua cascateando de
-//      propósito.
-//   2. Pessoa inativada -> é desvinculada de qualquer equipe onde apareça
-//      (como membro comum em equipe_membros, ou como team_lider_id de uma
-//      equipe) — uma pessoa inativa não deve continuar "presa" numa equipe.
+// Regra de negócio pedida pelo Diego: inativar uma pessoa não pode deixar as
+// outras telas "erradas" — precisa se propagar: ela é desvinculada de
+// qualquer equipe onde apareça (como membro comum em equipe_membros, ou como
+// team_lider_id de uma equipe) — uma pessoa inativa não deve continuar
+// "presa" numa equipe.
 //
 // CORRIGIDO (16/10/2026, pedido do Diego, usando a RSI de exemplo): inativar
 // UMA pessoa NÃO inativa mais a empresa dela nem as outras pessoas vinculadas
@@ -18,14 +12,18 @@
 // MUNDO nas empresas prestadoras de serviço com vários funcionários (ex.:
 // RSI, ALLIANCE SERVICES com 52 pessoas) ao inativar só 1 delas. Diego:
 // "Se eu inativei apenas uma pessoa, não [posso inativar] as outras que
-// estão vinculadas àquela empresa." Agora o cascateamento só roda no
-// sentido empresa -> pessoas (ação explícita na aba Empresas), nunca no
-// sentido pessoa -> empresa -> outras pessoas.
+// estão vinculadas àquela empresa."
 //
-// Só cobre as rotas manuais (/api/pessoas/[id], /api/empresas/[id]) — a
-// sincronização com o GPO (gpoSync.ts) já não grava audit_log de propósito
-// (é um processo em lote, não uma edição manual), então fica fora desse
-// cascateamento por enquanto.
+// CORRIGIDO DE NOVO (16/10/2026, mesmo dia, pedido do Diego): "em relação a
+// esta ativa ou inativa, iremos nos basear por pessoa" -- o cascateamento no
+// sentido empresa -> pessoas (`inativarEmpresaCascata`, disparado pela aba
+// Empresas) foi removido de vez. Ativo/inativo agora é decidido SEMPRE pela
+// própria pessoa, nunca mais por uma ação na empresa; PATCH /api/empresas/[id]
+// não cascateia mais status pra ninguém.
+//
+// Só cobre a rota manual /api/pessoas/[id] — a sincronização com o GPO
+// (gpoSync.ts) já não grava audit_log de propósito (é um processo em lote,
+// não uma edição manual), então fica fora desse cascateamento por enquanto.
 import { supabaseAdmin } from "./supabaseAdmin";
 import { auditDiffFields } from "./audit";
 import type { UsuarioRow } from "./permissions";
@@ -143,53 +141,4 @@ export async function inativarPessoaCascata(
   }
 
   await desvincularPessoaDeEquipes(pessoaId, usuario);
-}
-
-// Inativa uma empresa "em cascata": garante status=INATIVO e inativa (em
-// cascata) todas as pessoas ainda não-inativas vinculadas a ela. Essa
-// direção (empresa -> pessoas) continua existindo de propósito -- é uma
-// ação deliberada sobre a empresa (ex.: parar de trabalhar com aquele
-// prestador de serviço), diferente de inativar só 1 funcionário dela.
-export async function inativarEmpresaCascata(
-  empresaId: number,
-  usuario: UsuarioRow | null,
-  visitedEmpresas: Set<number> = new Set()
-) {
-  if (visitedEmpresas.has(empresaId)) return;
-  visitedEmpresas.add(empresaId);
-
-  const admin = supabaseAdmin();
-  const { data: before, error: fetchError } = await admin.from("empresas").select("*").eq("id", empresaId).maybeSingle();
-  if (fetchError) throw fetchError;
-  if (!before) return;
-
-  if (before.status !== "INATIVO") {
-    const { data: after, error: updError } = await admin
-      .from("empresas")
-      .update({ status: "INATIVO" })
-      .eq("id", empresaId)
-      .select()
-      .single();
-    if (updError) throw updError;
-    await auditDiffFields({
-      entidade: "empresa",
-      entidadeId: empresaId,
-      entidadeLabel: after.nome,
-      before,
-      after,
-      campos: ["status"],
-      usuario,
-    });
-  }
-
-  const { data: pessoas, error: pessoasError } = await admin
-    .from("pessoas")
-    .select("id, status")
-    .eq("empresa_id", empresaId);
-  if (pessoasError) throw pessoasError;
-
-  for (const p of pessoas || []) {
-    if (p.status === "INATIVO") continue;
-    await inativarPessoaCascata(p.id, usuario);
-  }
 }
