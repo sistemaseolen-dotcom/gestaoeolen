@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
-import { gerarApiToken } from "@/lib/apiTokenAuth";
+import { gerarApiToken, sanitizarEscopos } from "@/lib/apiTokenAuth";
 
 // Gestão dos tokens da API EXTERNA (pedido do Diego, 16/10/2026) -- fica
 // dentro da aba Administrador de propósito (quem pode criar/revogar um
@@ -18,7 +18,7 @@ export async function GET() {
   // "ver" o token de novo; o valor bruto só existe uma vez, na criação).
   const { data, error } = await supabaseAdmin()
     .from("api_tokens")
-    .select("id, nome, token_prefixo, ativo, criado_em, criado_por_nome, ultimo_uso_em, observacao")
+    .select("id, nome, token_prefixo, ativo, criado_em, criado_por_nome, ultimo_uso_em, observacao, escopos")
     .order("criado_em", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -41,6 +41,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Informe um nome pra identificar quem vai usar este token." }, { status: 400 });
   }
   const observacao = body?.observacao ? String(body.observacao).trim() : null;
+  // `escopos` ausente/vazio = acesso total (pedido original do Diego,
+  // "TUDO DO SISTEMA"); lista de chaves = acesso só àquelas partes (pedido
+  // do Diego, 16/10/2026: "ter opção de selecionar o que sera visto com
+  // esse token, podem dar acesso a apenas uma parte do sistema").
+  const escopos = sanitizarEscopos(body?.escopos);
 
   const { token, hash, prefixo } = gerarApiToken();
   const admin = supabaseAdmin();
@@ -51,10 +56,11 @@ export async function POST(req: Request) {
       token_hash: hash,
       token_prefixo: prefixo,
       observacao,
+      escopos,
       criado_por_id: gate.user?.id ?? null,
       criado_por_nome: gate.user?.nome ?? null,
     })
-    .select("id, nome, token_prefixo, ativo, criado_em, criado_por_nome, ultimo_uso_em, observacao")
+    .select("id, nome, token_prefixo, ativo, criado_em, criado_por_nome, ultimo_uso_em, observacao, escopos")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -63,8 +69,8 @@ export async function POST(req: Request) {
     entidadeId: data.id,
     entidadeLabel: data.nome,
     before: null,
-    after: { nome, ativo: true, observacao },
-    campos: ["nome", "ativo", "observacao"],
+    after: { nome, ativo: true, observacao, escopos: escopos ? escopos.join(", ") : "Tudo" },
+    campos: ["nome", "ativo", "observacao", "escopos"],
     usuario: gate.user,
   });
 

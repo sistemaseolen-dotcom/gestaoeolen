@@ -7,7 +7,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // dos veículos, separado de GET /api/externa/veiculos por ser uma tabela
 // bem maior (+11000 linhas). ?veiculoId= filtra por um veículo só.
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "veiculos");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

@@ -151,6 +151,7 @@
     copy: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
     logout: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
     lock: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    link: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
     user: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     history: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></svg>',
     edit: '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5Z"/></svg>',
@@ -9112,6 +9113,59 @@
   // devolvem pessoas/equipes/patrimônio/veículos/auditorias/documentos/
   // acesso). O valor bruto do token só aparece UMA VEZ, na hora da criação
   // -- o banco guarda só o hash, então perdido é perdido (gera outro).
+  // Chaves/labels dos escopos -- têm que bater exatamente com ESCOPOS_API em
+  // src/lib/apiTokenAuth.ts (a chave é o nome da pasta em /api/externa/<chave>).
+  var TOKEN_ESCOPOS = [
+    { chave: "pessoas", label: "Pessoas / Crescimento" },
+    { chave: "equipes", label: "Equipes" },
+    { chave: "acesso-equipes", label: "Acesso (equipes de acesso)" },
+    { chave: "patrimonios", label: "Patrimônio" },
+    { chave: "veiculos", label: "Veículos (inclui KM)" },
+    { chave: "auditorias", label: "Auditorias" },
+    { chave: "treinamentos", label: "Documentos (treinamentos)" },
+  ];
+  function labelEscopo(chave) {
+    var found = TOKEN_ESCOPOS.filter(function (e) { return e.chave === chave; })[0];
+    return found ? found.label : chave;
+  }
+  function escoposResumo(escopos) {
+    if (!escopos || !escopos.length) return '<span class="pill ok">Tudo</span>';
+    return escopos.map(function (c) { return '<span class="pill neutral" style="margin:0 4px 4px 0;">' + esc(labelEscopo(c)) + "</span>"; }).join("");
+  }
+  // Markup dos checkboxes de escopo, reaproveitado na criação e na edição.
+  // `checkedKeys` null = "Acesso total" marcado (checkboxes começam ocultos).
+  function escoposFormHtml(checkedKeys) {
+    var total = checkedKeys === null;
+    var boxes = TOKEN_ESCOPOS.map(function (e) {
+      var checked = !total && checkedKeys.indexOf(e.chave) !== -1;
+      return '<label style="display:flex;align-items:center;gap:6px;margin:0 0 8px;font-weight:400;">' +
+        '<input type="checkbox" name="escopos" value="' + esc(e.chave) + '"' + (checked ? " checked" : "") + '> ' + esc(e.label) + "</label>";
+    }).join("");
+    return '<div class="field span2"><label>Acesso</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;font-weight:400;margin-bottom:10px;">' +
+      '<input type="checkbox" id="token-acesso-total"' + (total ? " checked" : "") + '> Acesso total (todos os dados abaixo)</label>' +
+      '<div id="token-escopos-lista" style="display:' + (total ? "none" : "block") + ';padding-left:2px;">' + boxes + "</div>" +
+      '<div class="hint" style="margin-top:2px;">Desmarque "Acesso total" pra liberar só algumas partes do sistema pra este token.</div>' +
+      "</div>";
+  }
+  function bindEscoposFormToggle(scope) {
+    var totalCk = $("#token-acesso-total", scope);
+    var lista = $("#token-escopos-lista", scope);
+    totalCk.addEventListener("change", function () {
+      lista.style.display = totalCk.checked ? "none" : "block";
+    });
+  }
+  // Lê os checkboxes de volta: null = acesso total; senão, array de chaves
+  // (pelo menos uma precisa estar marcada).
+  function lerEscoposDoForm(formEl) {
+    var totalCk = $("#token-acesso-total", formEl);
+    if (totalCk.checked) return { ok: true, escopos: null };
+    var fd = new FormData(formEl);
+    var escopos = fd.getAll("escopos");
+    if (!escopos.length) return { ok: false, escopos: null };
+    return { ok: true, escopos: escopos };
+  }
+
   function renderAdminApiTokens(main) {
     function draw() {
       var body = $("#tokens-body", main);
@@ -9127,17 +9181,27 @@
           return '<tr data-tid="' + t.id + '">' +
             '<td><div class="row-primary">' + esc(t.nome) + '</div>' + (t.observacao ? '<div class="row-secondary">' + esc(t.observacao) + "</div>" : "") + "</td>" +
             '<td><code>' + esc(t.token_prefixo) + '…</code></td>' +
+            "<td>" + escoposResumo(t.escopos) + "</td>" +
             "<td>" + (t.ativo ? '<span class="pill ok">Ativo</span>' : '<span class="pill neutral">Revogado</span>') + "</td>" +
             "<td>" + fmtDateHoraBR(t.criado_em) + (t.criado_por_nome ? '<div class="row-secondary">' + esc(t.criado_por_nome) + "</div>" : "") + "</td>" +
             "<td>" + (t.ultimo_uso_em ? fmtDateHoraBR(t.ultimo_uso_em) : '<span class="hint">nunca usado</span>') + "</td>" +
             '<td style="text-align:right;white-space:nowrap;">' +
+            '<button class="btn ghost sm" data-editar-escopo="' + t.id + '">Editar acesso</button> ' +
             '<button class="btn ghost sm" data-toggle-token="' + t.id + '">' + (t.ativo ? "Revogar" : "Reativar") + "</button> " +
             '<button class="btn sm danger" data-delete-token="' + t.id + '">' + ICONS.trash + "Excluir</button>" +
             "</td></tr>";
         }).join("");
 
-        body.innerHTML = '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Nome</th><th>Token</th><th>Status</th><th>Criado em</th><th>Último uso</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
+        body.innerHTML = '<div class="panel"><div class="table-scroll"><table class="data"><thead><tr><th>Nome</th><th>Token</th><th>Acesso</th><th>Status</th><th>Criado em</th><th>Último uso</th><th></th></tr></thead><tbody>' + rows + "</tbody></table></div></div>";
 
+        $all("[data-editar-escopo]", body).forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var id = btn.getAttribute("data-editar-escopo");
+            var tk = tokens.filter(function (t) { return String(t.id) === id; })[0];
+            if (!tk) return;
+            abrirEditarEscopo(tk);
+          });
+        });
         $all("[data-toggle-token]", body).forEach(function (btn) {
           btn.addEventListener("click", function () {
             var id = btn.getAttribute("data-toggle-token");
@@ -9167,21 +9231,75 @@
         '<form id="token-form"><div class="field-grid" style="margin-top:10px;">' +
         '<div class="field span2"><label>Nome do integrador *</label><input type="text" name="nome" required placeholder="Ex.: Sistema de folha de pagamento"></div>' +
         '<div class="field span2"><label>Observação</label><input type="text" name="observacao" placeholder="Opcional -- pra você lembrar o que é isso depois"></div>' +
+        escoposFormHtml(null) +
         "</div>" +
         '<div class="modal-actions"><button type="button" class="btn" id="token-cancel">Cancelar</button><button type="submit" class="btn primary">' + ICONS.plus + "Gerar token</button></div>" +
         "</form></div>";
       openModal(html);
+      bindEscoposFormToggle($("#modal-content"));
       $("#token-cancel").addEventListener("click", closeModal);
       $("#token-form").addEventListener("submit", function (ev) {
         ev.preventDefault();
+        var lido = lerEscoposDoForm(ev.target);
+        if (!lido.ok) { toast("Marque \"Acesso total\" ou selecione ao menos uma área.", "error"); return; }
         var fd = new FormData(ev.target);
-        apiFetch("/api/admin/api-tokens", { method: "POST", body: { nome: fd.get("nome"), observacao: fd.get("observacao") } })
+        apiFetch("/api/admin/api-tokens", { method: "POST", body: { nome: fd.get("nome"), observacao: fd.get("observacao"), escopos: lido.escopos } })
           .then(function (novo) {
             closeModal();
             mostrarTokenGerado(novo);
             draw();
           })
           .catch(handleApiError);
+      });
+    }
+
+    // Editar o acesso (escopos) de um token já existente -- não precisa
+    // excluir e criar outro só pra ajustar o que ele vê (pedido do Diego,
+    // 16/10/2026).
+    function abrirEditarEscopo(tk) {
+      var html =
+        '<div class="modal-box"><h3>Editar acesso de "' + esc(tk.nome) + '"</h3>' +
+        '<form id="token-escopo-form"><div class="field-grid" style="margin-top:10px;">' +
+        escoposFormHtml(tk.escopos || null) +
+        "</div>" +
+        '<div class="modal-actions"><button type="button" class="btn" id="token-escopo-cancel">Cancelar</button><button type="submit" class="btn primary">Salvar</button></div>' +
+        "</form></div>";
+      openModal(html);
+      bindEscoposFormToggle($("#modal-content"));
+      $("#token-escopo-cancel").addEventListener("click", closeModal);
+      $("#token-escopo-form").addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var lido = lerEscoposDoForm(ev.target);
+        if (!lido.ok) { toast("Marque \"Acesso total\" ou selecione ao menos uma área.", "error"); return; }
+        apiFetch("/api/admin/api-tokens/" + tk.id, { method: "PATCH", body: { escopos: lido.escopos } })
+          .then(function () { closeModal(); toast("Acesso atualizado.", "success"); draw(); })
+          .catch(handleApiError);
+      });
+    }
+
+    // Link base da API externa -- fica visível a qualquer momento na tela
+    // (pedido do Diego, 16/10/2026: "gostaria de deixar o link... disponivel
+    // para eu clicar, abrir uma tela e eu puder ver"). É o mesmo link pra
+    // qualquer token, só muda o header Authorization em cada chamada.
+    function mostrarLinkApi() {
+      var base = window.location.origin + "/api/externa";
+      var html =
+        '<div class="modal-box"><h3>Link de acesso da API externa</h3>' +
+        '<div class="field"><label>URL base</label>' +
+        '<input type="text" id="link-api-valor" value="' + esc(base) + '" readonly style="font-family:monospace;"></div>' +
+        '<div class="hint" style="margin:10px 0 0;">Toda chamada precisa do header <code>Authorization: Bearer &lt;token&gt;</code> com o token da integração. Endpoints: <code>' + esc(base) + '/pessoas</code>, <code>/equipes</code>, <code>/acesso-equipes</code>, <code>/patrimonios</code>, <code>/veiculos</code>, <code>/veiculos/km-lancamentos</code>, <code>/auditorias</code>, <code>/treinamentos</code>.</div>' +
+        '<div class="modal-actions"><button type="button" class="btn primary" id="link-api-copiar">' + ICONS.copy + "Copiar</button><button type=\"button\" class=\"btn\" id=\"link-api-fechar\">Fechar</button></div>" +
+        "</div>";
+      openModal(html);
+      $("#link-api-fechar").addEventListener("click", closeModal);
+      $("#link-api-copiar").addEventListener("click", function () {
+        var input = $("#link-api-valor");
+        input.select();
+        navigator.clipboard && navigator.clipboard.writeText(base).then(function () {
+          toast("Link copiado.", "success");
+        }, function () {
+          toast("Não foi possível copiar automaticamente -- selecione e copie manualmente.", "error");
+        });
       });
     }
 
@@ -9193,7 +9311,7 @@
         '<p>Copie e guarde agora -- por segurança, este valor <strong>não aparece de novo</strong>. Se perder, exclua este token e crie outro.</p>' +
         '<div class="field"><label>Token de "' + esc(novo.nome) + '"</label>' +
         '<input type="text" id="token-valor-gerado" value="' + esc(novo.token) + '" readonly style="font-family:monospace;"></div>' +
-        '<div class="hint" style="margin:10px 0 0;">A integração deve enviar este valor no header <code>Authorization: Bearer ' + esc(novo.token) + '</code> em toda chamada à API externa (<code>/api/externa/...</code>).</div>' +
+        '<div class="hint" style="margin:10px 0 0;">A integração deve enviar este valor no header <code>Authorization: Bearer ' + esc(novo.token) + '</code> em toda chamada à API externa (<code>/api/externa/...</code>). Esqueceu o link da API depois de fechar essa tela? Clique em "Ver link da API" na tela de Tokens -- esse link é sempre o mesmo, fica disponível ali a qualquer momento.</div>' +
         '<div class="modal-actions"><button type="button" class="btn primary" id="token-copiar">' + ICONS.copy + "Copiar</button><button type=\"button\" class=\"btn\" id=\"token-fechar\">Fechar</button></div>" +
         "</div>";
       openModal(html);
@@ -9211,12 +9329,14 @@
 
     main.innerHTML =
       '<div class="topbar"><div><h1>Administrador</h1><div class="sub">Usuários, permissões e histórico de alterações</div></div>' +
+      '<button class="btn ghost" id="btn-link-api">' + ICONS.link + "Ver link da API</button> " +
       '<button class="btn primary" id="btn-new-token">' + ICONS.plus + "Novo token</button></div>" +
       adminTabsHtml("tokens") +
-      '<p class="hint" style="margin-bottom:14px;">Tokens dão acesso de LEITURA, por fora do sistema, aos dados de Pessoas/Crescimento, Equipes, Acesso, Patrimônio, Veículos, Auditorias e Documentos -- nunca à aba Administrador. Crie um token por integração/cliente externo, assim dá pra revogar só o de quem precisar, sem afetar os outros.</p>' +
+      '<p class="hint" style="margin-bottom:14px;">Tokens dão acesso de LEITURA, por fora do sistema, aos dados de Pessoas/Crescimento, Equipes, Acesso, Patrimônio, Veículos, Auditorias e Documentos -- nunca à aba Administrador. Crie um token por integração/cliente externo, assim dá pra revogar só o de quem precisar, sem afetar os outros. Dá pra escolher, na criação ou depois ("Editar acesso"), se um token vê tudo isso ou só uma parte.</p>' +
       '<div id="tokens-body"><div class="hint" style="padding:20px;">Carregando…</div></div>';
     bindAdminTabs(main);
     $("#btn-new-token").addEventListener("click", openNovoTokenForm);
+    $("#btn-link-api").addEventListener("click", mostrarLinkApi);
     draw();
   }
 

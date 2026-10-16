@@ -31,7 +31,7 @@ const COLUNAS_PESSOA = [
 ].join(", ");
 
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "pessoas");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

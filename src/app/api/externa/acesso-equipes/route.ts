@@ -9,7 +9,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // removida de cada membro aqui com `semCampos` antes de devolver, nunca
 // deve sair por uma API externa.
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "acesso-equipes");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

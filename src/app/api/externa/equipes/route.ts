@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // API EXTERNA (pedido do Diego, 16/10/2026) -- equipes de campo + membros,
 // mesmo formato (`membros` embutido) que /api/state já devolve pro front.
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "equipes");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

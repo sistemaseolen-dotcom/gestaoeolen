@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields, auditDelete } from "@/lib/audit";
+import { sanitizarEscopos } from "@/lib/apiTokenAuth";
 
 // PATCH só troca `ativo` (revogar/reativar) e `observacao` -- nunca dá pra
 // "ver"/trocar o token em si (não existe update de token_hash aqui); quem
@@ -24,7 +25,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   const admin = supabaseAdmin();
   const { data: before, error: fetchError } = await admin
     .from("api_tokens")
-    .select("id, nome, ativo, observacao")
+    .select("id, nome, ativo, observacao, escopos")
     .eq("id", id)
     .maybeSingle();
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
@@ -33,12 +34,15 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   const patch: Record<string, any> = {};
   if (Object.prototype.hasOwnProperty.call(body || {}, "ativo")) patch.ativo = !!body.ativo;
   if (Object.prototype.hasOwnProperty.call(body || {}, "observacao")) patch.observacao = body.observacao ? String(body.observacao).trim() : null;
+  // Admin pode mudar o acesso (escopos) de um token já existente, sem
+  // precisar excluir e criar outro (pedido do Diego, 16/10/2026).
+  if (Object.prototype.hasOwnProperty.call(body || {}, "escopos")) patch.escopos = sanitizarEscopos(body.escopos);
 
   const { data: after, error: updateError } = await admin
     .from("api_tokens")
     .update(patch)
     .eq("id", id)
-    .select("id, nome, token_prefixo, ativo, criado_em, criado_por_nome, ultimo_uso_em, observacao")
+    .select("id, nome, token_prefixo, ativo, criado_em, criado_por_nome, ultimo_uso_em, observacao, escopos")
     .single();
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
 
@@ -46,9 +50,9 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     entidade: "api_token",
     entidadeId: id,
     entidadeLabel: after.nome,
-    before,
-    after,
-    campos: ["nome", "ativo", "observacao"],
+    before: { ...before, escopos: before.escopos ? before.escopos.join(", ") : "Tudo" },
+    after: { ...after, escopos: after.escopos ? after.escopos.join(", ") : "Tudo" },
+    campos: ["nome", "ativo", "observacao", "escopos"],
     usuario: gate.user,
   });
 

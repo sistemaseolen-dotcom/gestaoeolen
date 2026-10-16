@@ -8,7 +8,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // +11000 linhas no total) -- ver GET /api/externa/veiculos/km-lancamentos
 // (filtrável por ?veiculoId=), paginado à parte.
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "veiculos");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 // API EXTERNA (pedido do Diego, 16/10/2026) -- auditorias de EPI.
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "auditorias");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

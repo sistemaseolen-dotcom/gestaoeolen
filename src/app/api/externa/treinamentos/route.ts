@@ -7,7 +7,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 // obrigatórios (aba "Documentos"). Tabela grande (+9000 linhas) -- sempre
 // paginada. ?pessoaId= filtra por uma pessoa só.
 export async function GET(req: Request) {
-  const gate = await requireApiToken(req);
+  const gate = await requireApiToken(req, "treinamentos");
   if (gate.response) return gate.response;
 
   const url = new URL(req.url);

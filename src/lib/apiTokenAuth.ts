@@ -34,6 +34,37 @@ export interface ApiTokenRow {
   id: number;
   nome: string;
   ativo: boolean;
+  escopos: string[] | null;
+}
+
+// Escopos possíveis pra um token (pedido do Diego, 16/10/2026: "ter opção de
+// selecionar o que sera visto com esse token, podem dar acesso a apenas uma
+// parte do sistema") -- a chave é exatamente o nome da pasta em
+// /api/externa/<chave>, pra ficar óbvio qual escopo cobre qual rota.
+// `escopos: null` (ou []) no banco = acesso total, pra não quebrar tokens
+// criados antes deste recurso existir (ex.: o token "PIERRE").
+export const ESCOPOS_API: { chave: string; label: string }[] = [
+  { chave: "pessoas", label: "Pessoas / Crescimento" },
+  { chave: "equipes", label: "Equipes" },
+  { chave: "acesso-equipes", label: "Acesso (equipes de acesso)" },
+  { chave: "patrimonios", label: "Patrimônio" },
+  { chave: "veiculos", label: "Veículos (inclui KM)" },
+  { chave: "auditorias", label: "Auditorias" },
+  { chave: "treinamentos", label: "Documentos (treinamentos)" },
+];
+const CHAVES_ESCOPO_VALIDAS = ESCOPOS_API.map((e) => e.chave);
+
+export function sanitizarEscopos(valor: unknown): string[] | null {
+  if (!Array.isArray(valor)) return null;
+  const limpos = valor
+    .map((v) => String(v).trim())
+    .filter((v) => CHAVES_ESCOPO_VALIDAS.includes(v));
+  const unicos = Array.from(new Set(limpos));
+  return unicos.length ? unicos : null; // vazio = acesso total
+}
+
+export function tokenPermiteEscopo(token: ApiTokenRow, escopo: string): boolean {
+  return !token.escopos || token.escopos.length === 0 || token.escopos.includes(escopo);
 }
 
 type GateOk = { token: ApiTokenRow; response: null };
@@ -51,12 +82,15 @@ function extrairTokenBruto(req: Request): string | null {
   return apiKey || null;
 }
 
-// Use no início de TODA rota em /api/externa/*:
-//   const gate = await requireApiToken(req);
+// Use no início de TODA rota em /api/externa/<escopo>/...:
+//   const gate = await requireApiToken(req, "pessoas");
 //   if (gate.response) return gate.response;
-// Nunca confia em permissão de usuário logado (cookie/sessão) -- esta API é
-// pra sistemas de fora, sem sessão de navegador alguma.
-export async function requireApiToken(req: Request): Promise<GateOk | GateFail> {
+// `escopo` é a chave em ESCOPOS_API que cobre esta rota -- se o token foi
+// criado com acesso restrito e não inclui este escopo, devolve 403 antes de
+// tocar em qualquer dado. Nunca confia em permissão de usuário logado
+// (cookie/sessão) -- esta API é pra sistemas de fora, sem sessão de
+// navegador alguma.
+export async function requireApiToken(req: Request, escopo: string): Promise<GateOk | GateFail> {
   const bruto = extrairTokenBruto(req);
   if (!bruto) {
     return {
@@ -71,7 +105,7 @@ export async function requireApiToken(req: Request): Promise<GateOk | GateFail> 
   const admin = supabaseAdmin();
   const { data, error } = await admin
     .from("api_tokens")
-    .select("id, nome, ativo")
+    .select("id, nome, ativo, escopos")
     .eq("token_hash", hashApiToken(bruto))
     .maybeSingle();
   if (error) {
@@ -79,6 +113,15 @@ export async function requireApiToken(req: Request): Promise<GateOk | GateFail> 
   }
   if (!data || !data.ativo) {
     return { token: null, response: NextResponse.json({ error: "Token inválido ou revogado." }, { status: 401 }) };
+  }
+  if (!tokenPermiteEscopo(data, escopo)) {
+    return {
+      token: null,
+      response: NextResponse.json(
+        { error: "Este token não tem acesso a esta parte da API." },
+        { status: 403 }
+      ),
+    };
   }
 
   // Best-effort, não atrasa nem quebra a resposta por causa disso.
