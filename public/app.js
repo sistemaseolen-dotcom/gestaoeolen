@@ -2144,6 +2144,28 @@
       ajustarMeiConformeTipo();
       tipoPessoaEl.addEventListener("change", ajustarMeiConformeTipo);
     }
+    // Pedido do Diego (16/10/2026): "sempre que selecionar que uma pessoa é
+    // CLT, automaticamente já preenche com as informações da ALLIANCE
+    // SERVICES PLUS DO BRASIL" -- hoje só existe um tipo de CLT no sistema,
+    // então todo CLT é considerado contratado via Alliance. Preenche o CNPJ
+    // da Alliance e dispara a MESMA busca de sempre (bindPessoaCnpjLookup,
+    // cache-first) clicando no botão "Buscar CNPJ" -- evita duplicar a
+    // lista de campos aqui. Só age se o campo de CNPJ ainda estiver vazio,
+    // nunca sobrescreve uma empresa já preenchida (reaberto um cadastro que
+    // já tem outra empresa, ou que o usuário já ajustou à mão).
+    var empresaCnpjEl = $("#pessoa-form [name=empresaCnpj]");
+    var btnBuscarCnpjPessoa = $("#btn-pessoa-cnpj-lookup");
+    if (tipoPessoaEl && empresaCnpjEl && btnBuscarCnpjPessoa) {
+      var preencherAllianceSeClt = function () {
+        var ehClt = (tipoPessoaEl.value || "").trim().toUpperCase() === "CLT";
+        if (ehClt && !empresaCnpjEl.value.trim()) {
+          empresaCnpjEl.value = "10.698.291/0001-97";
+          btnBuscarCnpjPessoa.click();
+        }
+      };
+      preencherAllianceSeClt();
+      tipoPessoaEl.addEventListener("change", preencherAllianceSeClt);
+    }
     // Pedido do Diego (15/10/2026): regra de duplicidade -- não pode
     // existir dois cadastros com o mesmo CPF nem dois com o mesmo nome. A
     // regra que BLOQUEIA de verdade fica no servidor (POST /api/pessoas e
@@ -2470,6 +2492,25 @@
     setupTabs();
     bindCrescimentoCnpjLookup($("#crescimento-form"));
     bindCepLookup($("#crescimento-form"), { logradouro: "endereco", bairro: "bairro", cidade: "municipio", uf: "estado" });
+
+    // Pedido do Diego (16/10/2026), mesma regra da ficha de Pessoa: ao
+    // selecionar "CLT" aqui em Crescimento, preenche sozinho o CNPJ da
+    // Alliance e dispara a busca de sempre (bindCrescimentoCnpjLookup) --
+    // só se o CNPJ ainda estiver vazio, nunca sobrescreve.
+    var tipoPessoaCrescimentoEl = $("#crescimento-form [name=tipoPessoa]");
+    var empresaCnpjCrescimentoEl = $("#crescimento-form [name=empresaCnpj]");
+    var btnBuscarCnpjCrescimento = $("#btn-crescimento-cnpj-lookup");
+    if (tipoPessoaCrescimentoEl && empresaCnpjCrescimentoEl && btnBuscarCnpjCrescimento) {
+      var preencherAllianceSeCltCrescimento = function () {
+        var ehClt = (tipoPessoaCrescimentoEl.value || "").trim().toUpperCase() === "CLT";
+        if (ehClt && !empresaCnpjCrescimentoEl.value.trim()) {
+          empresaCnpjCrescimentoEl.value = "10.698.291/0001-97";
+          btnBuscarCnpjCrescimento.click();
+        }
+      };
+      preencherAllianceSeCltCrescimento();
+      tipoPessoaCrescimentoEl.addEventListener("change", preencherAllianceSeCltCrescimento);
+    }
 
     // Mesma regra da ficha de Pessoas: Regional é preenchida sozinha a
     // partir do Estado (atuação) e fica travada pra edição manual (ver
