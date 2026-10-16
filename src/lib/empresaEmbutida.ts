@@ -23,7 +23,7 @@
 import { supabaseAdmin } from "./supabaseAdmin";
 import { auditDiffFields } from "./audit";
 import type { UsuarioRow } from "./permissions";
-import { buscarCnpj, onlyDigitsCnpj } from "./cnpjLookup";
+import { buscarCnpj, onlyDigitsCnpj, type CnpjLookupResult } from "./cnpjLookup";
 
 // Colunas embutidas em `pessoas` (snake_case) -- usadas tanto pro SELECT de
 // cache/propagação quanto pro diff de auditoria.
@@ -116,7 +116,22 @@ export function colunasEmpresaFromDados(dados: Record<string, any>): Record<stri
 // (/api/pessoas/cnpj-lookup, /api/crescimento/cnpj-lookup) pra pré-preencher
 // o formulário -- depois disso, o valor final salvo é sempre o que o
 // cliente mandar no body (igual qualquer outro campo do formulário).
-export async function buscarDadosEmpresaEmbutida(cnpjDigitsRaw: string): Promise<Record<string, any> & { cacheHit: boolean }> {
+//
+// Bug relatado pelo Diego (16/10/2026): salvar uma nova solicitação de
+// Crescimento com CNPJ inédito "demorava muito e não acontecia nada". Causa
+// raiz: POST/PATCH /api/crescimento chamavam resolveOrCreateEmpresaPorCnpj
+// (que bate na Receita se a empresa não existir em `empresas`) E DEPOIS
+// chamavam esta função de novo (que bate na Receita OUTRA VEZ se nenhuma
+// pessoa já tiver esse CNPJ embutido) -- duas consultas sequenciais ao
+// mesmo serviço externo pro MESMO CNPJ, cada uma com até 10s de timeout,
+// até 20s de espera num CNPJ realmente novo (ou mais, se o serviço estiver
+// lento). `dadosReceitaPreBuscados` deixa quem já consultou a Receita (ver
+// resolveOrCreateEmpresaPorCnpj) reaproveitar o resultado aqui, sem bater
+// de novo no serviço externo.
+export async function buscarDadosEmpresaEmbutida(
+  cnpjDigitsRaw: string,
+  dadosReceitaPreBuscados?: CnpjLookupResult
+): Promise<Record<string, any> & { cacheHit: boolean }> {
   const cnpjDigits = onlyDigitsCnpj(cnpjDigitsRaw);
   const admin = supabaseAdmin();
 
@@ -157,7 +172,7 @@ export async function buscarDadosEmpresaEmbutida(cnpjDigitsRaw: string): Promise
     };
   }
 
-  const dados = await buscarCnpj(cnpjDigits);
+  const dados = dadosReceitaPreBuscados || (await buscarCnpj(cnpjDigits));
   return {
     cnpj: dados.cnpj,
     razaoSocial: dados.nome || null,

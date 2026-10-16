@@ -6,6 +6,7 @@ import { inativarPessoaCascata } from "@/lib/statusCascade";
 import { encontrarDuplicidadePessoa, normalizarNomePessoa, soDigitosCpf } from "@/lib/pessoaDuplicidade";
 import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
 import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
+import type { CnpjLookupResult } from "@/lib/cnpjLookup";
 
 // Edição de um cadastro em Crescimento -- gateado por "crescimento":"editar",
 // INDEPENDENTE de "pessoas" (ver POST /api/crescimento pro resto do
@@ -40,7 +41,7 @@ function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?
 async function resolveOrCreateEmpresaPorCnpj(
   admin: ReturnType<typeof supabaseAdmin>,
   cnpjDigits: string
-): Promise<{ empresa_id: number; empresa_nome: string }> {
+): Promise<{ empresa_id: number; empresa_nome: string; dadosReceita?: CnpjLookupResult }> {
   const { data: existente } = await admin
     .from("empresas")
     .select("id, nome, fantasia, cnpj")
@@ -74,7 +75,7 @@ async function resolveOrCreateEmpresaPorCnpj(
     .select("id, nome, fantasia, cnpj")
     .single();
   if (error) throw error;
-  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
+  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova), dadosReceita: dados };
 }
 
 function pessoaPatchFromBody(body: any): Record<string, any> {
@@ -185,13 +186,18 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
         return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
       }
       try {
-        const { empresa_id, empresa_nome } = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
-        patch.empresa_id = empresa_id;
-        patch.empresa_nome = empresa_nome;
+        const empresaResolved = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
+        patch.empresa_id = empresaResolved.empresa_id;
+        patch.empresa_nome = empresaResolved.empresa_nome;
         // Mesmo raciocínio de POST /api/crescimento: resolve os campos
         // empresa_* embutidos inteiramente no servidor (cache-first), já
         // que este formulário não tem campos manuais de empresa visíveis.
-        empresaColunas = colunasEmpresaFromDados(await buscarDadosEmpresaEmbutida(empresaCnpjDigits));
+        // Reaproveita `dadosReceita` se a Receita já foi consultada acima,
+        // em vez de consultar de novo (bug de demora relatado pelo Diego,
+        // 16/10/2026 -- ver comentário em buscarDadosEmpresaEmbutida).
+        empresaColunas = colunasEmpresaFromDados(
+          await buscarDadosEmpresaEmbutida(empresaCnpjDigits, empresaResolved.dadosReceita)
+        );
         Object.assign(patch, empresaColunas);
         empresaCnpjFinal = empresaCnpjDigits;
       } catch (err: any) {

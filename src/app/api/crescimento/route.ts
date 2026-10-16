@@ -5,6 +5,7 @@ import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
 import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
 import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
+import type { CnpjLookupResult } from "@/lib/cnpjLookup";
 
 // Aba "Crescimento" (pedido do Diego, 15/10/2026): cadastro de pessoas
 // entrando no processo de crescimento da empresa. Acesso restrito a quem o
@@ -66,7 +67,7 @@ function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?
 async function resolveOrCreateEmpresaPorCnpj(
   admin: ReturnType<typeof supabaseAdmin>,
   cnpjDigits: string
-): Promise<{ empresa_id: number; empresa_nome: string }> {
+): Promise<{ empresa_id: number; empresa_nome: string; dadosReceita?: CnpjLookupResult }> {
   const { data: existente } = await admin
     .from("empresas")
     .select("id, nome, fantasia, cnpj")
@@ -100,7 +101,7 @@ async function resolveOrCreateEmpresaPorCnpj(
     .select("id, nome, fantasia, cnpj")
     .single();
   if (error) throw error;
-  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
+  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova), dadosReceita: dados };
 }
 
 // Campos obrigatórios do print que o Diego mandou (seção 1 a 4), com a
@@ -176,7 +177,7 @@ export async function POST(req: Request) {
     );
   }
 
-  let empresaResolved: { empresa_id: number; empresa_nome: string };
+  let empresaResolved: { empresa_id: number; empresa_nome: string; dadosReceita?: CnpjLookupResult };
   let empresaColunas: Record<string, any>;
   try {
     empresaResolved = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
@@ -184,7 +185,12 @@ export async function POST(req: Request) {
     // (cache-first) -- o formulário de Crescimento não tem campos manuais
     // de empresa (PGR/PCMSO etc.) visíveis, então herda tudo de quem já
     // estiver cadastrado com o mesmo CNPJ (ver src/lib/empresaEmbutida.ts).
-    empresaColunas = colunasEmpresaFromDados(await buscarDadosEmpresaEmbutida(empresaCnpjDigits));
+    // `dadosReceita` (preenchido só quando resolveOrCreateEmpresaPorCnpj
+    // precisou consultar a Receita agora, pra CNPJ novo) evita consultar de
+    // novo aqui -- ver comentário em buscarDadosEmpresaEmbutida.
+    empresaColunas = colunasEmpresaFromDados(
+      await buscarDadosEmpresaEmbutida(empresaCnpjDigits, empresaResolved.dadosReceita)
+    );
   } catch (err: any) {
     if (err instanceof CnpjLookupError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

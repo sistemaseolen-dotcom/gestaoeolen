@@ -9738,7 +9738,15 @@
     if (!form) return;
     form.dataset.travaSubmit = "0";
     if (form._travaSubmitTimeout) { clearTimeout(form._travaSubmitTimeout); form._travaSubmitTimeout = null; }
-    botoesSubmitDoForm(form).forEach(function (b) { b.disabled = false; });
+    botoesSubmitDoForm(form).forEach(function (b) {
+      b.disabled = false;
+      // Devolve o texto original do botão (ver comentário abaixo, no
+      // listener de "submit", sobre o "Salvando…").
+      if (b.dataset.labelOriginal !== undefined) {
+        b.innerHTML = b.dataset.labelOriginal;
+        delete b.dataset.labelOriginal;
+      }
+    });
   }
   document.addEventListener("submit", function (e) {
     var form = e.target;
@@ -9749,7 +9757,18 @@
       return;
     }
     form.dataset.travaSubmit = "1";
-    botoesSubmitDoForm(form).forEach(function (b) { b.disabled = true; });
+    botoesSubmitDoForm(form).forEach(function (b) {
+      b.disabled = true;
+      // Bug relatado pelo Diego (16/10/2026): clicar em "Salvar" não dava
+      // nenhum retorno visual enquanto a requisição estava em andamento (só
+      // o botão ficando cinza, fácil de não notar) -- parecia que "não
+      // acontecia nada", mesmo quando a gravação só estava demorando um
+      // pouco (ex.: consulta de CNPJ novo). Troca o texto do botão por
+      // "Salvando…" até liberar a trava (sucesso fecha a tela; erro chama
+      // liberarTravaDeSubmit, que devolve o texto original).
+      b.dataset.labelOriginal = b.innerHTML;
+      b.innerHTML = "Salvando…";
+    });
     FORM_SUBMIT_EM_ANDAMENTO = form;
     form._travaSubmitTimeout = setTimeout(function () { liberarTravaDeSubmit(form); }, 30000);
     // Se o handler de verdade do form retornar sem nunca chamar apiFetch
