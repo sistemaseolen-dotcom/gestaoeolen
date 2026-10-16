@@ -3,9 +3,8 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
-import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
-import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
-import type { CnpjLookupResult } from "@/lib/cnpjLookup";
+import { CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
+import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, nomeEmpresaEmbutida, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 // Aba "Crescimento" (pedido do Diego, 15/10/2026): cadastro de pessoas
 // entrando no processo de crescimento da empresa. Acesso restrito a quem o
@@ -21,7 +20,7 @@ import type { CnpjLookupResult } from "@/lib/cnpjLookup";
 const CAMPOS_PESSOA_CRESCIMENTO = [
   "nome", "cargo", "status", "regional", "estado_atuacao", "projeto", "operadora", "coordenador",
   "tipo_pessoa", "data_admissao", "cpf", "rg", "data_nascimento", "email", "telefone", "cep",
-  "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei", "empresa_id",
+  "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei",
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
   // Quem solicitou (pedido do Diego, 16/10/2026) -- ver comentário no payload abaixo.
   "solicitante_crescimento_nome",
@@ -51,57 +50,6 @@ function upperOrSame(v: any): any {
   if (typeof v !== "string") return v;
   const s = v.trim();
   return s ? s.toUpperCase() : v;
-}
-
-function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?: string | null }): string {
-  return e?.fantasia || e?.nome || (e?.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
-}
-
-// Acha a empresa pelo CNPJ (já cadastrada em "Empresas") ou cria uma nova,
-// buscando os dados reais na Receita -- pedido do Diego (15/10/2026): "ao
-// digitar o CNPJ ja deve buscar todas as informações pertinentes daquela
-// empresa e não buscar da lista existente, pois como é crescimento, se
-// refere a uma pessoa nova" (ou seja, a empresa pode ser nova também, não
-// só a pessoa). Reaproveitada por POST aqui e por PATCH em [id]/route.ts
-// (duplicada lá de propósito, mesmo padrão já usado neste projeto).
-async function resolveOrCreateEmpresaPorCnpj(
-  admin: ReturnType<typeof supabaseAdmin>,
-  cnpjDigits: string
-): Promise<{ empresa_id: number; empresa_nome: string; dadosReceita?: CnpjLookupResult }> {
-  const { data: existente } = await admin
-    .from("empresas")
-    .select("id, nome, fantasia, cnpj")
-    .eq("cnpj", cnpjDigits)
-    .maybeSingle();
-  if (existente) {
-    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
-  }
-
-  const dados = await buscarCnpj(cnpjDigits);
-  const { data: nova, error } = await admin
-    .from("empresas")
-    .insert({
-      nome: dados.nome || `CNPJ ${cnpjDigits}`,
-      fantasia: dados.fantasia || null,
-      cnpj: cnpjDigits,
-      porte: dados.porte || null,
-      cidade: dados.cidade || null,
-      uf: dados.uf || null,
-      cep: dados.cep || null,
-      bairro: dados.bairro || null,
-      logradouro: dados.logradouro || null,
-      numero: dados.numero || null,
-      telefone: dados.telefone || null,
-      email: dados.email || null,
-      cnae_principal: dados.cnaePrincipal || null,
-      cnae_descricao: dados.cnaeDescricao || null,
-      situacao_cadastral: dados.situacaoCadastral || null,
-      status: "ATIVO",
-    })
-    .select("id, nome, fantasia, cnpj")
-    .single();
-  if (error) throw error;
-  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova), dadosReceita: dados };
 }
 
 // Campos obrigatórios do print que o Diego mandou (seção 1 a 4), com a
@@ -177,30 +125,25 @@ export async function POST(req: Request) {
     );
   }
 
-  let empresaResolved: { empresa_id: number; empresa_nome: string; dadosReceita?: CnpjLookupResult };
+  // Resolve os campos empresa_* embutidos inteiramente no servidor
+  // (cache-first: pessoas -> `empresas` (legado, só leitura) -> Receita) --
+  // ver buscarDadosEmpresaEmbutida em src/lib/empresaEmbutida.ts. Desde que
+  // a aba Empresas foi removida (16/10/2026, pedido do Diego), não existe
+  // mais resolveOrCreateEmpresaPorCnpj aqui -- só esta única consulta, sem
+  // gravar nada em `empresas`.
   let empresaColunas: Record<string, any>;
   try {
-    empresaResolved = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
-    // Resolve os campos empresa_* embutidos inteiramente no servidor
-    // (cache-first) -- o formulário de Crescimento não tem campos manuais
-    // de empresa (PGR/PCMSO etc.) visíveis, então herda tudo de quem já
-    // estiver cadastrado com o mesmo CNPJ (ver src/lib/empresaEmbutida.ts).
-    // `dadosReceita` (preenchido só quando resolveOrCreateEmpresaPorCnpj
-    // precisou consultar a Receita agora, pra CNPJ novo) evita consultar de
-    // novo aqui -- ver comentário em buscarDadosEmpresaEmbutida.
-    empresaColunas = colunasEmpresaFromDados(
-      await buscarDadosEmpresaEmbutida(empresaCnpjDigits, empresaResolved.dadosReceita)
-    );
+    empresaColunas = colunasEmpresaFromDados(await buscarDadosEmpresaEmbutida(empresaCnpjDigits));
   } catch (err: any) {
     if (err instanceof CnpjLookupError) {
       return NextResponse.json({ error: err.message }, { status: err.status });
     }
     return NextResponse.json(
-      { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
+      { error: err?.message || "Não foi possível localizar os dados da empresa pelo CNPJ." },
       { status: 500 }
     );
   }
-  const { empresa_id, empresa_nome } = empresaResolved;
+  const empresa_nome = nomeEmpresaEmbutida(empresaColunas);
 
   const payload = {
     nome,
@@ -232,14 +175,13 @@ export async function POST(req: Request) {
     municipio: body.municipio,
     estado: body.estado,
     // CNPJ/MEI deste formulário é da EMPRESA (resolvido acima por
-    // resolveOrCreateEmpresaPorCnpj), não é mais o MEI pessoal do
+    // buscarDadosEmpresaEmbutida), não é mais o MEI pessoal do
     // profissional -- esse campo some deste formulário (pedido do Diego,
     // 15/10/2026). Fica com a mesma regra automática usada em /api/pessoas
     // (ajustarMeiConformeTipo no client): "N/A" quando não é PJ; quando é
     // PJ, fica em branco pra ser preenchido depois, editando a pessoa em
     // "Pessoas".
     mei: /^PJ/i.test((body.tipoPessoa || "").toString().trim()) ? null : "N/A",
-    empresa_id,
     empresa_nome,
     ...empresaColunas,
     responsavel: body.responsavel,

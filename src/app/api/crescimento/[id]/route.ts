@@ -4,9 +4,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { inativarPessoaCascata } from "@/lib/statusCascade";
 import { encontrarDuplicidadePessoa, normalizarNomePessoa, soDigitosCpf } from "@/lib/pessoaDuplicidade";
-import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
-import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
-import type { CnpjLookupResult } from "@/lib/cnpjLookup";
+import { CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
+import { CAMPOS_EMPRESA_EMBUTIDA, buscarDadosEmpresaEmbutida, colunasEmpresaFromDados, nomeEmpresaEmbutida, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 // Edição de um cadastro em Crescimento -- gateado por "crescimento":"editar",
 // INDEPENDENTE de "pessoas" (ver POST /api/crescimento pro resto do
@@ -19,7 +18,7 @@ import type { CnpjLookupResult } from "@/lib/cnpjLookup";
 const CAMPOS_PESSOA_CRESCIMENTO = [
   "nome", "cargo", "status", "regional", "estado_atuacao", "projeto", "operadora", "coordenador",
   "tipo_pessoa", "data_admissao", "cpf", "rg", "data_nascimento", "email", "telefone", "cep",
-  "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei", "empresa_id",
+  "endereco", "numero", "complemento", "bairro", "municipio", "estado", "mei",
   "responsavel", "nome_do_pai", "nome_da_mae", "numero_contato_emergencia",
   ...CAMPOS_EMPRESA_EMBUTIDA,
 ] as const;
@@ -28,54 +27,6 @@ function upperOrSame(v: any): any {
   if (typeof v !== "string") return v;
   const s = v.trim();
   return s ? s.toUpperCase() : v;
-}
-
-function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?: string | null }): string {
-  return e?.fantasia || e?.nome || (e?.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
-}
-
-// Mesma lógica de POST /api/crescimento (duplicada de propósito, ver
-// comentário lá): acha a empresa pelo CNPJ ou cria uma nova buscando na
-// Receita. Usada aqui só quando o body trouxer um `empresaCnpj` novo --
-// CNPJ em branco na edição significa "manter a empresa atual".
-async function resolveOrCreateEmpresaPorCnpj(
-  admin: ReturnType<typeof supabaseAdmin>,
-  cnpjDigits: string
-): Promise<{ empresa_id: number; empresa_nome: string; dadosReceita?: CnpjLookupResult }> {
-  const { data: existente } = await admin
-    .from("empresas")
-    .select("id, nome, fantasia, cnpj")
-    .eq("cnpj", cnpjDigits)
-    .maybeSingle();
-  if (existente) {
-    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
-  }
-
-  const dados = await buscarCnpj(cnpjDigits);
-  const { data: nova, error } = await admin
-    .from("empresas")
-    .insert({
-      nome: dados.nome || `CNPJ ${cnpjDigits}`,
-      fantasia: dados.fantasia || null,
-      cnpj: cnpjDigits,
-      porte: dados.porte || null,
-      cidade: dados.cidade || null,
-      uf: dados.uf || null,
-      cep: dados.cep || null,
-      bairro: dados.bairro || null,
-      logradouro: dados.logradouro || null,
-      numero: dados.numero || null,
-      telefone: dados.telefone || null,
-      email: dados.email || null,
-      cnae_principal: dados.cnaePrincipal || null,
-      cnae_descricao: dados.cnaeDescricao || null,
-      situacao_cadastral: dados.situacaoCadastral || null,
-      status: "ATIVO",
-    })
-    .select("id, nome, fantasia, cnpj")
-    .single();
-  if (error) throw error;
-  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova), dadosReceita: dados };
 }
 
 function pessoaPatchFromBody(body: any): Record<string, any> {
@@ -186,26 +137,21 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
         return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
       }
       try {
-        const empresaResolved = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
-        patch.empresa_id = empresaResolved.empresa_id;
-        patch.empresa_nome = empresaResolved.empresa_nome;
-        // Mesmo raciocínio de POST /api/crescimento: resolve os campos
-        // empresa_* embutidos inteiramente no servidor (cache-first), já
-        // que este formulário não tem campos manuais de empresa visíveis.
-        // Reaproveita `dadosReceita` se a Receita já foi consultada acima,
-        // em vez de consultar de novo (bug de demora relatado pelo Diego,
-        // 16/10/2026 -- ver comentário em buscarDadosEmpresaEmbutida).
-        empresaColunas = colunasEmpresaFromDados(
-          await buscarDadosEmpresaEmbutida(empresaCnpjDigits, empresaResolved.dadosReceita)
-        );
+        // Mesmo raciocínio de POST /api/crescimento (desde 16/10/2026, sem
+        // mais resolveOrCreateEmpresaPorCnpj): resolve os campos empresa_*
+        // embutidos inteiramente no servidor (cache-first), já que este
+        // formulário não tem campos manuais de empresa visíveis -- ver
+        // buscarDadosEmpresaEmbutida em src/lib/empresaEmbutida.ts.
+        empresaColunas = colunasEmpresaFromDados(await buscarDadosEmpresaEmbutida(empresaCnpjDigits));
         Object.assign(patch, empresaColunas);
+        patch.empresa_nome = nomeEmpresaEmbutida(empresaColunas);
         empresaCnpjFinal = empresaCnpjDigits;
       } catch (err: any) {
         if (err instanceof CnpjLookupError) {
           return NextResponse.json({ error: err.message }, { status: err.status });
         }
         return NextResponse.json(
-          { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
+          { error: err?.message || "Não foi possível localizar os dados da empresa pelo CNPJ." },
           { status: 500 }
         );
       }

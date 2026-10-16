@@ -61,7 +61,6 @@ export async function GET() {
   // igual.
   //
   const podePessoas = canView(gate.user, "pessoas");
-  const podeEmpresas = canView(gate.user, "empresas");
   const podePatrimonio = canView(gate.user, "patrimonio");
   const podeEquipes = canView(gate.user, "equipes");
   const podeVeiculos = canView(gate.user, "veiculos");
@@ -105,13 +104,12 @@ export async function GET() {
   // isso quem tem só "auditorias" recebe um subconjunto seguro (id, nome,
   // cargo, status) em vez do registro completo -- e quem não tem nenhuma
   // das duas permissões continua recebendo vazio, como antes.
-  const [pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros, crescimentoPessoasOnly] = await Promise.all([
+  const [pessoas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros, crescimentoPessoasOnly] = await Promise.all([
     podePessoas
       ? fetchAllRows(admin, "pessoas")
       : podeAuditorias
       ? fetchAllRows(admin, "pessoas", "id, nome, cargo, status")
       : vazio(),
-    podeEmpresas ? fetchAllRows(admin, "empresas") : vazio(),
     podeTreinamentos ? fetchAllRows(admin, "treinamentos") : vazio(),
     podeEquipes ? fetchAllRows(admin, "equipes") : vazio(),
     podeEquipes ? fetchAllRows(admin, "equipe_membros") : vazio(),
@@ -149,7 +147,7 @@ export async function GET() {
       : vazio(),
   ]);
 
-  for (const [name, res] of Object.entries({ pessoas, empresas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros, crescimentoPessoasOnly })) {
+  for (const [name, res] of Object.entries({ pessoas, treinamentos, equipes, equipeMembros, equipeCalibracoes, listasOpcoes, patrimonios, veiculos, veiculoKmLancamentos, auditorias, caDivergentesAuditorias, configuracoes, acessoEquipes, acessoMembros, crescimentoPessoasOnly })) {
     if (res.error) {
       return NextResponse.json({ error: `Falha ao carregar ${name}: ${res.error.message}` }, { status: 500 });
     }
@@ -253,7 +251,6 @@ export async function GET() {
   return NextResponse.json({
     pessoas: pessoas.data,
     crescimentoPessoas,
-    empresas: empresas.data,
     treinamentos: treinamentos.data,
     equipes: equipesComMembros,
     patrimonios: patrimonios.data,

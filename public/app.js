@@ -177,7 +177,6 @@
     // mostra todo mundo, e qualquer outro valor filtra por um cargo específico.
     pessoas: { q: "", status: "ATIVO", cargoFiltro: "OPERACIONAIS", page: 1 },
     equipes: { q: "", status: "", page: 1 },
-    empresas: { q: "", status: "", page: 1 },
     treinamentos: { q: "", tipo: "", categoria: "", status: "", regional: "", month: "", page: 1 },
     patrimonio: { q: "", page: 1 },
     veiculos: { q: "", status: "EM USO", page: 1 },
@@ -196,7 +195,6 @@
     { key: "painel", label: "Painel" },
     { key: "pessoas", label: "Pessoas" },
     { key: "equipes", label: "Equipes" },
-    { key: "empresas", label: "Empresas" },
     { key: "documentos", label: "Treinamentos/documentos" },
     { key: "patrimonio", label: "Patrimônio" },
     { key: "veiculos", label: "Gestão de Frotas" },
@@ -233,7 +231,6 @@
     if (canView("painel")) return "treinamentos";
     if (canView("pessoas")) return "pessoas";
     if (canView("equipes")) return "equipes";
-    if (canView("empresas")) return "empresas";
     if (canView("patrimonio")) return "patrimonio";
     if (canView("veiculos")) return "veiculos";
     if (canView("auditorias")) return "auditorias";
@@ -725,9 +722,6 @@
     }
     return (e.teamLider || "").toUpperCase();
   }
-  function empresaTitle(e) {
-    return (e.fantasia && e.fantasia.trim()) || (e.nome && e.nome.trim()) || (e.cnpj && "CNPJ " + e.cnpj) || "Empresa sem nome";
-  }
   function initials(name) {
     var parts = (name || "").trim().split(/\s+/).filter(Boolean);
     if (!parts.length) return "?";
@@ -946,16 +940,6 @@
       return '<span class="tag' + (def ? " " + def[1] : "") + '">' + esc(def ? def[2] : c) + "</span>";
     }).join(" ");
   }
-  function mapEmpresaFromApi(row) {
-    if (!row) return row;
-    return {
-      id: row.id, nome: row.nome, fantasia: row.fantasia, cnpj: row.cnpj, porte: row.porte,
-      cidade: row.cidade, uf: row.uf, cep: row.cep, bairro: row.bairro, logradouro: row.logradouro,
-      numero: row.numero, telefone: row.telefone, email: row.email, nomeResponsavel: row.nome_responsavel,
-      regional: row.regional, cnaePrincipal: row.cnae_principal, cnaeDescricao: row.cnae_descricao,
-      pgr: row.pgr, pcmso: row.pcmso, situacaoCadastral: row.situacao_cadastral, status: row.status
-    };
-  }
   function mapEquipeFromApi(row) {
     if (!row) return row;
     return {
@@ -1147,7 +1131,6 @@
     return apiFetch("/api/state").then(function (data) {
       return {
         pessoas: (data.pessoas || []).map(mapPessoaFromApi),
-        empresas: (data.empresas || []).map(mapEmpresaFromApi),
         treinamentos: (data.treinamentos || []).map(mapTreinamentoFromApi),
         equipes: (data.equipes || []).map(mapEquipeFromApi),
         patrimonios: (data.patrimonios || []).map(mapPatrimonioFromApi),
@@ -1183,7 +1166,6 @@
   function refreshState() {
     return loadState().then(function (data) {
       STATE.pessoas = data.pessoas;
-      STATE.empresas = data.empresas;
       STATE.treinamentos = data.treinamentos;
       STATE.equipes = data.equipes;
       STATE.patrimonios = data.patrimonios;
@@ -1224,7 +1206,6 @@
     if (canView("painel")) navItems.push(["treinamentos", "Painel", ICONS.dashboard, activeTreinamentos().length]);
     if (canView("pessoas")) navItems.push(["pessoas", "Pessoas", ICONS.pessoas, STATE.pessoas.length]);
     if (canView("equipes")) navItems.push(["equipes", "Equipes", ICONS.equipes, countTeamLideres(true)]);
-    if (canView("empresas")) navItems.push(["empresas", "Empresas", ICONS.empresas, STATE.empresas.length]);
     if (canView("patrimonio")) navItems.push(["patrimonio", "Patrimônio", ICONS.patrimonio, STATE.patrimonios.length]);
     if (canView("veiculos")) navItems.push(["veiculos", "Gestão de Frotas", ICONS.veiculos, STATE.veiculos.length]);
     if (canView("auditorias")) navItems.push(["auditorias", "Auditorias", ICONS.auditorias, STATE.auditorias.length]);
@@ -1964,28 +1945,13 @@
     return '<div class="detail-item' + noPrintCls + '"><span class="k">' + esc(label) + '</span><span class="v">' + esc(value || "—") + "</span>" + (campo ? fieldNoteHtml(campo) : "") + "</div>";
   }
 
-  // `opts.empresaId` pré-seleciona a empresa no formulário de uma pessoa
-  // NOVA (não se aplica a edição, onde quem manda é o próprio registro `p`)
-  // — usado pelo botão "Adicionar pessoa" na tela de uma empresa, pra não
-  // precisar procurar a empresa de novo numa lista de 700+.
-  function openPessoaForm(p, opts) {
+  // Pedido do Diego (16/10/2026): removido o preset "Adicionar pessoa" vindo
+  // da tela de uma Empresa (a aba Empresas foi removida) -- a empresa de uma
+  // pessoa nova sempre se preenche digitando o CNPJ e buscando (mesmo
+  // padrão de Crescimento), nunca mais escolhendo de uma lista de empresas.
+  function openPessoaForm(p) {
     var isNew = !p;
-    opts = opts || {};
-    var presetEmpresaId = opts.empresaId || null;
-    // Pedido do Diego (15/10/2026): a empresa não se escolhe mais de uma
-    // lista -- digita o CNPJ e busca (mesmo padrão de Crescimento). Quando
-    // vem de "Adicionar pessoa" na tela de uma Empresa (presetEmpresaId),
-    // pré-preenche a aba Empresa a partir daquele cadastro.
-    var presetEmpresa = presetEmpresaId ? byId(STATE.empresas, presetEmpresaId) : null;
-    var pEmpresa = p || (presetEmpresa ? {
-      empresaCnpj: presetEmpresa.cnpj, empresaRazaoSocial: presetEmpresa.nome, empresaFantasia: presetEmpresa.fantasia,
-      empresaPorte: presetEmpresa.porte, empresaCidade: presetEmpresa.cidade, empresaUf: presetEmpresa.uf,
-      empresaCep: presetEmpresa.cep, empresaBairro: presetEmpresa.bairro, empresaLogradouro: presetEmpresa.logradouro,
-      empresaNumero: presetEmpresa.numero, empresaTelefone: presetEmpresa.telefone, empresaEmail: presetEmpresa.email,
-      empresaNomeResponsavel: presetEmpresa.nomeResponsavel, empresaCnaePrincipal: presetEmpresa.cnaePrincipal,
-      empresaCnaeDescricao: presetEmpresa.cnaeDescricao, empresaSituacaoCadastral: presetEmpresa.situacaoCadastral,
-      empresaPgr: presetEmpresa.pgr, empresaPcmso: presetEmpresa.pcmso
-    } : null);
+    var pEmpresa = p;
 
     var html =
       '<div class="drawer-head"><div><h2>' + (isNew ? "Nova pessoa" : "Editar pessoa") + '</h2><div class="sub">Cadastro completo do colaborador</div></div>' +
@@ -2387,8 +2353,6 @@
     var p = byId(STATE.crescimentoPessoas || [], id);
     if (!p) { navigate("#/crescimento"); return; }
     var dias = diasEmCrescimento(p.criadoEm);
-    var empresa = p.empresaId ? byId(STATE.empresas || [], p.empresaId) : null;
-
     main.innerHTML =
       '<div class="topbar">' +
       '<div><button class="link-btn" id="back-btn">← Crescimento</button><h1 style="margin-top:6px;">' + esc(p.nome) + "</h1>" +
@@ -2400,7 +2364,7 @@
       '<div class="kpi neutral"><span class="label">Em crescimento há</span><span class="value tabular">' + (dias === null ? "—" : dias) + '</span><span class="hint">' + (dias === 1 ? "dia" : "dias") + " desde o pedido, em " + fmtDateBR((p.criadoEm || "").slice(0, 10)) + "</span></div>" +
       "</div>" +
       '<div class="panel"><div class="panel-head"><h3>Dados da empresa / contratação</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("Empresa", empresa ? empresaTitle(empresa) : (p.empresaNome || "—")) +
+      detailItem("Empresa", p.empresaNome || "—") +
       detailItem("Responsável", p.responsavel) + detailItem("Tipo de contrato", p.tipoPessoa) +
       // Pedido do Diego (16/10/2026): quem (usuário do sistema) solicitou
       // este crescimento -- preenchido automaticamente na criação.
@@ -6834,114 +6798,14 @@
     $("#modal-cancel").addEventListener("click", closeModal);
   }
 
-  /* ================================================================
-     EMPRESAS
-     ================================================================ */
-  function renderEmpresasList(main) {
-    var ui = uiState.empresas;
-
-    function computeFiltered() {
-      var all = STATE.empresas.slice().sort(function (a, b) { return (a.nome || "").localeCompare(b.nome || ""); });
-      return all.filter(function (e) {
-        if (ui.status && e.status !== ui.status) return false;
-        if (!ui.q) return true;
-        var hay = normalize([e.nome, e.fantasia, e.cnpj, e.cidade, e.uf].join(" "));
-        return hay.indexOf(normalize(ui.q)) !== -1;
-      });
-    }
-
-    function draw() {
-      var filtered = computeFiltered();
-      withFocusPreserved(function () { drawInto(filtered); });
-    }
-
-    function drawInto(filtered) {
-      var pg = paginate(filtered, ui.page, PAGE_SIZE);
-      ui.page = pg.page;
-      var body = pg.items.map(function (e) {
-        return '<tr data-id="' + e.id + '">' +
-          '<td><div class="row-primary">' + esc(empresaTitle(e)) + '</div><div class="row-secondary mono">' + esc(e.cnpj || "—") + '</div></td>' +
-          '<td>' + esc(e.cidade || "—") + (e.uf ? "/" + esc(e.uf) : "") + '</td><td>' + esc(e.porte || "—") + '</td>' +
-          '<td>' + statusPillGeneric(e.status) + "</td></tr>";
-      }).join("");
-      var toolbar =
-        '<div class="search-wrap">' + ICONS.search + '<input type="text" id="empresas-q" placeholder="Buscar por razão social, CNPJ, cidade…" value="' + esc(ui.q) + '"></div>' +
-        '<select class="filter" id="empresas-status"><option value="">Todos os status</option>' +
-        distinctStatuses(STATE.empresas).map(function (s) { return '<option value="' + esc(s) + '"' + (ui.status === s ? " selected" : "") + '>' + esc(s) + "</option>"; }).join("") + "</select>";
-
-      var exportHeaders = ["Empresa", "CNPJ", "Cidade", "UF", "Porte", "Status"];
-      var exportRows = filtered.map(function (e) {
-        return [empresaTitle(e), e.cnpj || "", e.cidade || "", e.uf || "", e.porte || "", e.status || ""];
-      });
-
-      main.innerHTML =
-        '<div class="topbar"><div><h1>Empresas</h1><div class="sub">Empresas contratadas (MEI/PJ) e prestadoras</div></div>' +
-        (canDo("empresas", "criar") ? '<button class="btn primary" id="btn-new-empresa">' + ICONS.plus + "Nova empresa</button>" : "") + "</div>" +
-        tableShell({
-          toolbar: toolbar,
-          headHtml: "<th>Empresa</th><th>Cidade/UF</th><th>Porte</th><th>Status</th>",
-          bodyHtml: body, count: filtered.length, page: pg.page, totalPages: pg.totalPages,
-          empty: "Nenhuma empresa encontrada.",
-          exportHeaders: exportHeaders,
-          exportRows: exportRows
-        });
-
-      if ($("#btn-new-empresa")) $("#btn-new-empresa").addEventListener("click", function () { openEmpresaForm(null); });
-      $("#empresas-q").addEventListener("input", debounce(function (e) { ui.q = e.target.value; ui.page = 1; draw(); }, 120));
-      $("#empresas-status").addEventListener("change", function (e) { ui.status = e.target.value; ui.page = 1; draw(); });
-      $all("tbody tr", main).forEach(function (row) { row.addEventListener("click", function () { navigate("#/empresas/" + row.getAttribute("data-id")); }); });
-      bindPagination(main, ui, PAGE_SIZE, filtered, draw);
-      wireExportButton(main, "Empresas", exportHeaders, exportRows);
-    }
-    draw();
-  }
-
-  function renderEmpresaDetail(main, id) {
-    var e = byId(STATE.empresas, id);
-    if (!e) { navigate("#/empresas"); return; }
-    var pessoasVinculadas = STATE.pessoas.filter(function (p) { return p.empresaId === e.id; });
-    main.innerHTML =
-      '<div class="topbar"><div><button class="link-btn" id="back-btn">← Empresas</button><h1 style="margin-top:6px;">' + esc(empresaTitle(e)) + "</h1>" +
-      '<div class="sub mono">' + esc(e.cnpj || "—") + " · " + statusPillGeneric(e.status) + "</div>" +
-      '<div class="header-field-notes">' + fieldNoteHtml("nome", "Razão social") + fieldNoteHtml("status", "Status") + "</div>" +
-      "</div>" +
-      '<div style="display:flex;gap:8px;">' +
-      (canDo("empresas", "editar") ? '<button class="btn" id="btn-edit-empresa">Editar</button>' : "") +
-      (canDo("empresas", "excluir") ? '<button class="btn danger" id="btn-del-empresa">' + ICONS.trash + "Excluir</button>" : "") +
-      "</div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Dados cadastrais</h3></div><div class="panel-body pad"><div class="detail-grid">' +
-      detailItem("Razão social", e.nome, "nome") + detailItem("Nome fantasia", e.fantasia, "fantasia") + detailItem("CNPJ", e.cnpj, "cnpj") + detailItem("Porte", e.porte, "porte") +
-      detailItem("CNAE principal", [e.cnaePrincipal, e.cnaeDescricao].filter(Boolean).join(" — "), "cnae_principal") + detailItem("Situação cadastral", e.situacaoCadastral, "situacao_cadastral") +
-      detailItem("Cidade/UF", [e.cidade, e.uf].filter(Boolean).join("/"), "cidade") + detailItem("Endereço", [e.logradouro, e.numero, e.bairro].filter(Boolean).join(", "), "logradouro") +
-      detailItem("CEP", e.cep, "cep") + detailItem("Telefone", e.telefone, "telefone") + detailItem("E-mail", e.email, "email") + detailItem("Responsável", e.nomeResponsavel, "nome_responsavel") +
-      detailItem("PGR", e.pgr, "pgr") + detailItem("PCMSO", e.pcmso, "pcmso") + detailItem("Regional", e.regional, "regional") +
-      "</div></div></div>" +
-      '<div class="panel"><div class="panel-head"><h3>Pessoas vinculadas (' + pessoasVinculadas.length + ')</h3>' +
-      (canDo("pessoas", "criar") ? '<button class="btn primary sm" id="btn-add-pessoa-empresa">' + ICONS.plus + "Adicionar pessoa</button>" : "") +
-      '</div><div class="panel-body pad">' +
-      (pessoasVinculadas.length ? pessoasVinculadas.map(function (p) {
-        return '<div class="member-row" style="cursor:pointer" data-pessoa="' + p.id + '"><div class="avatar-dot">' + esc(initials(p.nome)) + '</div><div class="info"><div class="name">' + esc(p.nome) + '</div><div class="role">' + esc(p.cargo || "—") + "</div></div>" + statusPillGeneric(p.status) + "</div>";
-      }).join("") : '<div class="hint">Nenhuma pessoa vinculada a esta empresa.</div>') +
-      "</div></div>" +
-      historyPanelHtml("empresa", e.id);
-    loadHistoryPanel("empresa", e.id);
-
-    $("#back-btn").addEventListener("click", function () { navigate("#/empresas"); });
-    if ($("#btn-edit-empresa")) $("#btn-edit-empresa").addEventListener("click", function () { openEmpresaForm(e); });
-    if ($("#btn-del-empresa")) $("#btn-del-empresa").addEventListener("click", function () { confirmDelete("empresa", e.id, empresaTitle(e)); });
-    if ($("#btn-add-pessoa-empresa")) $("#btn-add-pessoa-empresa").addEventListener("click", function () { openPessoaForm(null, { empresaId: e.id }); });
-    $all("[data-pessoa]", main).forEach(function (r) { r.addEventListener("click", function () { navigate("#/pessoas/" + r.getAttribute("data-pessoa")); }); });
-  }
-
-  // Campo de CNPJ com botão "Buscar CNPJ" ao lado — preenche o resto do
-  // formulário a partir de POST /api/empresas/cnpj-lookup (Receita Federal).
-  function cnpjFieldHtml(e) {
-    var val = e ? (e.cnpj || "") : "";
-    return '<div class="field"><label>CNPJ</label><div style="display:flex;gap:6px;">' +
-      '<input type="text" name="cnpj" value="' + esc(val) + '" style="flex:1;">' +
-      '<button type="button" class="btn ghost sm" id="btn-cnpj-lookup" style="white-space:nowrap;">Buscar CNPJ</button>' +
-      "</div></div>";
-  }
+  // Pedido do Diego (16/10/2026): a aba Empresas (lista, detalhe, criar,
+  // editar, excluir -- junto com as rotas /api/empresas*) foi removida de
+  // vez. "Nada mais depende da aba Empresas e tudo fica dentro de Pessoas,
+  // que já tem a informação de empresas" -- os dados de empresa agora vivem
+  // só nos campos embutidos de `pessoas` (empresa_cnpj, empresa_razao_
+  // social, etc., ver src/lib/empresaEmbutida.ts). A tabela `empresas` e a
+  // coluna `pessoas.empresa_id` continuam existindo no banco (histórico),
+  // mas nenhum código daqui lê/escreve nelas mais.
   function setEmpresaFormField(form, name, value) {
     if (value === undefined || value === null) return;
     var input = form.querySelector('[name="' + name + '"]');
@@ -6957,67 +6821,6 @@
     if (typeof value === "string" && shouldUppercase(input)) value = value.toUpperCase();
     input.value = value;
   }
-  // Busca por CNPJ: roda automaticamente assim que o campo chega a 14
-  // dígitos (digitando ou colando), sem precisar clicar no botão — o botão
-  // "Buscar CNPJ" continua ali só pra forçar uma nova busca manual (ex.: o
-  // cadastro na Receita mudou desde a última busca).
-  function bindCnpjLookup(form) {
-    var btn = $("#btn-cnpj-lookup", form);
-    var cnpjInput = form.querySelector('[name="cnpj"]');
-    if (!cnpjInput) return;
-    var lastBuscado = "";
-    function buscar(digits, opts) {
-      opts = opts || {};
-      if (digits.length !== 14) {
-        if (!opts.silent) toast("Informe um CNPJ com 14 dígitos.", "error");
-        return;
-      }
-      if (digits === lastBuscado) return;
-      lastBuscado = digits;
-      var originalLabel = btn ? btn.textContent : null;
-      if (btn) { btn.disabled = true; btn.textContent = "Buscando…"; }
-      apiFetch("/api/empresas/cnpj-lookup", { method: "POST", body: { cnpj: digits } })
-        .then(function (data) {
-          var r = data.empresa || {};
-          setEmpresaFormField(form, "nome", r.nome);
-          setEmpresaFormField(form, "fantasia", r.fantasia);
-          setEmpresaFormField(form, "cnpj", r.cnpj);
-          setEmpresaFormField(form, "logradouro", r.logradouro);
-          setEmpresaFormField(form, "numero", r.numero);
-          setEmpresaFormField(form, "bairro", r.bairro);
-          setEmpresaFormField(form, "cidade", r.cidade);
-          setEmpresaFormField(form, "uf", r.uf);
-          setEmpresaFormField(form, "cep", r.cep);
-          setEmpresaFormField(form, "telefone", r.telefone);
-          setEmpresaFormField(form, "email", r.email);
-          setEmpresaFormField(form, "porte", r.porte);
-          setEmpresaFormField(form, "cnaePrincipal", r.cnaePrincipal);
-          setEmpresaFormField(form, "cnaeDescricao", r.cnaeDescricao);
-          setEmpresaFormField(form, "situacaoCadastral", r.situacaoCadastral);
-          toast("Dados do CNPJ preenchidos. Confira antes de salvar.", "success");
-        })
-        .catch(function (err) {
-          lastBuscado = ""; // permite tentar de novo (auto ou manual) depois de um erro
-          if (!opts.silent) handleApiError(err);
-        })
-        .then(function () {
-          if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
-        });
-    }
-    if (btn) {
-      btn.addEventListener("click", function () {
-        lastBuscado = ""; // botão manual sempre força uma busca nova, mesmo repetindo o CNPJ
-        buscar((cnpjInput.value || "").replace(/\D/g, ""));
-      });
-    }
-    function autoTentar() {
-      var digits = (cnpjInput.value || "").replace(/\D/g, "");
-      if (digits.length === 14) buscar(digits, { silent: true });
-    }
-    cnpjInput.addEventListener("input", autoTentar);
-    cnpjInput.addEventListener("blur", autoTentar);
-  }
-
   // Busca de endereço por CEP (ViaCEP, gratuito e sem chave) — roda
   // automaticamente assim que o campo chega a 8 dígitos. `fieldMap` diz em
   // qual campo do formulário cada pedaço do endereço deve cair, já que
@@ -7048,13 +6851,14 @@
     cepInput.addEventListener("blur", tentarBuscar);
   }
 
-  // Busca de CNPJ pra aba "Crescimento" (pedido do Diego, 15/10/2026): mesmo
-  // padrão de bindCnpjLookup, mas chama /api/crescimento/cnpj-lookup (gateada
-  // por "crescimento", não por "empresas" -- um usuário só-crescimento
-  // precisa conseguir buscar também) e só preenche o nome de exibição da
-  // empresa, nunca os campos de endereço/contato da PESSOA -- a empresa
-  // encontrada ou criada é resolvida de novo no servidor ao salvar (ver
-  // POST/PATCH /api/crescimento).
+  // Busca de CNPJ pra aba "Crescimento" (pedido do Diego, 15/10/2026, e
+  // atualizado em 16/10/2026 quando a aba Empresas foi removida): mesmo
+  // padrão de busca de CNPJ usado em Pessoa (cache-first, ver
+  // buscarDadosEmpresaEmbutida em src/lib/empresaEmbutida.ts), chamando
+  // /api/crescimento/cnpj-lookup, e só preenche o nome de exibição da
+  // empresa, nunca os campos de endereço/contato da PESSOA -- os dados
+  // completos da empresa embutida são resolvidos de novo no servidor ao
+  // salvar (ver POST/PATCH /api/crescimento).
   function bindCrescimentoCnpjLookup(form) {
     var btn = $("#btn-crescimento-cnpj-lookup", form);
     var cnpjInput = form.querySelector('[name="empresaCnpj"]');
@@ -7172,65 +6976,6 @@
     }
     cnpjInput.addEventListener("input", autoTentar);
     cnpjInput.addEventListener("blur", autoTentar);
-  }
-
-  function openEmpresaForm(e) {
-    var isNew = !e;
-    var html =
-      '<div class="drawer-head"><div><h2>' + (isNew ? "Nova empresa" : "Editar empresa") + '</h2><div class="sub">Dados cadastrais da empresa</div></div>' +
-      '<button class="btn ghost sm" id="drawer-close">' + ICONS.close + "</button></div>" +
-      '<form class="drawer-body" id="empresa-form"><div class="field-grid">' +
-      field("Razão social *", "nome", "text", e, { required: true, span2: true }) +
-      field("Nome fantasia", "fantasia", "text", e, { span2: true }) +
-      cnpjFieldHtml(e) + field("Porte", "porte", "text", e) +
-      field("Cidade", "cidade", "text", e) + field("UF", "uf", "text", e) +
-      field("CEP", "cep", "text", e) + field("Bairro", "bairro", "text", e) +
-      field("Logradouro", "logradouro", "text", e) + field("Número", "numero", "text", e) +
-      field("Telefone", "telefone", "text", e) + field("E-mail", "email", "email", e) +
-      field("Responsável", "nomeResponsavel", "text", e) + field("Regional", "regional", "text", e) +
-      field("CNAE principal", "cnaePrincipal", "text", e) + field("Descrição CNAE", "cnaeDescricao", "text", e) +
-      field("PGR", "pgr", "text", e) + field("PCMSO", "pcmso", "text", e) +
-      selectField("Situação cadastral", "situacaoCadastral", ["ATIVA", "INATIVA", "BAIXADA"], e ? e.situacaoCadastral : "ATIVA") +
-      selectField("Status", "status", STATUS_OPTS, e ? e.status : "ATIVO") +
-      "</div></form>" +
-      '<div class="drawer-foot"><span></span><div style="display:flex;gap:8px;"><button type="button" class="btn" id="drawer-cancel">Cancelar</button><button type="submit" form="empresa-form" class="btn primary">' + ICONS.check + "Salvar</button></div></div>";
-    openDrawer(html);
-    var formEl = $("#empresa-form");
-    bindCnpjLookup(formEl);
-    bindCepLookup(formEl, { logradouro: "logradouro", bairro: "bairro", cidade: "cidade", uf: "uf" });
-    formEl.addEventListener("submit", function (ev) {
-      ev.preventDefault();
-      if (!canDo("empresas", isNew ? "criar" : "editar")) { toast("Você não tem permissão para isso.", "error"); return; }
-      var fd = new FormData(ev.target);
-      var body = {};
-      var camposEditaveis = ["nome", "fantasia", "cnpj", "porte", "cidade", "uf", "cep", "bairro", "logradouro", "numero", "telefone", "email",
-        "nomeResponsavel", "regional", "cnaePrincipal", "cnaeDescricao", "pgr", "pcmso", "situacaoCadastral", "status"];
-      camposEditaveis.forEach(function (k) { body[k] = (fd.get(k) || "").toString().trim(); });
-      if (!body.nome) { toast("Informe a razão social.", "error"); return; }
-
-      var req = isNew
-        ? apiFetch("/api/empresas", { method: "POST", body: body })
-        : apiFetch("/api/empresas/" + e.id, { method: "PATCH", body: body });
-
-      req.then(function (data) {
-        var rec = mapEmpresaFromApi(data);
-        if (isNew) STATE.empresas.push(rec);
-        else {
-          var idx = STATE.empresas.findIndex(function (x) { return x.id === rec.id; });
-          if (idx !== -1) STATE.empresas[idx] = rec;
-        }
-        // mantém o cache empresaNome em STATE.pessoas em dia (o servidor já
-        // sincroniza no banco quando nome/fantasia mudam — ver PATCH de empresas).
-        STATE.pessoas.forEach(function (p) { if (p.empresaId === rec.id) p.empresaNome = empresaTitle(rec); });
-        closeDrawer();
-        render();
-        renderShellCounts();
-        toast(isNew ? "Empresa cadastrada." : "Empresa atualizada.", "success");
-        navigate("#/empresas/" + rec.id);
-      }).catch(handleApiError);
-    });
-    $("#drawer-close").addEventListener("click", closeDrawer);
-    $("#drawer-cancel").addEventListener("click", closeDrawer);
   }
 
   /* ================================================================
@@ -8313,7 +8058,7 @@
   // própria tela da pessoa em vez de ir pra lista geral de treinamentos.
   function confirmDelete(kind, id, label, opts) {
     opts = opts || {};
-    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "empresa" ? "empresas" : kind === "patrimonio" ? "patrimonio" : kind === "veiculo" ? "veiculos" : kind === "auditoria" ? "auditorias" : kind === "acessoEquipe" ? "acesso" : "documentos";
+    var pageKey = kind === "pessoa" ? "pessoas" : kind === "equipe" ? "equipes" : kind === "patrimonio" ? "patrimonio" : kind === "veiculo" ? "veiculos" : kind === "auditoria" ? "auditorias" : kind === "acessoEquipe" ? "acesso" : "documentos";
     if (!canDo(pageKey, "excluir")) { toast("Você não tem permissão para excluir.", "error"); return; }
     var html =
       '<div class="modal-box"><h3>Excluir registro?</h3><p>Tem certeza que deseja excluir <strong>' + esc(label) + '</strong>? Esta ação não pode ser desfeita.</p>' +
@@ -8323,7 +8068,6 @@
     $("#modal-confirm").addEventListener("click", function () {
       var endpoint = kind === "pessoa" ? "/api/pessoas/" + id
         : kind === "equipe" ? "/api/equipes/" + id
-        : kind === "empresa" ? "/api/empresas/" + id
         : kind === "patrimonio" ? "/api/patrimonios/" + id
         : kind === "veiculo" ? "/api/veiculos/" + id
         : kind === "auditoria" ? "/api/auditorias/" + id
@@ -8341,9 +8085,6 @@
           STATE.treinamentos = STATE.treinamentos.filter(function (tr) { return tr.pessoaId !== id; });
         } else if (kind === "equipe") {
           STATE.equipes = STATE.equipes.filter(function (e) { return e.id !== id; });
-        } else if (kind === "empresa") {
-          STATE.empresas = STATE.empresas.filter(function (e) { return e.id !== id; });
-          STATE.pessoas.forEach(function (p) { if (p.empresaId === id) { p.empresaId = null; p.empresaNome = null; } });
         } else if (kind === "treinamento") {
           STATE.treinamentos = STATE.treinamentos.filter(function (t) { return t.id !== id; });
         } else if (kind === "patrimonio") {
@@ -9897,10 +9638,6 @@
       var eq = byId(STATE.equipes, route.id);
       return "Abriu a equipe " + (eq ? eq.nome : "#" + route.id);
     }
-    if (route.view === "empresas" && route.id) {
-      var em = byId(STATE.empresas, route.id);
-      return "Abriu a empresa " + (em ? empresaTitle(em) : "#" + route.id);
-    }
     if (route.view === "treinamentos" && route.id) {
       var tr = byId(STATE.treinamentos, route.id);
       return "Abriu o documento " + (tr ? (tr.tipo + " — " + tr.pessoaNome) : "#" + route.id);
@@ -9927,7 +9664,7 @@
       var ae = byId(STATE.acessoEquipes, route.id);
       return "Abriu a equipe de acesso " + (ae ? ae.nomeEquipe : "#" + route.id);
     }
-    var listLabels = { pessoas: "Abriu a lista de Pessoas", equipes: "Abriu a lista de Equipes", empresas: "Abriu a lista de Empresas", treinamentos: "Abriu o Painel", patrimonio: "Abriu a lista de Patrimônio", acesso: "Abriu a lista de Acesso" };
+    var listLabels = { pessoas: "Abriu a lista de Pessoas", equipes: "Abriu a lista de Equipes", treinamentos: "Abriu o Painel", patrimonio: "Abriu a lista de Patrimônio", acesso: "Abriu a lista de Acesso" };
     return listLabels[route.view] || ("Abriu " + route.view);
   }
 
@@ -9967,7 +9704,7 @@
       return;
     }
 
-    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", empresas: "empresas", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso", crescimento: "crescimento" };
+    var routePageMap = { treinamentos: "painel", pessoas: "pessoas", equipes: "equipes", patrimonio: "patrimonio", veiculos: "veiculos", auditorias: "auditorias", acesso: "acesso", crescimento: "crescimento" };
     var pageKey = routePageMap[route.view] || "painel";
     if (!canView(pageKey)) {
       if (hashEmpty) {
@@ -9981,7 +9718,6 @@
 
     if (route.view === "pessoas") route.id ? renderPessoaDetail(main, route.id) : renderPessoasList(main);
     else if (route.view === "equipes") route.id ? renderEquipeDetail(main, route.id) : renderEquipesList(main);
-    else if (route.view === "empresas") route.id ? renderEmpresaDetail(main, route.id) : renderEmpresasList(main);
     else if (route.view === "treinamentos") route.id ? renderTreinamentoDetail(main, route.id) : renderTreinamentosList(main);
     else if (route.view === "patrimonio") route.id ? renderPatrimonioDetail(main, route.id) : renderPatrimoniosList(main);
     else if (route.view === "veiculos") {
@@ -10015,7 +9751,7 @@
       .then(function (data) {
         CURRENT_USER = mapUsuarioFromApi(data && data.usuario);
         if (!CURRENT_USER) {
-          STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], caDivergentePessoas: new Set(), listas: {}, config: {} };
+          STATE = { pessoas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], caDivergentePessoas: new Set(), listas: {}, config: {} };
           render();
           return;
         }
@@ -10027,7 +9763,7 @@
       })
       .catch(function () {
         CURRENT_USER = null;
-        STATE = { pessoas: [], empresas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], caDivergentePessoas: new Set(), listas: {}, config: {} };
+        STATE = { pessoas: [], treinamentos: [], equipes: [], patrimonios: [], veiculos: [], auditorias: [], acessoEquipes: [], caDivergentePessoas: new Set(), listas: {}, config: {} };
         render();
       });
   }

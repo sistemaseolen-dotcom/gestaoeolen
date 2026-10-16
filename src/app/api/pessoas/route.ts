@@ -3,8 +3,7 @@ import { requirePermission } from "@/lib/authGuard";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { auditDiffFields } from "@/lib/audit";
 import { encontrarDuplicidadePessoa } from "@/lib/pessoaDuplicidade";
-import { buscarCnpj, CnpjLookupError, onlyDigitsCnpj } from "@/lib/cnpjLookup";
-import { CAMPOS_EMPRESA_EMBUTIDA, colunasEmpresaFromBody, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
+import { CAMPOS_EMPRESA_EMBUTIDA, colunasEmpresaFromBody, nomeEmpresaEmbutida, propagarCamposEmpresa } from "@/lib/empresaEmbutida";
 
 const CAMPOS_PESSOA = [
   "nome", "cargo", "cargo_aso", "status", "regional", "estado_atuacao", "projeto", "operadora", "cadastro", "coordenador",
@@ -12,7 +11,7 @@ const CAMPOS_PESSOA = [
   "data_nascimento", "pis", "cnh", "data_validade_cnh", "escolaridade", "estado_civil",
   "email", "telefone", "email_corporativo", "telefone_corporativo", "cep", "endereco",
   "numero", "complemento", "bairro", "municipio", "estado", "mei", "numero_contrato",
-  "validade_contrato", "observacao", "empresa_id", "valor_hora", "salario_bruto",
+  "validade_contrato", "observacao", "valor_hora", "salario_bruto",
   // Credenciais de acesso ao sistema do cliente (pedido do Diego, 10/2026):
   // Ericsson usa Isignum, Huawei usa ISDP. Só o ID é armazenado — por
   // pedido do Diego (10/2026) o campo de senha foi removido.
@@ -92,11 +91,6 @@ function pessoaFromBody(body: any): Record<string, any> {
   };
 }
 
-// Porta do empresaTitle() do app.js original.
-function empresaTitle(e: { fantasia?: string | null; nome?: string | null; cnpj?: string | null }): string {
-  return e?.fantasia || e?.nome || (e?.cnpj ? `CNPJ ${e.cnpj}` : "") || "Empresa sem nome";
-}
-
 // Cargos operacionais que disparam a criação automática dos 11
 // treinamentos/documentos pendentes ao cadastrar a pessoa — porta 1:1 da
 // regra do app.js antigo.
@@ -124,53 +118,6 @@ const AUTO_DOCS: Array<{ tipo: string; categoria: "treinamento" | "documento" }>
   { tipo: "TERMO DE CONSENTIMENTO", categoria: "documento" },
   { tipo: "INTEGRAÇÃO DE SEGURANÇA", categoria: "treinamento" },
 ];
-
-// Acha a empresa pelo CNPJ (já cadastrada em "Empresas") ou cria uma nova
-// buscando os dados reais na Receita -- mesma lógica de POST /api/crescimento
-// (duplicada de propósito, ver comentário lá). Mantém `empresas`/
-// `empresa_id` funcionando por compatibilidade enquanto a aba Empresas não
-// for removida (pedido do Diego, 15/10/2026) -- a fonte que a ficha de
-// Pessoa de fato exibe agora são as colunas empresa_* embutidas (ver
-// src/lib/empresaEmbutida.ts).
-async function resolveOrCreateEmpresaPorCnpj(
-  admin: ReturnType<typeof supabaseAdmin>,
-  cnpjDigits: string
-): Promise<{ empresa_id: number; empresa_nome: string }> {
-  const { data: existente } = await admin
-    .from("empresas")
-    .select("id, nome, fantasia, cnpj")
-    .eq("cnpj", cnpjDigits)
-    .maybeSingle();
-  if (existente) {
-    return { empresa_id: existente.id, empresa_nome: empresaTitle(existente) };
-  }
-
-  const dados = await buscarCnpj(cnpjDigits);
-  const { data: nova, error } = await admin
-    .from("empresas")
-    .insert({
-      nome: dados.nome || `CNPJ ${cnpjDigits}`,
-      fantasia: dados.fantasia || null,
-      cnpj: cnpjDigits,
-      porte: dados.porte || null,
-      cidade: dados.cidade || null,
-      uf: dados.uf || null,
-      cep: dados.cep || null,
-      bairro: dados.bairro || null,
-      logradouro: dados.logradouro || null,
-      numero: dados.numero || null,
-      telefone: dados.telefone || null,
-      email: dados.email || null,
-      cnae_principal: dados.cnaePrincipal || null,
-      cnae_descricao: dados.cnaeDescricao || null,
-      situacao_cadastral: dados.situacaoCadastral || null,
-      status: "ATIVO",
-    })
-    .select("id, nome, fantasia, cnpj")
-    .single();
-  if (error) throw error;
-  return { empresa_id: nova.id, empresa_nome: empresaTitle(nova) };
-}
 
 export async function POST(req: Request) {
   const gate = await requirePermission("pessoas", "criar");
@@ -218,25 +165,15 @@ export async function POST(req: Request) {
 
   // Empresa agora é sempre resolvida pelo CNPJ (pedido do Diego, 15/10/2026)
   // -- em branco significa "sem empresa vinculada" (CLT direto, por
-  // exemplo). Ver colunasEmpresaFromBody/resolveOrCreateEmpresaPorCnpj.
+  // exemplo). O nome de exibição (empresa_nome) é calculado só a partir dos
+  // campos embutidos que vieram no body (já pré-preenchidos pela busca de
+  // CNPJ no formulário, cache-first -- ver buscarDadosEmpresaEmbutida em
+  // src/lib/empresaEmbutida.ts), sem depender mais da tabela `empresas`
+  // (pedido do Diego, 16/10/2026: "nada depender mais da aba empresas").
   const empresaColunas = colunasEmpresaFromBody(body);
   const empresaCnpjDigits: string | null = empresaColunas.empresa_cnpj || null;
-  let empresaId: { empresa_id: number | null; empresa_nome: string | null } = { empresa_id: null, empresa_nome: null };
-  if (empresaCnpjDigits) {
-    if (empresaCnpjDigits.length !== 14) {
-      return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
-    }
-    try {
-      empresaId = await resolveOrCreateEmpresaPorCnpj(admin, empresaCnpjDigits);
-    } catch (err: any) {
-      if (err instanceof CnpjLookupError) {
-        return NextResponse.json({ error: err.message }, { status: err.status });
-      }
-      return NextResponse.json(
-        { error: err?.message || "Não foi possível localizar/criar a empresa pelo CNPJ." },
-        { status: 500 }
-      );
-    }
+  if (empresaCnpjDigits && empresaCnpjDigits.length !== 14) {
+    return NextResponse.json({ error: "Informe um CNPJ válido para a empresa (14 dígitos)." }, { status: 400 });
   }
 
   const payload = {
@@ -245,8 +182,7 @@ export async function POST(req: Request) {
     nome,
     cpf,
     status,
-    empresa_id: empresaId.empresa_id,
-    empresa_nome: empresaId.empresa_nome,
+    empresa_nome: empresaCnpjDigits ? nomeEmpresaEmbutida(empresaColunas) : null,
   };
 
   const { data: pessoa, error } = await admin.from("pessoas").insert(payload).select().single();

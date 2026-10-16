@@ -19,7 +19,14 @@
 // permissão em "pessoas" (ver /api/crescimento). Quem só tem "crescimento"
 // consegue ver/criar/editar os cadastros em crescimento sem enxergar o
 // resto do cadastro de Pessoas.
-export const PAGES = ["painel", "pessoas", "equipes", "empresas", "documentos", "patrimonio", "veiculos", "auditorias", "acesso", "vo", "crescimento"] as const;
+//
+// "empresas" REMOVIDA (16/10/2026, pedido do Diego): a aba Empresas foi
+// eliminada de vez -- "nada mais depende da aba Empresas e tudo fica
+// dentro de Pessoas". Usuários antigos podem ainda ter uma chave "empresas"
+// dentro do JSON salvo em usuarios.permissoes (histórico) -- é inofensiva,
+// simplesmente não é mais lida por nenhuma rota nem reconhecida por este
+// tipo Page.
+export const PAGES = ["painel", "pessoas", "equipes", "documentos", "patrimonio", "veiculos", "auditorias", "acesso", "vo", "crescimento"] as const;
 export type Page = (typeof PAGES)[number];
 
 export const ACTIONS = ["ver", "criar", "editar", "excluir"] as const;

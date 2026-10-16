@@ -13,13 +13,19 @@
 // pessoa, propaga AUTOMATICAMENTE pras outras pessoas com o mesmo CNPJ
 // (nunca deixa divergir).
 //
-// `empresas` / `pessoas.empresa_id` continuam existindo por enquanto -- a
-// aba Empresas ainda não foi removida (Diego quer comparar/validar antes).
-// As rotas que usam este helper continuam fazendo o upsert de
-// compatibilidade em `empresas` separadamente (resolveOrCreateEmpresaPorCnpj
-// em pessoas/route.ts e crescimento/route.ts) -- este arquivo só cuida dos
-// campos empresa_* embutidos, que passam a ser a fonte exibida na ficha de
-// Pessoa.
+// ATUALIZADO (16/10/2026, pedido do Diego): a aba Empresas foi removida de
+// vez -- "nada mais depende da aba Empresas e tudo fica dentro de Pessoas,
+// que já tem a informação de empresas". `resolveOrCreateEmpresaPorCnpj` (que
+// fazia upsert de compatibilidade na tabela `empresas`) foi removida das 4
+// rotas que a usavam (pessoas/route.ts, pessoas/[id]/route.ts,
+// crescimento/route.ts, crescimento/[id]/route.ts) -- este arquivo agora é a
+// ÚNICA fonte de dados de empresa em todo o sistema, tanto pra resolver os
+// campos embutidos (buscarDadosEmpresaEmbutida) quanto pro nome de exibição
+// (nomeEmpresaEmbutida, abaixo). A tabela `empresas` e a coluna
+// `pessoas.empresa_id` continuam existindo no banco só como histórico --
+// nenhum código novo lê ou escreve nelas (buscarDadosEmpresaEmbutida ainda
+// consulta `empresas` como uma camada extra de cache, ver comentário mais
+// abaixo, mas nunca escreve lá).
 import { supabaseAdmin } from "./supabaseAdmin";
 import { auditDiffFields } from "./audit";
 import type { UsuarioRow } from "./permissions";
@@ -242,6 +248,26 @@ export async function buscarDadosEmpresaEmbutida(
     observacao: null,
     cacheHit: false,
   };
+}
+
+// Nome de exibição da empresa (coluna separada `pessoas.empresa_nome`, lida
+// pela ficha de Crescimento e pelas rotas de Auditoria EPI) -- calculado só a
+// partir dos campos embutidos já resolvidos (nunca mais contra a tabela
+// `empresas`). Substitui o antigo `empresaTitle(e)` que existia duplicado em
+// 4 rotas (pessoas/route.ts, pessoas/[id]/route.ts, crescimento/route.ts,
+// crescimento/[id]/route.ts) operando sobre uma linha de `empresas` --
+// mesma prioridade: fantasia > razão social > "CNPJ ..." > "Empresa sem nome".
+export function nomeEmpresaEmbutida(dados: {
+  empresa_fantasia?: string | null;
+  empresa_razao_social?: string | null;
+  empresa_cnpj?: string | null;
+}): string {
+  return (
+    dados?.empresa_fantasia ||
+    dados?.empresa_razao_social ||
+    (dados?.empresa_cnpj ? `CNPJ ${dados.empresa_cnpj}` : "") ||
+    "Empresa sem nome"
+  );
 }
 
 // Propaga os campos empresa_* pras OUTRAS pessoas que compartilham o mesmo
