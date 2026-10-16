@@ -6769,10 +6769,25 @@
   }
 
   function openAddMembro(equipe) {
+    // Mapa pessoaId -> nome da OUTRA equipe onde ela já está (pedido do
+    // Diego, 16/10/2026: uma pessoa não pode estar em duas equipes ao mesmo
+    // tempo) -- usado aqui só pra avisar/desabilitar na hora de escolher;
+    // quem garante de verdade é a trava no backend (POST /membros).
+    var pessoaNaOutraEquipe = {};
+    STATE.equipes.forEach(function (outra) {
+      if (outra.id === equipe.id) return;
+      (outra.membros || []).forEach(function (m) {
+        if (m.pessoaId) pessoaNaOutraEquipe[m.pessoaId] = outra.nome;
+      });
+    });
     var pessoasOpts = STATE.pessoas.slice().sort(function (a, b) { return a.nome.localeCompare(b.nome); })
-      .map(function (p) { return '<option value="' + p.id + '">' + esc(p.nome) + (p.cargo ? " — " + esc(p.cargo) : "") + "</option>"; }).join("");
+      .map(function (p) {
+        var outraEquipe = pessoaNaOutraEquipe[p.id];
+        var label = esc(p.nome) + (p.cargo ? " — " + esc(p.cargo) : "") + (outraEquipe ? " (já em " + esc(outraEquipe) + ")" : "");
+        return '<option value="' + p.id + '"' + (outraEquipe ? " disabled" : "") + '>' + label + "</option>";
+      }).join("");
     var html =
-      '<div class="modal-box"><h3>Adicionar membro</h3><p>Selecione uma pessoa cadastrada e o cargo dela nesta equipe.</p>' +
+      '<div class="modal-box"><h3>Adicionar membro</h3><p>Selecione uma pessoa cadastrada e o cargo dela nesta equipe. Quem já está em outra equipe aparece desabilitado -- remova de lá primeiro.</p>' +
       '<form id="membro-form" class="field-grid one">' +
       '<div class="field"><label>Pessoa *</label><select name="pessoaId" required><option value="">Selecione…</option>' + pessoasOpts + "</select></div>" +
       '<div class="field"><label>Cargo na equipe</label><input type="text" name="cargo" placeholder="Ex.: MEMBRO, TEAM LIDER…"></div>' +
