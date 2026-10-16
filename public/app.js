@@ -7033,8 +7033,14 @@
       apiFetch("/api/crescimento/cnpj-lookup", { method: "POST", body: { cnpj: digits } })
         .then(function (data) {
           var r = data.empresa || {};
-          if (nomeDisplay) nomeDisplay.value = r.fantasia || r.nome || "";
-          toast("Empresa localizada: " + (r.fantasia || r.nome || "—") + ". Confira antes de salvar.", "success");
+          // Bug relatado pelo Diego (16/10/2026): a busca achava a empresa
+          // ("Empresa localizada: —") mas nunca preenchia o nome -- a causa
+          // era ler `r.nome`, só que buscarDadosEmpresaEmbutida (usada por
+          // /api/crescimento/cnpj-lookup) sempre devolve esse campo como
+          // `razaoSocial` (ver src/lib/empresaEmbutida.ts), igual a aba
+          // Empresa/Pessoa já lê corretamente logo abaixo.
+          if (nomeDisplay) nomeDisplay.value = r.fantasia || r.razaoSocial || "";
+          toast("Empresa localizada: " + (r.fantasia || r.razaoSocial || "—") + ". Confira antes de salvar.", "success");
         })
         .catch(function (err) {
           lastBuscado = ""; // permite tentar de novo depois de um erro
