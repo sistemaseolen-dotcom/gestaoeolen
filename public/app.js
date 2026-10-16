@@ -2483,7 +2483,7 @@
         '<td><span class="cresc-doc-check' + (ok ? " ok" : "") + '" title="' + (ok ? "Documento ok" : "Pendente") + '">' + (ok ? ICONS.check : "") + "</span></td>" +
         '<td><div class="row-primary">' + esc(t.tipo) + '</div><div class="row-secondary"><span class="tag">' + esc(t.categoria) + "</span></div></td>" +
         "<td>" + (t.arquivoPath ? '<a href="#" data-cresc-download="' + t.id + '">' + esc(t.arquivoNome || "Baixar") + "</a>" : '<span class="hint">sem anexo</span>') +
-        (podeEditar ? '<div><button type="button" class="link-btn" data-cresc-attach="' + t.id + '">' + ICONS.paperclip + (t.arquivoPath ? "Trocar" : "Anexar") + "</button></div>" : "") + "</td>" +
+        (podeEditar ? '<div><button type="button" class="link-btn" data-cresc-attach="' + t.id + '">' + (t.arquivoPath ? "Trocar anexo" : "Anexar") + "</button></div>" : "") + "</td>" +
         '<td><input type="date" class="filter" data-cresc-field="vencimento" value="' + esc(t.vencimento || "") + '"' + dis + ">" +
         (vencido ? '<div class="hint" style="color:var(--danger-ink);">Vencido</div>' : "") + "</td>" +
         '<td><select class="filter" data-cresc-field="situacaoOriginal"' + dis + ">" +
